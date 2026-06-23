@@ -1,0 +1,16 @@
+{
+  "name": "zulgap-team-pack",
+  "owner": { "name": "ZULGAP" },
+  "plugins": [
+    {
+      "name": "zulgap",
+      "version": "0.1.0",
+      "description": "줄갭 팀원용 콘텐츠 작업 도구 (시작·세션저널 + 노션·PPT·한글 MCP)",
+      "source": {
+        "source": "github",
+        "repo": "zulgap/claude-team-pack",
+        "path": "."
+      }
+    }
+  ]
+}

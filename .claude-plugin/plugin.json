@@ -1,0 +1,7 @@
+{
+  "name": "zulgap",
+  "description": "줄갭 팀원용 콘텐츠 작업 도구 — 시작(허브 현황 보기), 세션저널(작업 기록), 노션·PPT·한글 MCP",
+  "version": "0.1.0",
+  "author": { "name": "ZULGAP" },
+  "homepage": "https://github.com/zulgap/claude-team-pack"
+}
