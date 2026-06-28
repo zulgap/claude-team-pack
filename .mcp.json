@@ -10,5 +10,13 @@
   "hwp-mcp": {
     "command": "uvx",
     "args": ["--from", "hwp-mcp", "hwp-mcp"]
+  },
+  "jedi": {
+    "command": "node",
+    "args": ["${CLAUDE_PLUGIN_ROOT}/mcp-bridge/index.js"],
+    "env": {
+      "JUDGMENTOS_URL": "https://judgmentos-unified-agent-production.up.railway.app",
+      "JUDGMENTOS_TOKEN": "${JEDI_TOKEN}"
+    }
   }
 }

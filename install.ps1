@@ -35,6 +35,30 @@ if (Test-Path $src) {
   Write-Host "[OK] 팀 지침(CLAUDE.md) 배치됨" -ForegroundColor Green
 }
 
+# 4.5 제디(JudgmentOS) MCP 브리지 — 의존성 설치 + 개인 토큰 등록
+$bridgeDir = Join-Path $PSScriptRoot "mcp-bridge"
+if (Test-Path (Join-Path $bridgeDir "package.json")) {
+  Write-Host "[설치 중] 제디 MCP 브리지 의존성..." -ForegroundColor Yellow
+  Push-Location $bridgeDir
+  try { npm install --omit=dev --silent; Write-Host "[OK] 제디 브리지 준비됨" -ForegroundColor Green }
+  catch { Write-Host "[경고] 제디 브리지 npm install 실패 — Node 설치 후 다시 실행하세요." -ForegroundColor Red }
+  Pop-Location
+}
+
+# 4.6 제디 개인 토큰(JEDI_TOKEN) — 사장님이 발급해준 토큰을 환경변수로 저장 (없으면 건너뜀)
+if (-not $env:JEDI_TOKEN) {
+  Write-Host ""
+  Write-Host "제디(회사 데이터) 연결용 개인 토큰이 있나요?" -ForegroundColor Cyan
+  Write-Host "  - 사장님이 발급해준 'JEDI_TOKEN' 한 줄을 붙여넣으세요 (없으면 그냥 Enter — 나중에 등록 가능)."
+  $jediToken = Read-Host "JEDI_TOKEN"
+  if ($jediToken -and $jediToken.Trim().Length -gt 0) {
+    setx JEDI_TOKEN $jediToken.Trim() | Out-Null
+    Write-Host "[OK] 제디 토큰 저장됨 (앱을 재시작해야 적용)" -ForegroundColor Green
+  } else {
+    Write-Host "[건너뜀] 제디 토큰 미등록 — 노션/PPT/한글은 그대로 쓸 수 있어요. 토큰은 나중에 'setx JEDI_TOKEN <토큰>'으로 등록." -ForegroundColor Yellow
+  }
+} else { Write-Host "[OK] 제디 토큰 이미 등록됨" -ForegroundColor Green }
+
 # 5. 다음 단계 안내 (데스크탑 앱)
 Write-Host ""
 Write-Host "=== 도구 준비 완료! 이제 Claude 데스크탑 앱에서 ===" -ForegroundColor Cyan
