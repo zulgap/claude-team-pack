@@ -10,6 +10,16 @@
 
 ---
 
+## v1.2 (2026-06-29)
+**Claude Code 자동 설치 + 플러그인 자동 등록 + 바탕화면 바로가기 (데스크탑앱 Plugins 메뉴 의존 제거)**
+- 🐛 근본 수정: 직원이 데스크탑 앱 "Plugins → Add marketplace" 메뉴를 못 찾아 막히던 문제. team-pack은 **Claude Code 플러그인**이라 데스크탑 채팅앱이 아니라 **Claude Code가 본체**.
+- ✨ `install.ps1` 자동화: Claude Code CLI 설치(`claude.ai/install.ps1`, winget 폴백) + `~/.claude/settings.json`에 마켓플레이스+플러그인 자동 등록(메뉴/명령 입력 불필요) + 바탕화면 **"줄갭 Claude"** 바로가기.
+- 🔄 제디: Claude Code(`~/.claude.json` 최상위 `mcpServers`)에도 등록 — 터미널/Code탭에서 제디 사용 가능(기존 데스크탑앱 `claude_desktop_config.json` 등록 유지).
+- 🛡 `settings.json` / `.claude.json` / `claude_desktop_config.json` 쓰기 전 `.bak` 백업.
+- 📦 zip 구성: 5개 (v1.1과 동일) — `install.bat`, `install.ps1`, `team-CLAUDE.md`, `mcp-bridge/index.js`, `mcp-bridge/package.json`
+- ✅ 검증: PowerShell 구문 0 에러 + `settings.json`/`.claude.json` 병합 신규·기존 케이스 실측 PASS(기존 설정 보존).
+- 연계: claude-team-pack PR #3(install.ps1) + #4(README 정합).
+
 ## v1.1 (2026-06-28)
 **제디(회사 데이터) MCP 연결 추가**
 - ✨ install.bat 실행 중 `JEDI_TOKEN` 입력 단계 추가 — 토큰 받은 직원만 데스크탑 설정(`claude_desktop_config.json`)에 제디 등록. 토큰 없으면 그냥 Enter(노션·PPT·한글만 설치, 영향 0).
