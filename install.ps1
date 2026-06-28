@@ -1,14 +1,18 @@
-﻿# 줄갭 팀원용 셋업 스크립트 (Claude 데스크탑 앱 버전)
-# 이 스크립트는 PPT·한글 도구가 돌아가게 Git·Node·uv를 설치합니다.
-# Claude 자체는 데스크탑 앱(https://claude.ai/download)으로 설치하세요.
+﻿# 줄갭 팀원용 셋업 스크립트 (Claude Code 자동 설정)
+# 이 스크립트가 자동으로 하는 일:
+#   1) PPT·한글·노션 도구가 돌아가게 Git·Node·uv 설치
+#   2) Claude Code(작업 도구 본체) 설치
+#   3) 줄갭 플러그인(시작·세션저널·PPT·한글) 자동 등록  <- 앱 메뉴/슬래시 명령 입력 불필요
+#   4) 바탕화면에 "줄갭 Claude" 바로가기 생성
+#   5) (선택) 제디(회사 데이터) 연결 - 토큰 받은 분만
 # 사용법: install.bat 더블클릭
 
 $ErrorActionPreference = "Stop"
 Write-Host ""
-Write-Host "=== 줄갭 팀원 셋업 (데스크탑 앱용 도구 설치) ===" -ForegroundColor Cyan
+Write-Host "=== 줄갭 팀원 셋업 (Claude Code 자동 설정) ===" -ForegroundColor Cyan
 Write-Host ""
 
-# 1. Git for Windows (Claude 데스크탑 앱 필수)
+# 1. Git for Windows
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
   Write-Host "[설치 중] Git for Windows..." -ForegroundColor Yellow
   winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements
@@ -26,7 +30,20 @@ if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) {
   winget install -e --id astral-sh.uv --accept-source-agreements --accept-package-agreements
 } else { Write-Host "[OK] uv 확인됨" -ForegroundColor Green }
 
-# 4. 직원용 팀 지침(CLAUDE.md) 배치
+# 4. Claude Code 설치 (작업 도구 본체)
+# @AI:INTENT 도구(시작/PPT/한글)는 전부 Claude Code 플러그인 -> 데스크탑 채팅앱이 아니라 Claude Code가 본체여야 함.
+if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+  Write-Host "[설치 중] Claude Code..." -ForegroundColor Yellow
+  try {
+    Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression
+  } catch {
+    Write-Host "[대체] winget으로 Claude Code 설치 시도..." -ForegroundColor Yellow
+    try { winget install -e --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements }
+    catch { Write-Host "[경고] Claude Code 자동 설치 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red }
+  }
+} else { Write-Host "[OK] Claude Code 확인됨" -ForegroundColor Green }
+
+# 5. 팀 지침(CLAUDE.md) 배치
 $claudeDir = "$env:USERPROFILE\.claude"
 New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
 $src = Join-Path $PSScriptRoot "team-CLAUDE.md"
@@ -35,30 +52,95 @@ if (Test-Path $src) {
   Write-Host "[OK] 팀 지침(CLAUDE.md) 배치됨" -ForegroundColor Green
 }
 
-# 4.5 제디(회사 데이터) 연결 — 개인 토큰 받은 직원만 등록 (없으면 아무것도 안 함 = 기존 도구 100% 안전)
-# @AI:CONSTRAINT 토큰이 있을 때만 제디를 데스크탑 설정에 직접 추가(토큰 값 인라인). 공용 .mcp.json엔 제디 없음
-#   → 토큰 없는 직원은 제디 항목 자체가 안 생겨, 노션/PPT/한글에 어떤 영향도 줄 수 없음.
+# 6. 줄갭 플러그인 자동 등록 (~/.claude/settings.json)
+# @AI:INTENT 비개발 팀원이 앱 메뉴/슬래시 명령을 못 찾아 막히는 문제 -> settings.json에 직접 등록해 첫 실행 시 자동 설치.
+# @AI:CONSTRAINT 키 형식은 사장님 PC 실제 작동본과 동일(맵 형태 + source.source="github"). array/type 형식은 무효(silent fail).
+$settingsPath = Join-Path $claudeDir "settings.json"
+try {
+  if (Test-Path $settingsPath) { Copy-Item $settingsPath "$settingsPath.bak" -Force }
+  $s = if (Test-Path $settingsPath) { (Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json) } else { [pscustomobject]@{} }
+  if ($null -eq $s) { $s = [pscustomobject]@{} }
+  if (-not ($s.PSObject.Properties.Name -contains 'extraKnownMarketplaces') -or $null -eq $s.extraKnownMarketplaces) {
+    $s | Add-Member -NotePropertyName extraKnownMarketplaces -NotePropertyValue ([pscustomobject]@{}) -Force
+  }
+  $mp = [pscustomobject]@{ source = [pscustomobject]@{ source = "github"; repo = "zulgap/claude-team-pack" } }
+  $s.extraKnownMarketplaces | Add-Member -NotePropertyName 'zulgap-team-pack' -NotePropertyValue $mp -Force
+  if (-not ($s.PSObject.Properties.Name -contains 'enabledPlugins') -or $null -eq $s.enabledPlugins) {
+    $s | Add-Member -NotePropertyName enabledPlugins -NotePropertyValue ([pscustomobject]@{}) -Force
+  }
+  $s.enabledPlugins | Add-Member -NotePropertyName 'zulgap@zulgap-team-pack' -NotePropertyValue $true -Force
+  ($s | ConvertTo-Json -Depth 50) | Set-Content $settingsPath -Encoding UTF8
+  Write-Host "[OK] 줄갭 플러그인 자동 등록됨 (메뉴 안 건드려도 됨)" -ForegroundColor Green
+} catch {
+  Write-Host "[경고] 플러그인 자동 등록 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red
+}
+
+# 7. 바탕화면 "줄갭 Claude" 바로가기 (더블클릭 -> claude 실행)
+try {
+  $desktop = [Environment]::GetFolderPath("Desktop")
+  $workDir = Join-Path $env:USERPROFILE "Documents"
+  $lnkPath = Join-Path $desktop "줄갭 Claude.lnk"
+  $ws = New-Object -ComObject WScript.Shell
+  $sc = $ws.CreateShortcut($lnkPath)
+  $sc.TargetPath = "$env:SystemRoot\System32\cmd.exe"
+  $sc.Arguments = "/k claude"
+  $sc.WorkingDirectory = $workDir
+  $sc.IconLocation = "$env:SystemRoot\System32\shell32.dll,220"
+  $sc.Description = "줄갭 Claude Code 열기"
+  $sc.Save()
+  Write-Host "[OK] 바탕화면 '줄갭 Claude' 바로가기 생성됨" -ForegroundColor Green
+} catch {
+  Write-Host "[참고] 바로가기 생성은 건너뜀 (PowerShell에 claude 입력해도 됩니다)" -ForegroundColor Yellow
+}
+
+# 8. 제디(회사 데이터) 연결 - 개인 토큰 받은 직원만 (없으면 아무것도 안 함 = 기존 도구 100% 안전)
+# @AI:CONSTRAINT 토큰 있을 때만 등록. 토큰 없는 직원은 제디 항목 자체가 안 생겨 노션/PPT/한글에 영향 0.
 Write-Host ""
 Write-Host "제디(회사 데이터) 연결용 개인 토큰이 있나요?" -ForegroundColor Cyan
-Write-Host "  - 사장님이 발급해준 'JEDI_TOKEN' 한 줄을 붙여넣으세요 (없으면 그냥 Enter — 나중에 다시 실행하면 됨)."
+Write-Host "  - 사장님이 발급해준 'JEDI_TOKEN' 한 줄을 붙여넣으세요 (없으면 그냥 Enter - 나중에 다시 실행하면 됨)."
 $jediToken = Read-Host "JEDI_TOKEN"
 if ($jediToken -and $jediToken.Trim().Length -gt 0) {
   $jediToken = $jediToken.Trim()
   $bridgeDir = Join-Path $PSScriptRoot "mcp-bridge"
   $bridgeIndex = Join-Path $bridgeDir "index.js"
-  # 브리지 의존성 설치
   if (Test-Path (Join-Path $bridgeDir "package.json")) {
     Write-Host "[설치 중] 제디 브리지 의존성..." -ForegroundColor Yellow
     Push-Location $bridgeDir
     try { npm install --omit=dev --silent; Write-Host "[OK] 제디 브리지 준비됨" -ForegroundColor Green }
-    catch { Write-Host "[경고] 제디 브리지 npm install 실패 — Node 설치 후 다시 실행하세요." -ForegroundColor Red }
+    catch { Write-Host "[경고] 제디 브리지 npm install 실패 - Node 설치 후 다시 실행하세요." -ForegroundColor Red }
     Pop-Location
   }
-  # 데스크탑 앱 MCP 설정(claude_desktop_config.json)에 제디만 추가 — 기존 항목 보존 머지
-  $desktopCfgDir = Join-Path $env:APPDATA "Claude"
-  New-Item -ItemType Directory -Force -Path $desktopCfgDir | Out-Null
-  $desktopCfg = Join-Path $desktopCfgDir "claude_desktop_config.json"
+  $jUrl = "https://judgmentos-unified-agent-production.up.railway.app"
+
+  # (a) Claude Code 표면 등록 (~/.claude.json 최상위 mcpServers) - 터미널/Code탭에서 제디 사용
+  # @AI:CONSTRAINT 형식은 사장님 PC .claude.json 실제 작동본과 동일(type=stdio, command/args/env). 쓰기 전 .bak 백업.
   try {
+    $ccJson = Join-Path $env:USERPROFILE ".claude.json"
+    if (Test-Path $ccJson) { Copy-Item $ccJson "$ccJson.bak" -Force }
+    $cc = if (Test-Path $ccJson) { (Get-Content $ccJson -Raw -Encoding UTF8 | ConvertFrom-Json) } else { [pscustomobject]@{} }
+    if ($null -eq $cc) { $cc = [pscustomobject]@{} }
+    if (-not ($cc.PSObject.Properties.Name -contains 'mcpServers') -or $null -eq $cc.mcpServers) {
+      $cc | Add-Member -NotePropertyName mcpServers -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    $jediCC = [pscustomobject]@{
+      type    = "stdio"
+      command = "node"
+      args    = @($bridgeIndex)
+      env     = [pscustomobject]@{ JUDGMENTOS_URL = $jUrl; JUDGMENTOS_TOKEN = $jediToken }
+    }
+    $cc.mcpServers | Add-Member -NotePropertyName jedi -NotePropertyValue $jediCC -Force
+    ($cc | ConvertTo-Json -Depth 100) | Set-Content $ccJson -Encoding UTF8
+    Write-Host "[OK] 제디 연결 등록됨 (Claude Code) - 재시작 후 적용" -ForegroundColor Green
+  } catch {
+    Write-Host "[경고] 제디(Claude Code) 설정 쓰기 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red
+  }
+
+  # (b) 데스크탑 채팅앱에도 등록 (기존 동작 유지)
+  try {
+    $desktopCfgDir = Join-Path $env:APPDATA "Claude"
+    New-Item -ItemType Directory -Force -Path $desktopCfgDir | Out-Null
+    $desktopCfg = Join-Path $desktopCfgDir "claude_desktop_config.json"
+    if (Test-Path $desktopCfg) { Copy-Item $desktopCfg "$desktopCfg.bak" -Force }
     $cfg = if (Test-Path $desktopCfg) { Get-Content $desktopCfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
     if (-not ($cfg.PSObject.Properties.Name -contains 'mcpServers') -or $null -eq $cfg.mcpServers) {
       $cfg | Add-Member -NotePropertyName mcpServers -NotePropertyValue ([pscustomobject]@{}) -Force
@@ -66,32 +148,27 @@ if ($jediToken -and $jediToken.Trim().Length -gt 0) {
     $jedi = [pscustomobject]@{
       command = "node"
       args    = @($bridgeIndex)
-      env     = [pscustomobject]@{
-        JUDGMENTOS_URL   = "https://judgmentos-unified-agent-production.up.railway.app"
-        JUDGMENTOS_TOKEN = $jediToken
-      }
+      env     = [pscustomobject]@{ JUDGMENTOS_URL = $jUrl; JUDGMENTOS_TOKEN = $jediToken }
     }
     $cfg.mcpServers | Add-Member -NotePropertyName jedi -NotePropertyValue $jedi -Force
     ($cfg | ConvertTo-Json -Depth 12) | Set-Content $desktopCfg -Encoding UTF8
-    Write-Host "[OK] 제디 연결 등록됨 (앱을 재시작해야 적용)" -ForegroundColor Green
+    Write-Host "[OK] 제디 연결 등록됨 (데스크탑 앱)" -ForegroundColor Green
   } catch {
-    Write-Host "[경고] 제디 설정 쓰기 실패 — 사장님께 화면을 보내주세요." -ForegroundColor Red
+    Write-Host "[경고] 제디(데스크탑 앱) 설정 쓰기 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red
   }
 } else {
-  Write-Host "[건너뜀] 제디 토큰 미등록 — 노션/PPT/한글은 그대로 정상. 토큰 받으면 install.bat 다시 실행하세요." -ForegroundColor Yellow
+  Write-Host "[건너뜀] 제디 토큰 미등록 - 노션/PPT/한글은 그대로 정상. 토큰 받으면 install.bat 다시 실행하세요." -ForegroundColor Yellow
 }
 
-# 5. 다음 단계 안내 (데스크탑 앱)
+# 9. 완료 안내
 Write-Host ""
-Write-Host "=== 도구 준비 완료! 이제 Claude 데스크탑 앱에서 ===" -ForegroundColor Cyan
-Write-Host "  1) https://claude.ai/download 에서 Claude 데스크탑 앱 설치 (아직 안 했다면)"
-Write-Host "  2) 앱 실행 -> 사장님이 알려준 같은 계정으로 로그인"
-Write-Host "  3) 앱 설정/+ 메뉴 -> Plugins -> Add marketplace"
-Write-Host "     -> GitHub 저장소: zulgap/claude-team-pack 입력"
-Write-Host "  4) Plugins 목록에서 'zulgap' 플러그인 -> Install"
-Write-Host "  5) Reload plugins (또는 앱 재시작)"
-Write-Host "  6) 채팅창에 /시작 입력 -> 노션 허브가 뜨면 성공!"
-Write-Host "  7) 한글(hwp) 문서를 쓰려면 한컴오피스 설치 (선택)"
+Write-Host "=== 준비 완료! 이제 이렇게 쓰면 됩니다 ===" -ForegroundColor Cyan
+Write-Host "  1) 바탕화면 '줄갭 Claude' 아이콘을 더블클릭 (까만 창이 열려요)"
+Write-Host "     * 아이콘이 없으면: 시작 검색창에 PowerShell -> 열기 -> claude 입력 후 Enter"
+Write-Host "  2) 처음 한 번 로그인 창이 뜨면 -> 사장님이 알려준 같은 계정으로 로그인"
+Write-Host "  3) 처음 열 때 줄갭 도구가 자동으로 설치돼요 (잠깐 기다리기)"
+Write-Host "  4) 화면에 /시작 입력 후 Enter -> 줄갭 작업 현황이 뜨면 성공!" -ForegroundColor Green
+Write-Host "  5) 한글(hwp) 문서를 쓰려면 한컴오피스 설치 (선택)"
 Write-Host ""
-Write-Host "* 메뉴 위치는 앱 버전마다 조금 다를 수 있어요. 안 보이면 화면을 캡처해서 사장님께 보내세요." -ForegroundColor Green
+Write-Host "* 막히면 그 화면을 캡처해서 사장님께 보내세요." -ForegroundColor Green
 Write-Host ""
