@@ -1,0 +1,11 @@
+{
+  "name": "zulgap-jedi-mcp-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "description": "줄갭 제디(JudgmentOS) MCP 브리지 — 직원 PC stdio → HTTPS (외부 토큰 Bearer). 본체=github zulgap/judgmentos unified-agent/judgmentos-mcp-bridge 복사본.",
+  "main": "index.js",
+  "bin": { "zulgap-jedi-mcp-bridge": "./index.js" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0"
+  }
+}
