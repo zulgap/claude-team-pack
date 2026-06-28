@@ -1,4 +1,4 @@
-# 줄갭 팀원용 셋업 스크립트 (Claude 데스크탑 앱 버전)
+﻿# 줄갭 팀원용 셋업 스크립트 (Claude 데스크탑 앱 버전)
 # 이 스크립트는 PPT·한글 도구가 돌아가게 Git·Node·uv를 설치합니다.
 # Claude 자체는 데스크탑 앱(https://claude.ai/download)으로 설치하세요.
 # 사용법: install.bat 더블클릭
@@ -35,29 +35,51 @@ if (Test-Path $src) {
   Write-Host "[OK] 팀 지침(CLAUDE.md) 배치됨" -ForegroundColor Green
 }
 
-# 4.5 제디(JudgmentOS) MCP 브리지 — 의존성 설치 + 개인 토큰 등록
-$bridgeDir = Join-Path $PSScriptRoot "mcp-bridge"
-if (Test-Path (Join-Path $bridgeDir "package.json")) {
-  Write-Host "[설치 중] 제디 MCP 브리지 의존성..." -ForegroundColor Yellow
-  Push-Location $bridgeDir
-  try { npm install --omit=dev --silent; Write-Host "[OK] 제디 브리지 준비됨" -ForegroundColor Green }
-  catch { Write-Host "[경고] 제디 브리지 npm install 실패 — Node 설치 후 다시 실행하세요." -ForegroundColor Red }
-  Pop-Location
-}
-
-# 4.6 제디 개인 토큰(JEDI_TOKEN) — 사장님이 발급해준 토큰을 환경변수로 저장 (없으면 건너뜀)
-if (-not $env:JEDI_TOKEN) {
-  Write-Host ""
-  Write-Host "제디(회사 데이터) 연결용 개인 토큰이 있나요?" -ForegroundColor Cyan
-  Write-Host "  - 사장님이 발급해준 'JEDI_TOKEN' 한 줄을 붙여넣으세요 (없으면 그냥 Enter — 나중에 등록 가능)."
-  $jediToken = Read-Host "JEDI_TOKEN"
-  if ($jediToken -and $jediToken.Trim().Length -gt 0) {
-    setx JEDI_TOKEN $jediToken.Trim() | Out-Null
-    Write-Host "[OK] 제디 토큰 저장됨 (앱을 재시작해야 적용)" -ForegroundColor Green
-  } else {
-    Write-Host "[건너뜀] 제디 토큰 미등록 — 노션/PPT/한글은 그대로 쓸 수 있어요. 토큰은 나중에 'setx JEDI_TOKEN <토큰>'으로 등록." -ForegroundColor Yellow
+# 4.5 제디(회사 데이터) 연결 — 개인 토큰 받은 직원만 등록 (없으면 아무것도 안 함 = 기존 도구 100% 안전)
+# @AI:CONSTRAINT 토큰이 있을 때만 제디를 데스크탑 설정에 직접 추가(토큰 값 인라인). 공용 .mcp.json엔 제디 없음
+#   → 토큰 없는 직원은 제디 항목 자체가 안 생겨, 노션/PPT/한글에 어떤 영향도 줄 수 없음.
+Write-Host ""
+Write-Host "제디(회사 데이터) 연결용 개인 토큰이 있나요?" -ForegroundColor Cyan
+Write-Host "  - 사장님이 발급해준 'JEDI_TOKEN' 한 줄을 붙여넣으세요 (없으면 그냥 Enter — 나중에 다시 실행하면 됨)."
+$jediToken = Read-Host "JEDI_TOKEN"
+if ($jediToken -and $jediToken.Trim().Length -gt 0) {
+  $jediToken = $jediToken.Trim()
+  $bridgeDir = Join-Path $PSScriptRoot "mcp-bridge"
+  $bridgeIndex = Join-Path $bridgeDir "index.js"
+  # 브리지 의존성 설치
+  if (Test-Path (Join-Path $bridgeDir "package.json")) {
+    Write-Host "[설치 중] 제디 브리지 의존성..." -ForegroundColor Yellow
+    Push-Location $bridgeDir
+    try { npm install --omit=dev --silent; Write-Host "[OK] 제디 브리지 준비됨" -ForegroundColor Green }
+    catch { Write-Host "[경고] 제디 브리지 npm install 실패 — Node 설치 후 다시 실행하세요." -ForegroundColor Red }
+    Pop-Location
   }
-} else { Write-Host "[OK] 제디 토큰 이미 등록됨" -ForegroundColor Green }
+  # 데스크탑 앱 MCP 설정(claude_desktop_config.json)에 제디만 추가 — 기존 항목 보존 머지
+  $desktopCfgDir = Join-Path $env:APPDATA "Claude"
+  New-Item -ItemType Directory -Force -Path $desktopCfgDir | Out-Null
+  $desktopCfg = Join-Path $desktopCfgDir "claude_desktop_config.json"
+  try {
+    $cfg = if (Test-Path $desktopCfg) { Get-Content $desktopCfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+    if (-not ($cfg.PSObject.Properties.Name -contains 'mcpServers') -or $null -eq $cfg.mcpServers) {
+      $cfg | Add-Member -NotePropertyName mcpServers -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    $jedi = [pscustomobject]@{
+      command = "node"
+      args    = @($bridgeIndex)
+      env     = [pscustomobject]@{
+        JUDGMENTOS_URL   = "https://judgmentos-unified-agent-production.up.railway.app"
+        JUDGMENTOS_TOKEN = $jediToken
+      }
+    }
+    $cfg.mcpServers | Add-Member -NotePropertyName jedi -NotePropertyValue $jedi -Force
+    ($cfg | ConvertTo-Json -Depth 12) | Set-Content $desktopCfg -Encoding UTF8
+    Write-Host "[OK] 제디 연결 등록됨 (앱을 재시작해야 적용)" -ForegroundColor Green
+  } catch {
+    Write-Host "[경고] 제디 설정 쓰기 실패 — 사장님께 화면을 보내주세요." -ForegroundColor Red
+  }
+} else {
+  Write-Host "[건너뜀] 제디 토큰 미등록 — 노션/PPT/한글은 그대로 정상. 토큰 받으면 install.bat 다시 실행하세요." -ForegroundColor Yellow
+}
 
 # 5. 다음 단계 안내 (데스크탑 앱)
 Write-Host ""
