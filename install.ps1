@@ -68,7 +68,10 @@ try {
 
 # 4. Claude Code 설치 (작업 도구 본체)
 # @AI:INTENT 도구(시작/PPT/한글)는 전부 Claude Code 플러그인 -> 데스크탑 채팅앱이 아니라 Claude Code가 본체여야 함.
-if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+$claudeBin = Join-Path $env:USERPROFILE ".local\bin"
+$claudeExe = Join-Path $claudeBin "claude.exe"
+# claude.exe가 이미 있으면(설치기 PATH 등록만 실패한 경우 포함) 재다운로드 skip — PATH 보장은 아래에서.
+if (-not (Get-Command claude -ErrorAction SilentlyContinue) -and -not (Test-Path $claudeExe)) {
   Write-Host "[설치 중] Claude Code..." -ForegroundColor Yellow
   try {
     Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression
@@ -78,6 +81,19 @@ if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
     catch { Write-Host "[경고] Claude Code 자동 설치 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red }
   }
 } else { Write-Host "[OK] Claude Code 확인됨" -ForegroundColor Green }
+
+# @AI:CONSTRAINT claude.ai 설치기가 .local\bin을 User PATH에 못 박는 경우가 있음(직원 PC 실측 2026-06-29: "'claude'은(는) ... 아닙니다").
+#   설치기 PATH 등록을 신뢰하지 않고, claude.exe가 있으면 .local\bin을 User PATH에 멱등 보장 + 현재 세션 PATH도 갱신.
+#   이게 빠지면 바탕화면 바로가기(cmd /k claude)가 새 PC에서 claude를 못 찾음(증상 근본).
+if (Test-Path $claudeExe) {
+  $userPath = [Environment]::GetEnvironmentVariable('Path','User'); if (-not $userPath) { $userPath = '' }
+  if ($userPath -notlike "*$claudeBin*") {
+    [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $claudeBin), 'User')
+    Write-Host "[OK] claude 경로 PATH 등록 (.local\bin)" -ForegroundColor Green
+  } else { Write-Host "[OK] claude 경로 PATH 확인됨" -ForegroundColor Green }
+}
+Update-Path
+if ((Test-Path $claudeExe) -and ($env:Path -notlike "*$claudeBin*")) { $env:Path = "$env:Path;$claudeBin" }
 
 # 5. 팀 지침(CLAUDE.md) 배치
 $claudeDir = "$env:USERPROFILE\.claude"
@@ -133,6 +149,9 @@ try {
   Write-Host "[OK] 줄갭 플러그인 자동 등록됨 (메뉴 안 건드려도 됨)" -ForegroundColor Green
 } catch {
   Write-Host "[경고] 플러그인 자동 등록 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red
+  # @AI:INTENT 일반 안내만 찍으면 원인 미상(직원 화면만으론 진단 불가) -> 실제 예외 메시지 1줄 노출.
+  Write-Host ("  (원인: " + $_.Exception.Message + ")") -ForegroundColor DarkYellow
+  Write-Host "  * claude 실행 후 폴백: /plugin marketplace add zulgap/claude-team-pack -> /plugin install zulgap@zulgap-team-pack" -ForegroundColor DarkYellow
 }
 
 # 7. 바탕화면 "줄갭 Claude" 바로가기 (더블클릭 -> claude 실행)
@@ -143,7 +162,9 @@ try {
   $ws = New-Object -ComObject WScript.Shell
   $sc = $ws.CreateShortcut($lnkPath)
   $sc.TargetPath = "$env:SystemRoot\System32\cmd.exe"
-  $sc.Arguments = "/k claude"
+  # @AI:CONSTRAINT PATH 의존 제거 — claude.exe 절대경로로 실행해 "claude 인식 안 됨"(증상 근본) 원천 차단.
+  #   winget 설치분 등 .local\bin에 없으면 PATH 폴백(/k claude).
+  if (Test-Path $claudeExe) { $sc.Arguments = "/k `"$claudeExe`"" } else { $sc.Arguments = "/k claude" }
   $sc.WorkingDirectory = $workDir
   $sc.IconLocation = "$env:SystemRoot\System32\shell32.dll,220"
   $sc.Description = "줄갭 Claude Code 열기"

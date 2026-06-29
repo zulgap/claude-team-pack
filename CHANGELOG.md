@@ -10,6 +10,17 @@
 
 ---
 
+## v1.10 (2026-06-29) — ★ zip 재생성·재설치 필요 (install.ps1 변경)
+**새 PC "claude 인식 안 됨" + 플러그인 등록 실패 진단 강화 (실제 직원 발생)**
+- 🐛 **증상①** `'claude'은(는) 내부 또는 외부 명령... 아닙니다`: claude.ai 설치기가 `~/.local/bin`을 **User PATH에 등록 못 하는** 경우가 있음(직원 PC 실측) → 바탕화면 "줄갭 Claude"(`cmd /k claude`)가 claude를 못 찾음. 사장님 PC는 이미 등록돼 있어 안 보이던 갭(설치 검증은 직원 환경 기준).
+- 🛡 **수정①**: 설치기 PATH 등록을 신뢰하지 않고, `claude.exe` 존재 시 `.local\bin`을 **User PATH에 멱등 등록 + 세션 PATH 갱신**. 재실행 시 재다운로드 방지(설치 조건에 `claude.exe` 존재 추가).
+- 🛡 **수정②**: 바탕화면 바로가기를 **claude 절대경로**(`cmd /k "%USERPROFILE%\.local\bin\claude.exe"`)로 — PATH 의존 원천 제거(winget 설치분은 `/k claude` 폴백).
+- 🐛 **증상②** `[경고] 플러그인 자동 등록 실패`: catch가 실제 예외를 안 찍어 원인 미상이었음 → **`$_.Exception.Message` 1줄 노출** + claude 실행 후 폴백 명령(`/plugin marketplace add ... → install`) 안내 추가.
+- 📦 zip 구성: v1.6과 동일 6파일 (install.ps1만 갱신).
+- ℹ️ **이미 막힌 직원**: PowerShell에 `.local\bin` PATH 보장 1블록 붙여넣기로 즉시 해결(재설치 전). 신규/재배포는 **v1.10**.
+- 🧭 메타: 새 PC 첫 설치 관문 버그 4번째 — CRLF(v1.4)·winget/관리자(v1.5)·SSH(v1.6)·**PATH(v1.10)**. 전부 1회성.
+- 검증: install.ps1 PowerShell parse 0에러.
+
 ## v1.9 (2026-06-29) — 플러그인 전용 (zip 변경 없음 · 재설치 불필요)
 **`/인입` 스킬 추가 — 자료를 디지털 트윈에 자동 적재**
 - 🆕 `skills/인입/SKILL.md`: 자료(강의·문서·작업·종목/키워드)를 주면 제디 `ingest_data` 도구로 자동 분류 → 객체 매핑 → 3종 DB(기록·검색·관계) 탑재.
