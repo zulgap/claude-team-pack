@@ -12,23 +12,49 @@ Write-Host ""
 Write-Host "=== 줄갭 팀원 셋업 (Claude Code 자동 설정) ===" -ForegroundColor Cyan
 Write-Host ""
 
+# 0. winget 위치 resolve + PATH 갱신 헬퍼
+# @AI:CONSTRAINT 관리자(self-elevate)로 실행되면 PATH에 per-user WindowsApps(winget)가 빠질 수 있음
+#   -> Get-Command 실패 시 LOCALAPPDATA\Microsoft\WindowsApps\winget.exe 직접 사용. 둘 다 없으면 안내 후 종료.
+function Resolve-Winget {
+  $c = Get-Command winget.exe -ErrorAction SilentlyContinue
+  if ($c) { return $c.Source }
+  $p = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe'
+  if (Test-Path $p) { return $p }
+  return $null
+}
+function Update-Path {
+  # winget 설치 후 같은 세션에서 node/npm 등을 찾으려면 PATH를 다시 읽어야 함
+  $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+}
+$winget = Resolve-Winget
+if (-not $winget) {
+  Write-Host "[중요] winget(App Installer)을 찾을 수 없습니다." -ForegroundColor Red
+  Write-Host "  Microsoft Store에서 'App Installer'를 설치/업데이트한 뒤 install.bat을 다시 실행하세요." -ForegroundColor Yellow
+  Write-Host "  Store: ms-windows-store://pdp/?productid=9NBLGGH4NNS1"
+  Read-Host "엔터를 누르면 종료"
+  exit 1
+}
+
 # 1. Git for Windows
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
   Write-Host "[설치 중] Git for Windows..." -ForegroundColor Yellow
-  winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements
+  & $winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements
 } else { Write-Host "[OK] Git 확인됨" -ForegroundColor Green }
 
 # 2. Node.js (MCP 도구 실행용)
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Write-Host "[설치 중] Node.js LTS..." -ForegroundColor Yellow
-  winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+  & $winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
 } else { Write-Host "[OK] Node.js 확인됨" -ForegroundColor Green }
 
 # 3. uv (pptx / hwp MCP 실행용)
 if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) {
   Write-Host "[설치 중] uv..." -ForegroundColor Yellow
-  winget install -e --id astral-sh.uv --accept-source-agreements --accept-package-agreements
+  & $winget install -e --id astral-sh.uv --accept-source-agreements --accept-package-agreements
 } else { Write-Host "[OK] uv 확인됨" -ForegroundColor Green }
+
+# winget 설치분이 현재 세션 PATH에 잡히도록 갱신 (node/npm/claude 후속 사용 대비)
+Update-Path
 
 # 4. Claude Code 설치 (작업 도구 본체)
 # @AI:INTENT 도구(시작/PPT/한글)는 전부 Claude Code 플러그인 -> 데스크탑 채팅앱이 아니라 Claude Code가 본체여야 함.
@@ -38,7 +64,7 @@ if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
     Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression
   } catch {
     Write-Host "[대체] winget으로 Claude Code 설치 시도..." -ForegroundColor Yellow
-    try { winget install -e --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements }
+    try { & $winget install -e --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements }
     catch { Write-Host "[경고] Claude Code 자동 설치 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red }
   }
 } else { Write-Host "[OK] Claude Code 확인됨" -ForegroundColor Green }
