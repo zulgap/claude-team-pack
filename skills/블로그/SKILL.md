@@ -1,5 +1,5 @@
 ---
-name: blog-publish
+name: 블로그
 description: 줄갭 사이트(jeong-korea·zulgap.kr·mamisa 등)에 블로그 글을 작성해 발행. "블로그 글 써줘", "OO 주제로 글 올려줘", "블로그 발행해줘", "홈페이지에 글 올려줘" 처럼 콘텐츠를 만들어 홈페이지에 올릴 때 사용.
 ---
 

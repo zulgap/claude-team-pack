@@ -167,7 +167,7 @@ Write-Host "  1) 바탕화면 '줄갭 Claude' 아이콘을 더블클릭 (까만 
 Write-Host "     * 아이콘이 없으면: 시작 검색창에 PowerShell -> 열기 -> claude 입력 후 Enter"
 Write-Host "  2) 처음 한 번 로그인 창이 뜨면 -> 사장님이 알려준 같은 계정으로 로그인"
 Write-Host "  3) 처음 열 때 줄갭 도구가 자동으로 설치돼요 (잠깐 기다리기)"
-Write-Host "  4) 화면에 /시작 입력 후 Enter -> 줄갭 작업 현황이 뜨면 성공!" -ForegroundColor Green
+Write-Host "  4) 화면에 /시작 입력 후 Enter -> 줄갭 작업 현황이 뜨면 성공! (마무리: /저장, 블로그: /블로그)" -ForegroundColor Green
 Write-Host "  5) 한글(hwp) 문서를 쓰려면 한컴오피스 설치 (선택)"
 Write-Host ""
 Write-Host "* 막히면 그 화면을 캡처해서 사장님께 보내세요." -ForegroundColor Green
