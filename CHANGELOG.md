@@ -10,6 +10,19 @@
 
 ---
 
+## v1.6 (2026-06-29)
+**플러그인 설치 SSH 오류 해결 — SSH 키 없는 직원 막힘 (실제 발생)**
+- 🐛 **증상**: `/plugin install` 시 `Host key verification failed` / `Could not read from remote repository`. Claude Code 플러그인 설치가 `source:"github"`를 **SSH(git@github.com)로 클론**하는데 SSH 키 없으면 실패 — **Claude Code 알려진 버그**(이슈 #47088·#52234·#29722 등 8건 전부 open, HTTPS 폴백 없음). 마켓플레이스 메타·스킬 파일은 HTTPS라 받아짐 → `/시작` 안내는 뜨는데 스킬 로드만 실패.
+- 🛡 **수정**: install.ps1이 git에 **GitHub SSH→HTTPS 재작성** 설정(`insteadOf`)을 멱등 적용 → 키 없이 public repo 클론 성공. 실측: 적용 후 `git ls-remote git@github.com:...`가 키 없이 실제 HEAD 반환.
+  ```
+  git config --global --add url."https://github.com/".insteadOf "git@github.com:"
+  git config --global --add url."https://github.com/".insteadOf "ssh://git@github.com/"
+  ```
+- ℹ️ **이미 막힌 직원**: 새 파일 불필요 — 위 2줄을 "줄갭 Claude"에 붙여넣고 `/plugin install zulgap@zulgap-team-pack` 재실행이면 즉시 해결.
+- ℹ️ 더 깔끔한 대안(마켓플레이스 source를 `url`+HTTPS로 고정)은 우리 버전 미검증 + 포맷 오류 시 등록 silent-fail 위험이라 보류. 검증된 insteadOf만 채택.
+- 📦 zip 구성: v1.5와 동일 6파일 (install.ps1만 갱신).
+- ⚠️ **신규 배포는 v1.6으로** (v1.3~v1.5 폐기).
+
 ## v1.5 (2026-06-29)
 **설치 안정성 강화 — '관리자 권한으로 실행' 안 해서 막히던 문제 근본 해결 + 엣지케이스 방어**
 - 🛡 **install.bat self-elevation**: `net session`으로 관리자 감지 → 아니면 **UAC로 자가 재실행**. 직원은 더블클릭 → "예" 클릭이면 끝(우클릭 '관리자 권한으로 실행' 불필요). 실측: 비관리자 컨텍스트에서 elevation 분기 발동 확인.

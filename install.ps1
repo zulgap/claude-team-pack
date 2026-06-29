@@ -56,6 +56,16 @@ if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) {
 # winget 설치분이 현재 세션 PATH에 잡히도록 갱신 (node/npm/claude 후속 사용 대비)
 Update-Path
 
+# 3.5 git이 GitHub를 HTTPS로 받게 강제 (Claude Code 플러그인 설치가 SSH로 붙는 알려진 버그 회피 — issue #47088)
+# @AI:CONSTRAINT SSH 키 없는 직원은 /plugin install이 'Host key verification failed'로 실패.
+#   github SSH -> HTTPS 재작성으로 키 없이 public repo 클론 성공. 멱등(unset-all 후 재add로 중복 방지).
+try {
+  try { git config --global --unset-all 'url.https://github.com/.insteadOf' 2>$null } catch {}
+  git config --global --add 'url.https://github.com/.insteadOf' 'git@github.com:'
+  git config --global --add 'url.https://github.com/.insteadOf' 'ssh://git@github.com/'
+  Write-Host "[OK] git GitHub HTTPS 설정 완료 (플러그인 SSH 오류 예방)" -ForegroundColor Green
+} catch { Write-Host "[참고] git HTTPS 설정 건너뜀 (git 미설치?)" -ForegroundColor Yellow }
+
 # 4. Claude Code 설치 (작업 도구 본체)
 # @AI:INTENT 도구(시작/PPT/한글)는 전부 Claude Code 플러그인 -> 데스크탑 채팅앱이 아니라 Claude Code가 본체여야 함.
 if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
