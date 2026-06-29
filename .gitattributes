@@ -1,0 +1,2 @@
+# cmd.exe batch must be CRLF (UTF-8 chcp parser eats first byte on LF) — v1.4 재발방지
+*.bat text eol=crlf
