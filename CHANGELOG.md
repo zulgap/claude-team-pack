@@ -10,6 +10,18 @@
 
 ---
 
+## v1.11 (2026-06-30) — 플러그인 전용 (zip 변경 없음 · 재설치 불필요)
+**`/이미지` 스킬 추가 — 텍스트로 이미지 생성(BYOC 표준 사례)**
+- 🆕 `skills/이미지/SKILL.md`: 원하는 그림을 한국어로 말하면 제디 `ext_generate_image` 도구로 줄갭 백엔드(GPT Image 2 → 실패 시 Gemini 자동 폴백) 생성. 비율(`1:1`/`9:16`/`3:4`/`16:9`/`4:3`)만 정하면 됨 — 한국어→영문 자동 번역.
+- 🔄 `team-guide.md`: 명령 목록에 `/이미지` 추가 + 제디 도구 설명에 "이미지 생성" 반영(원격 자동 갱신).
+- 🔒 회사(tenant)는 개인 JEDI_TOKEN으로 자동 고정 — `tenant_id` 인자 미주입(서버 강제). 생성물은 본인 회사 Storage(`{tenant}/generated/`)에 격리 저장 + content_asset 자동 등록.
+- ⚙️ 백엔드: 제디 MCP 외부 tier에 `ext_generate_image`(+`generate_image` 별칭) 노출(judgmentos PR #1944, v7.355.0). 브릿지·install.ps1 무변경 — 토큰 등록한 직원은 앱 재시작 시 자동 활성.
+- 🧱 옛 방식 제거: `railway run python gen-image.py`·OPENAI_KEY·python·openai 의존 0 → 직원 PC에서 그대로 사용. 영어 프롬프트 수동 변환도 불필요(백엔드 내장).
+- 🖼 v1 범위: 텍스트→이미지 생성 중심. 참조 이미지(얼굴·스타일 유지)는 **웹 URL** 있을 때만(`mode:edit`+`preserve_fidelity`). 한글 텍스트는 1차 시안→디자인 재식자 권장.
+- 👤 신규 직원: 추가 조치 없음(JEDI_TOKEN만 등록되어 있으면 `/이미지` 자동 노출).
+
+---
+
 ## v1.10 (2026-06-29) — ★ zip 재생성·재설치 필요 (install.ps1 변경)
 **새 PC "claude 인식 안 됨" + 플러그인 등록 실패 진단 강화 (실제 직원 발생)**
 - 🐛 **증상①** `'claude'은(는) 내부 또는 외부 명령... 아닙니다`: claude.ai 설치기가 `~/.local/bin`을 **User PATH에 등록 못 하는** 경우가 있음(직원 PC 실측) → 바탕화면 "줄갭 Claude"(`cmd /k claude`)가 claude를 못 찾음. 사장님 PC는 이미 등록돼 있어 안 보이던 갭(설치 검증은 직원 환경 기준).
