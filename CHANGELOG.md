@@ -10,6 +10,15 @@
 
 ---
 
+## v1.5 (2026-06-29)
+**설치 안정성 강화 — '관리자 권한으로 실행' 안 해서 막히던 문제 근본 해결 + 엣지케이스 방어**
+- 🛡 **install.bat self-elevation**: `net session`으로 관리자 감지 → 아니면 **UAC로 자가 재실행**. 직원은 더블클릭 → "예" 클릭이면 끝(우클릭 '관리자 권한으로 실행' 불필요). 실측: 비관리자 컨텍스트에서 elevation 분기 발동 확인.
+- 🛡 **winget 경로 직접 resolve**: 관리자(self-elevate) 컨텍스트에서 per-user WindowsApps(winget)가 PATH에서 빠지는 함정 → `Get-Command` 실패 시 `LOCALAPPDATA\Microsoft\WindowsApps\winget.exe` 직접 사용. 없으면 App Installer 안내 후 종료. 실측: resolve→`winget --version` v1.28 실행 OK.
+- 🛡 **PATH 갱신(Update-Path)**: winget로 Node 갓 설치 후 같은 세션에서 `npm`을 못 찾던 문제 → 머신+유저 PATH 재로딩. 실측: node 경로 검출 OK.
+- 검증: install.ps1 구문 0에러 + install.bat CRLF 13줄·비ASCII 0·`>nul` 정상 + admin감지/winget/PATH 4종 PASS.
+- 📦 zip 구성: v1.4와 동일 6파일 (install.bat·install.ps1만 갱신).
+- ⚠️ v1.4는 배포 전 단계 — **신규 배포는 v1.5로** (v1.4의 자동갱신·CRLF 포함).
+
 ## v1.4 (2026-06-29)
 **원격 자동갱신(알집式) + install.bat CRLF 버그 수정**
 - 🐛 **install.bat CRLF 버그**: v1.3까지 `.bat`이 LF 줄바꿈 + 한글 echo → cmd.exe UTF-8 파서가 줄 첫 글자 먹음(`'ode'`/`'xecutionPolicy'`/한글깨짐). → **CRLF + ASCII 전용**으로 재작성(한글 안내는 BOM 있는 install.ps1 담당). `.gitattributes`(`*.bat eol=crlf`) 신설로 재발 영구 차단.
