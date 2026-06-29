@@ -10,6 +10,16 @@
 
 ---
 
+## v1.4 (2026-06-29)
+**원격 자동갱신(알집式) + install.bat CRLF 버그 수정**
+- 🐛 **install.bat CRLF 버그**: v1.3까지 `.bat`이 LF 줄바꿈 + 한글 echo → cmd.exe UTF-8 파서가 줄 첫 글자 먹음(`'ode'`/`'xecutionPolicy'`/한글깨짐). → **CRLF + ASCII 전용**으로 재작성(한글 안내는 BOM 있는 install.ps1 담당). `.gitattributes`(`*.bat eol=crlf`) 신설로 재발 영구 차단.
+- ✨ **스킬 자동갱신**: install.ps1이 마켓플레이스 등록에 `autoUpdate:true` → Claude Code 시작 시 스킬 자동 pull(zip 재설치 불필요).
+- ✨ **안내문 원격 자동갱신**: standalone SessionStart 훅(`hooks/team-guide-fetch.js`) 설치 → 매 세션 GitHub `team-guide.md`를 fetch해 주입. 안내문(명령·도구) 수정 = GitHub 파일 1개 수정 → 직원은 다음 세션에 자동(재설치/zip 불필요). 오프라인이면 캐시.
+- 🔀 안내 분리: `team-guide.md`(휘발성=명령·도구, 원격 자동) / `team-CLAUDE.md`(불변=안전수칙 stub).
+- ⚠️ 한계: 첫 설치 1회는 불가피(알집도 설치파일 받음). 훅 *로직* 변경 시만 재설치(드묾). standalone 훅 채택 사유=플러그인 번들 훅 additionalContext 미주입 버그(#16538).
+- 📦 zip 구성: **6개** — `install.bat`, `install.ps1`, `team-CLAUDE.md`, `team-guide.md` 제외(원격이라 zip 불필요), `hooks/team-guide-fetch.js`, `mcp-bridge/{index.js,package.json}`. → 실제: install.bat·install.ps1·team-CLAUDE.md·hooks/team-guide-fetch.js·mcp-bridge/index.js·mcp-bridge/package.json (6).
+- 검증: install.ps1 구문 0에러 + 훅주입 멱등/기존보존 3케이스 PASS + 훅 node 구문·JSON계약 PASS.
+
 ## v1.3 (2026-06-29)
 **스킬 명령어 한글화 — 직원 직관성 ★**
 - 🔤 스킬 3종 한글 리네임 (영문명이라 직원이 `/시작` 쳐도 "Unknown skill" 떴던 근본원인 해소):

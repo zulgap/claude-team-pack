@@ -63,12 +63,36 @@ try {
   if (-not ($s.PSObject.Properties.Name -contains 'extraKnownMarketplaces') -or $null -eq $s.extraKnownMarketplaces) {
     $s | Add-Member -NotePropertyName extraKnownMarketplaces -NotePropertyValue ([pscustomobject]@{}) -Force
   }
-  $mp = [pscustomobject]@{ source = [pscustomobject]@{ source = "github"; repo = "zulgap/claude-team-pack" } }
+# @AI:INTENT autoUpdate=true -> Claude Code 시작 시 마켓플레이스(스킬) 자동 pull. 직원 zip 재설치 불필요.
+  $mp = [pscustomobject]@{ source = [pscustomobject]@{ source = "github"; repo = "zulgap/claude-team-pack" }; autoUpdate = $true }
   $s.extraKnownMarketplaces | Add-Member -NotePropertyName 'zulgap-team-pack' -NotePropertyValue $mp -Force
   if (-not ($s.PSObject.Properties.Name -contains 'enabledPlugins') -or $null -eq $s.enabledPlugins) {
     $s | Add-Member -NotePropertyName enabledPlugins -NotePropertyValue ([pscustomobject]@{}) -Force
   }
   $s.enabledPlugins | Add-Member -NotePropertyName 'zulgap@zulgap-team-pack' -NotePropertyValue $true -Force
+
+  # 6.5 안내문 원격 자동갱신 훅 (standalone SessionStart) — team-guide.md를 매 세션 GitHub에서 받아 주입
+  # @AI:CONSTRAINT standalone 훅만 additionalContext 주입됨(#16538). 플러그인 번들 훅 금지 -> settings.json에 직접 등록.
+  $zulgapDir = Join-Path $claudeDir "zulgap"
+  New-Item -ItemType Directory -Force -Path $zulgapDir | Out-Null
+  $hookSrc = Join-Path $PSScriptRoot "hooks\team-guide-fetch.js"
+  $hookDst = Join-Path $zulgapDir "team-guide-fetch.js"
+  if (Test-Path $hookSrc) { Copy-Item $hookSrc $hookDst -Force }
+  $hookCmd = "node `"$hookDst`""
+  if (-not ($s.PSObject.Properties.Name -contains 'hooks') -or $null -eq $s.hooks) {
+    $s | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) -Force
+  }
+  if (-not ($s.hooks.PSObject.Properties.Name -contains 'SessionStart') -or $null -eq $s.hooks.SessionStart) {
+    $s.hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue @() -Force
+  }
+  # 멱등: 이미 우리 훅이 등록돼 있으면 skip (기존 훅 보존, 재실행 중복 방지)
+  $already = $false
+  foreach ($g in @($s.hooks.SessionStart)) { foreach ($h in @($g.hooks)) { if ($h.command -like '*team-guide-fetch.js*') { $already = $true } } }
+  if (-not $already) {
+    $entry = [pscustomobject]@{ matcher = 'startup'; hooks = @([pscustomobject]@{ type = 'command'; command = $hookCmd; timeout = 10 }) }
+    $s.hooks.SessionStart = @($s.hooks.SessionStart) + $entry
+  }
+
   ($s | ConvertTo-Json -Depth 50) | Set-Content $settingsPath -Encoding UTF8
   Write-Host "[OK] 줄갭 플러그인 자동 등록됨 (메뉴 안 건드려도 됨)" -ForegroundColor Green
 } catch {

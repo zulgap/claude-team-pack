@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
-echo 줄갭 팀원 Claude Code 셋업을 시작합니다...
+echo [Zulgap] Setting up... (details below in Korean)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"
 echo.
-echo 설치 창을 닫으려면 아무 키나 누르세요.
+echo Done. Press any key to close.
 pause >nul
