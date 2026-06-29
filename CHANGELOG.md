@@ -10,6 +10,17 @@
 
 ---
 
+## v1.7 (2026-06-29) — 플러그인 전용 (zip 변경 없음 · 재설치 불필요)
+**세션저널 작성자 자동 기록 (공유 계정 누가-무엇 추적)**
+- 🧭 공유 Claude 계정이라 Claude 자체는 작업자를 모름 → 개인 **제디 토큰의 actor_id**로 식별.
+- ➕ `resolve-staff.js`(토큰 actor_id 디코드 → `staff-map.json` 이름 해석, 토큰 없으면 빈 출력) + `staff-map.json`(actor_id→이름; 신나래·이지연).
+- 🔄 `저장` 스킬: 적재 직전 resolve-staff.js 1회 실행 → 노션 세션저널 **`작성자`** 속성에 기록(비면 생략, 실패 무시).
+- ➕ 노션 "팀 세션 저널" DB에 `작성자`(텍스트) 속성 추가 → 사장님이 직원별 필터.
+- ⚡ **전부 자동갱신 플러그인 파일** → install.ps1·zip 무변경, **기존 직원은 앱 재시작 시 자동 반영**.
+- 👤 신규 직원 추가 시: 토큰 발급 + `staff-map.json`에 `"<actor_id>":"이름"` 1줄 추가(push) = 끝.
+- 검증: resolve-staff.js 4케이스 PASS(신나래/이지연/토큰없음→빈칸/미매핑→빈칸).
+- 🔭 더 강한 per-user 관리(사용량·보안 직원별)는 Claude Team 플랜(per-seat) — 인원 늘면 검토.
+
 ## v1.6 (2026-06-29)
 **플러그인 설치 SSH 오류 해결 — SSH 키 없는 직원 막힘 (실제 발생)**
 - 🐛 **증상**: `/plugin install` 시 `Host key verification failed` / `Could not read from remote repository`. Claude Code 플러그인 설치가 `source:"github"`를 **SSH(git@github.com)로 클론**하는데 SSH 키 없으면 실패 — **Claude Code 알려진 버그**(이슈 #47088·#52234·#29722 등 8건 전부 open, HTTPS 폴백 없음). 마켓플레이스 메타·스킬 파일은 HTTPS라 받아짐 → `/시작` 안내는 뜨는데 스킬 로드만 실패.
