@@ -10,6 +10,17 @@
 
 ---
 
+## v1.8 (2026-06-29) — 플러그인 전용 (zip 변경 없음 · 재설치 불필요)
+**블로그 글 작성자 귀속 + gh CLI 의존 제거**
+- 🐛 기존: 블로그 커밋이 전부 공유 이메일(`zulgap0327`) → 누가 쓴 글인지 GitHub에 안 남음.
+- 🔄 `블로그` 스킬: 커밋 직전 resolve-staff로 이름·이메일 조회 → **그 직원으로 커밋**(`-c user.name -c user.email`). 이메일 미등록이면 공유 계정 폴백.
+- 🔄 `staff-map.json`: `{actor: {name, email}}` 객체로 확장(신나래 이메일 추가, 이지연 이메일 미정).
+- 🔄 `resolve-staff.js`: `email` 인자 지원(`node resolve-staff.js email`), 구버전 문자열 호환. 기본 출력=이름(저장 스킬 무변경).
+- 🔄 `블로그` 스킬: `gh repo clone` → `git clone https://...`(gh CLI 불필요, Git Credential Manager로 본인 GitHub 첫 로그인 캐시).
+- ⚡ 전부 자동갱신 플러그인 파일 → install.ps1·zip 무변경, 기존 직원 앱 재시작 시 자동.
+- 👤 신규 직원: staff-map에 `{name, email}` 1줄 + repo Collaborator(Write) 초대.
+- 검증: resolve-staff 이름/이메일/미등록/토큰없음 PASS.
+
 ## v1.7 (2026-06-29) — 플러그인 전용 (zip 변경 없음 · 재설치 불필요)
 **세션저널 작성자 자동 기록 (공유 계정 누가-무엇 추적)**
 - 🧭 공유 Claude 계정이라 Claude 자체는 작업자를 모름 → 개인 **제디 토큰의 actor_id**로 식별.
