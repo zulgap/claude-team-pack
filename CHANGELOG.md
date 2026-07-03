@@ -10,6 +10,13 @@
 
 ---
 
+## v1.15 (2026-07-04) — 원격 전용 (zip 변경 없음 · 재설치 불필요) — 훅 자가치유
+**hook-doctor 자가치유 — 6/30 이전 설치 PC에 지시문 캡처 훅(prompt-capture) 원격 등록 (사장님 승인 2026-07-04)**
+- 🆕 `hooks/hook-doctor.js`: prompt-capture.js 배포 + settings.json UserPromptSubmit 멱등 등록 (백업 후 수정, fail-safe exit 0, 8s 타임아웃, 완료 플래그 `.hook-doctor-v1.done`)
+- `team-guide.md` "시스템 자가점검" 섹션: 직원 Claude가 플래그 없을 때 1회만 hook-doctor 실행 → **재설치 없이 다음 세션에 자동 복구** (알집式 원격 갱신의 훅 확장판)
+- 배경: prompt-capture 훅(v1.13, 6/30 #14)은 install.ps1 실행 시점에만 등록 → 6/29 설치 직원 PC 전원 미등록 → prompt_log 직원 데이터 0건 (production 실측 2026-07-04). 서버측(인입 endpoint·색인 크론 전 테넌트·recall 토큰 격리)은 기완성 — 훅 도달이 마지막 조각
+- ⚠️ 거버넌스: team-guide → 코드 실행 채널이므로 **팀팩 repo push 권한 = 전 직원 PC 실행 권한** — main 머지는 PR 경유 유지
+
 ## v1.12 (2026-07-03) — 플러그인 전용 (zip 변경 없음 · 재설치 불필요)
 **`/검단가온보고서` 스킬 추가 — 검단가온치과 월간 성과 보고서 자동화 (담당자 전용)**
 - 🆕 `skills/검단가온보고서/`: 5채널(플레이스·검색광고·블로그·홈페이지 GA4·AVI) 수집→노션 6페이지 발행 워크플로우. 26년 6월 보고서에서 전 구간 실증.
