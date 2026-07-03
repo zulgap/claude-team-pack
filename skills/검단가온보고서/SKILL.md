@@ -27,7 +27,7 @@ DB(data_source): `114efa2f-2c3b-8155-a52a-000b76be5969` (월간 성과 보고서
 - **Playwright**: 임의 폴더(예: `문서\playwright-env`)에서 `npm i playwright` → `npx playwright install chromium`. 스크립트는 **그 폴더에서 실행**하거나 `PLAYWRIGHT_DIR` 환경변수로 폴더 지정. (사장님 PC는 `C:/Users/admin/Documents/marketing-report`가 자동 인식됨 — 준비 불필요)
 - **네이버 계정**: 검단가온치과 관리 권한이 있는 네이버 계정. 첫 실행 시 로그인 창 1회 (아래 표준 안내문), 이후 무로그인.
 - **GA4**: gd-gaondental.com 속성 권한이 있는 구글 계정으로 로그인된 크롬 + Browser MCP 연결.
-- **AVI**: Railway(unified-agent) 접근 권한자 전용 — 권한 없으면 이 단계만 사장님께 요청하고 나머지 진행.
+- **AVI**: 제디 MCP 도구로 셀프서비스 (v7.387.0+) — 팀팩 설치 시 발급된 개인 JEDI_TOKEN이면 충분(Railway 접근 권한 불필요). 제디 MCP 미연결 상태면 이 단계만 사장님께 요청하고 나머지 진행.
 
 ## 실행 순서
 0. **전월 비교값**: 전월 페이지 6개 fetch (허브 `75c11fcb50ce486da510f2e421fbc275`). 목표 달성률 표는 전월 종합의 "다음달 목표" 사용.
@@ -36,7 +36,8 @@ DB(data_source): `114efa2f-2c3b-8155-a52a-000b76be5969` (월간 성과 보고서
    - `node <skill>/scripts/blog-download.mjs <출력폴더>` → xlsx 4개 (조회수·순방문·사용시간=전체 월간, 유입분석=지난달 단월 자동)
    - `node <skill>/scripts/searchad-daily.mjs <출력폴더>` → performance_*.csv (일별 노출/클릭 — 검산용)
    - `node <skill>/scripts/searchad-campaigns.mjs <출력폴더>` → campaigns_*.xlsx (6유형 노출/클릭/CTR/CPC/비용 — 정본)
-   - AVI: `cd ~/Documents/judgmentos/unified-agent && railway.cmd run python <skill>/scripts/avi_measure.py --engine both --runs 30 --workers 5` (600콜 ~10분, 키는 Railway env 주입 — 노출 금지)
+   - AVI (제디 MCP 셀프서비스, v7.387.0+): ① `ext_avi_measure` 호출 — `{ "tenant_id": "a0000000-0000-0000-0000-000000000002", "runs": 30 }` → `queued` 응답(측정은 백엔드에서 ~10분, 600콜) ② ~10분 뒤 `ext_avi_result` — `{ "tenant_id": 동일 }` → 엔진별(Perplexity/Gemini) 노출률·Top3·SOV·경쟁사 요약 수신. `already_running`이면 대기 후 ②만, `recent_result_exists`(20시간 내 기존 결과)면 바로 ② 조회. 재측정 강행은 `force: true` (회당 비용 $2~12 — 월 1회 원칙).
+     - 측정 실행이 안 되면(도구 미노출/장애) 이 단계만 사장님께 요청하고 나머지 진행.
 2. **GA4** (Browser MCP, 사장님 크롬 구글 로그인): URL 직접 라우팅 — `https://analytics.google.com/analytics/web/#/a363272208p498878528/reports/reportinghub?params=_u.date00%3DYYYYMMDD%26_u.date01%3DYYYYMMDD%26_u.comparisonOption%3Ddisabled`. 세션·총사용자 정확값 = 좌측 트리 리드생성>잠재고객(All Users 행). 채널그룹 = 리드생성 개요 카드.
 3. **검산**: campaigns_*.xlsx 합계 노출 == performance_*.csv 일별 합계 (26-06: 50,372 일치).
 4. **발행**: 템플릿 KB 구조·색상 규칙대로 6페이지 생성.
@@ -59,4 +60,4 @@ DB(data_source): `114efa2f-2c3b-8155-a52a-000b76be5969` (월간 성과 보고서
 - 탐색 없이 스크립트를 순차 1회씩만 실행 (창 반복 열림은 사용자 불만 요인)
 
 ## 데이터 소스 ID
-스마트플레이스 place `7708222` / booking `786232` · 검색광고 ad-account `1790170`(ads.naver.com 신 UI) · GA4 `a363272208p498878528`(gd-gaondental.com) · 블로그 `gdgodental` · AVI 결과 보관: `C:/Users/admin/avi_raw_*.jsonl`
+스마트플레이스 place `7708222` / booking `786232` · 검색광고 ad-account `1790170`(ads.naver.com 신 UI) · GA4 `a363272208p498878528`(gd-gaondental.com) · 블로그 `gdgodental` · AVI 결과: 백엔드 `skill_execution`(skill_code='avi_measure', 줄갭 tenant) — `ext_avi_result`로 조회
