@@ -10,6 +10,14 @@
 
 ---
 
+## v1.17 (2026-07-05) — 플러그인 전용 (원격 배포만 → 재설치 불필요) — 자동 갱신 정상화
+**`version` 필드 제거 — 팀원이 재설치 없이 최신 스킬을 자동으로 받게 (사장님 mandate "배포만 하면 재설치 없이")**
+- 🐛 근본: `plugin.json`·`marketplace.json`의 `version`이 `0.1.0`에 동결 → Claude Code가 "버전 그대로 = 갱신 없음"으로 보고 옛 캐시 유지 → 블로그·이미지·인입·검단가온·노블냥 5개 스킬이 기존 직원 PC에 영영 안 내려감(신나래 실측: 3개짜리 구버전 로드, `/노블냥` 미노출).
+- ✅ fix: 두 매니페스트에서 `version` 필드 제거 → 커밋 SHA 기반 versioning → 커밋마다 새 버전으로 인식. `autoUpdate=true`(install.ps1 기설정)와 합쳐져 **세션 시작 시 자동 pull → 재시작 = 최신**. 공식 문서 확인: version 고정 시 "same version → keeps cached copy".
+- ⚠️ 기존 직원 1회 전환: "줄갭 Claude" 재시작 → 그래도 안 보이면 `/plugin marketplace update zulgap-team-pack` 1줄(또는 install.bat 재실행). 이후로는 영구 자동(재설치 불필요).
+- 🚫 앞으로 매니페스트에 `version` 다시 넣지 말 것 — 넣으면 그 값에 고정돼 갱신 차단(이번 사고 원인). CHANGELOG vX.Y는 사람용 변경 이력으로 계속 유지(플러그인 갱신 트리거는 이제 커밋 SHA).
+- 👤 대상 직원: 위 1회 전환 후 조치 없음. jedi `-32000` 재연결 실패는 별개(개인 토큰/설정 — install.bat 재실행 시 JEDI_TOKEN 재입력).
+
 ## v1.16 (2026-07-05) — 플러그인 전용 (zip 변경 없음 · 재설치 불필요)
 **`/노블냥` 스킬 추가 — 노션 카드로 노블냥(엔노블) 숏폼 영상 자동 제작 (줄갭 담당 전용)**
 - 🆕 `skills/노블냥/`: 노션 카드 링크 1개 → 후킹 인트로 + 본편(한국어 음성·자막) + 1.2배속을 자동 제작해 엔노블 공유폴더에 저장. 이미지·영상은 제디 `ext_generate_image`/`ext_image_to_video_seedance`(씨댄스 2.0), 자막·후킹·배속은 로컬 ffmpeg(첫 실행 시 ffmpeg-static 자동 설치).
