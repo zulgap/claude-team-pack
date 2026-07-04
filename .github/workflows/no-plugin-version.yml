@@ -1,0 +1,44 @@
+name: version-freeze-guard
+
+# 목적: plugin.json / marketplace.json 에 "version" 필드가 다시 들어오는 것을 차단.
+#  version 을 고정하면 Claude Code 가 "같은 버전 = 갱신 없음" 으로 보고 직원 PC 캐시를
+#  갱신하지 않아, 새 스킬이 영원히 안 내려간다 (2026-07 사고, CHANGELOG v1.17).
+#  version 필드를 아예 두지 않으면(커밋 SHA 기반) 커밋마다 자동 갱신된다.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: version 필드 재유입 차단 (스킬 자동 갱신 보호)
+        shell: bash
+        run: |
+          fail=0
+          check() {
+            local f="$1"
+            if [ ! -f "$f" ]; then
+              echo "::warning::$f 없음 — skip"
+              return
+            fi
+            if node -e "const fs=require('fs');const f=process.argv[1];const j=JSON.parse(fs.readFileSync(f,'utf8'));const has=('version' in j)||(Array.isArray(j.plugins)&&j.plugins.some(p=>p&&typeof p==='object'&&'version' in p));process.exit(has?1:0)" "$f"; then
+              echo "OK  $f — version 필드 없음"
+            else
+              echo "::error file=$f::'version' 필드가 있습니다. 이 필드는 직원 PC 스킬 자동 갱신을 '동결'시킵니다(2026-07 사고). 제거하세요 — version 없이 두면 커밋 SHA 기반으로 자동 갱신됩니다. 근거: CHANGELOG v1.17."
+              fail=1
+            fi
+          }
+          check ".claude-plugin/plugin.json"
+          check ".claude-plugin/marketplace.json"
+          if [ "$fail" -ne 0 ]; then
+            echo ""
+            echo "❌ 위 매니페스트에서 version 필드를 제거한 뒤 다시 커밋하세요."
+            exit 1
+          fi
+          echo ""
+          echo "✅ 매니페스트 version 필드 없음 — 직원 PC 자동 갱신 정상."
