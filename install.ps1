@@ -5,11 +5,15 @@
 #   3) 줄갭 플러그인(시작·세션저널·PPT·한글) 자동 등록  <- 앱 메뉴/슬래시 명령 입력 불필요
 #   4) 바탕화면에 "줄갭 Claude" 바로가기 생성
 #   5) (선택) 제디(회사 데이터) 연결 - 토큰 받은 분만
-# 사용법: install.bat 더블클릭
+# 사용법: install.bat 더블클릭 (개발자: install-dev.bat — 영어 dev 가이드/지침으로 설치)
+
+# @AI:INTENT v1.18 역할 분기 — dev면 영어 지침(team-CLAUDE-en.md) + role 파일 기록(훅이 dev 가이드 fetch).
+#   param은 주석 뒤 첫 실행문이어야 함(PowerShell 문법). ValidateSet으로 오타 차단.
+param([ValidateSet('staff','dev')][string]$Role = 'staff')
 
 $ErrorActionPreference = "Stop"
 Write-Host ""
-Write-Host "=== 줄갭 팀원 셋업 (Claude Code 자동 설정) ===" -ForegroundColor Cyan
+Write-Host "=== 줄갭 팀원 셋업 (Claude Code 자동 설정) [role: $Role] ===" -ForegroundColor Cyan
 Write-Host ""
 
 # 0. winget 위치 resolve + PATH 갱신 헬퍼
@@ -95,13 +99,18 @@ if (Test-Path $claudeExe) {
 Update-Path
 if ((Test-Path $claudeExe) -and ($env:Path -notlike "*$claudeBin*")) { $env:Path = "$env:Path;$claudeBin" }
 
-# 5. 팀 지침(CLAUDE.md) 배치
+# 5. 팀 지침(CLAUDE.md) 배치 + 역할(role) 기록
 $claudeDir = "$env:USERPROFILE\.claude"
 New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
-$src = Join-Path $PSScriptRoot "team-CLAUDE.md"
+# @AI:INTENT role 파일 = team-guide-fetch.js 훅의 분기 키 (dev -> docs/dev-guide-en.md fetch). ASCII 한 단어만.
+$zulgapDirEarly = Join-Path $claudeDir "zulgap"
+New-Item -ItemType Directory -Force -Path $zulgapDirEarly | Out-Null
+Set-Content -Path (Join-Path $zulgapDirEarly "role") -Value $Role -Encoding Ascii -NoNewline
+$stubName = if ($Role -eq 'dev') { "team-CLAUDE-en.md" } else { "team-CLAUDE.md" }
+$src = Join-Path $PSScriptRoot $stubName
 if (Test-Path $src) {
   Copy-Item $src (Join-Path $claudeDir "CLAUDE.md") -Force
-  Write-Host "[OK] 팀 지침(CLAUDE.md) 배치됨" -ForegroundColor Green
+  Write-Host "[OK] 팀 지침(CLAUDE.md) 배치됨 ($stubName)" -ForegroundColor Green
 }
 
 # 6. 줄갭 플러그인 자동 등록 (~/.claude/settings.json)
@@ -267,7 +276,20 @@ if ($jediToken -and $jediToken.Trim().Length -gt 0) {
   Write-Host "[건너뜀] 제디 토큰 미등록 - 노션/PPT/한글은 그대로 정상. 토큰 받으면 install.bat 다시 실행하세요." -ForegroundColor Yellow
 }
 
-# 9. 완료 안내
+# 9. 완료 안내 (dev는 영어 안내)
+if ($Role -eq 'dev') {
+  Write-Host ""
+  Write-Host "=== Setup complete! How to start ===" -ForegroundColor Cyan
+  Write-Host "  1) Double-click the 'Zulgap Claude' desktop icon (a terminal opens)"
+  Write-Host "  2) First run: log in with the account the boss gave you"
+  Write-Host "  3) Zulgap tools auto-install on first launch (wait a moment)"
+  Write-Host "  4) Type /start-dev and press Enter -> your task board appears = success!" -ForegroundColor Green
+  Write-Host "     (End of day: /wrapup-dev)"
+  Write-Host ""
+  Write-Host "* If anything fails, screenshot the screen and send it to the boss." -ForegroundColor Green
+  Write-Host ""
+  exit 0
+}
 Write-Host ""
 Write-Host "=== 준비 완료! 이제 이렇게 쓰면 됩니다 ===" -ForegroundColor Cyan
 Write-Host "  1) 바탕화면 '줄갭 Claude' 아이콘을 더블클릭 (까만 창이 열려요)"

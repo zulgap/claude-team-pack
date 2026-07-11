@@ -4,7 +4,8 @@
 직원은 **Claude Code**로 사용합니다(아래 `install.bat`이 자동 설치). 데스크탑 앱은 선택입니다.
 
 ## 포함된 것
-- **스킬**: `시작`(노션 허브 현황 보기), `세션저널`(작업 기록)
+- **스킬(직원)**: `시작`(노션 허브 현황 보기), `저장`(작업 기록), `블로그`·`인입`·`이미지`·`검단가온보고서`·`노블냥`
+- **스킬(개발자, 영어)**: `start-dev`(업무 보드 로드 + 오늘 플랜), `wrapup-dev`(저널 기록 + 스탠드업 생성)
 - **MCP 도구**: 노션(자료 불러오기, 각자 로그인) · PPT(pptx) · 한글(hwp, ※ 한컴오피스 필요) · **제디(jedi, 회사 데이터 조회 — 개인 토큰 필요)**
 
 ---
@@ -34,6 +35,20 @@
 /plugin install zulgap@zulgap-team-pack
 /reload-plugins
 ```
+
+---
+
+## 🌏 개발자(dev) 설치 — 원격 개발팀·인턴용 (v1.18~)
+
+같은 패키지를 **영어 개발자 모드**로 설치합니다. 차이는 3가지뿐:
+- `install-dev.bat` 더블클릭 (내부적으로 `install.ps1 -Role dev`)
+- 팀 지침 = **영어판**(`team-CLAUDE-en.md` → `~/.claude/CLAUDE.md`) — production 인프라·시크릿·migration·master push 금지 규칙 포함
+- 세션 안내문 = **영어 dev 가이드**(`docs/dev-guide-en.md`, 원격 자동갱신) — `~/.claude/zulgap/role` 파일이 `dev`면 훅이 이걸 fetch
+
+개발자 워크플로우: `/start-dev`(노션 Dev Task Board 로드 + 오늘 플랜) → 작업 → `/wrapup-dev`(팀 세션 저널 기록 + 텔레그램 스탠드업 메시지 생성).
+
+> 기존 직원(staff)은 영향 없음 — role 파일이 없으면 훅은 기존 team-guide.md를 그대로 fetch.
+> 개발자에게도 제디 토큰은 동일 절차(위 섹션)로 발급. **이 repo의 write 권한은 개발자에게 주지 않습니다** (원격 갱신 채널 = 전 직원 PC 코드 실행 권한).
 
 ---
 
