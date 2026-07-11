@@ -10,6 +10,14 @@
 
 ---
 
+## v1.19 (2026-07-12) — macOS 설치기 (원격 전용 · zip 변경 없음)
+**`install.sh` — 맥 한 줄 설치 (Wave 1.5, 사장님 맥 어드민 겸용 + 인턴 맥 대비)**
+- 🆕 `install.sh`: `curl -fsSL .../install.sh | bash -s -- [--role dev]` — **로컬 파일 의존 0** (스텁·훅·브리지 전부 raw fetch, zip 불필요). install.ps1과 동일 계약: HTTPS insteadOf·플러그인 자동 등록(맵 형태)·훅 2종 멱등 등록·제디 토큰(브리지 고정 위치)·role 파일. 추가 안전장치: 기존 `~/.claude/CLAUDE.md` 덮기 전 `.bak` 백업(어드민 맥), 데스크탑 런처 `Zulgap Claude.command`.
+- 🔄 `.gitattributes`: `*.sh eol=lf` (CRLF shebang = 맥 bad interpreter 차단 — bat CRLF 규칙의 역방향).
+- ✅ 검증 2회 연속: bash -n + LF-only + JSON 병합 시뮬 11종(신규/보존/멱등/jedi 2표면/CLAUDE.md 백업) + raw fetch 6 URL 200.
+- ⚠️ 실기기 dogfood = 사장님 맥 (머지 후). Homebrew 부재+git/node 부재 새 맥은 brew 선설치 안내 후 종료(자동 설치 안 함 — sudo/Xcode CLT 상호작용 회피).
+- 👤 대상: 맥 사용자 신규 설치만. Windows·기존 직원 조치 없음.
+
 ## v1.18 (2026-07-12) — dev 에디션 (zip 변경 있음 · 개발자 신규 설치용, 기존 직원 재설치 불필요)
 **개발자(원격 인턴)용 영어 모드 추가 — 인도네시아 개발 인턴 온보딩 (spec `2026-07-12-teampack-dev-edition.md`)**
 - 🆕 `skills/start-dev/`·`skills/wrapup-dev/` (영어명 스킬): 노션 **Dev Task Board**(`985ecf48-6810-4a4c-9fc3-79b2889dc79f`) 로드 + 오늘 플랜 / 팀 세션 저널 기록(작성자 귀속 재사용) + 텔레그램 스탠드업 메시지 생성. literal `/명령` = 이름 정확 매칭이라 영어명 신설 (v1.2 한글화 사고의 역방향 재발 방지).
