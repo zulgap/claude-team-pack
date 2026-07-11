@@ -52,6 +52,24 @@
 
 ---
 
+## 🍎 macOS 설치 (v1.19~) — zip 불필요, 터미널 한 줄
+
+필요 파일을 전부 GitHub에서 받아오므로 zip이 필요 없습니다. 터미널(Terminal)에 한 줄:
+
+```bash
+# 직원(staff)
+curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash
+
+# 개발자(dev, 영어 모드)
+curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash -s -- --role dev
+```
+
+하는 일은 Windows판과 동일: git/node/uv(Homebrew 필요 시) + Claude Code + 플러그인 자동 등록 + 훅 2종 + 제디 토큰(선택) + 바탕화면 `Zulgap Claude.command`. 기존 `~/.claude/CLAUDE.md`가 있으면 덮기 전 `.bak` 백업(어드민 맥 안전장치).
+
+> Homebrew가 없고 git/node도 없는 새 맥이면 먼저 https://brew.sh 한 줄 설치 후 재실행.
+
+---
+
 ## 🛠 사장님 업데이트 (= 직원 PC에 반영)
 
 1. 이 repo 파일 수정 → `git push` (사장님이 원격 배포만 하면 끝)
