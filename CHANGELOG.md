@@ -10,6 +10,17 @@
 
 ---
 
+## v1.18 (2026-07-12) — dev 에디션 (zip 변경 있음 · 개발자 신규 설치용, 기존 직원 재설치 불필요)
+**개발자(원격 인턴)용 영어 모드 추가 — 인도네시아 개발 인턴 온보딩 (spec `2026-07-12-teampack-dev-edition.md`)**
+- 🆕 `skills/start-dev/`·`skills/wrapup-dev/` (영어명 스킬): 노션 **Dev Task Board**(`985ecf48-6810-4a4c-9fc3-79b2889dc79f`) 로드 + 오늘 플랜 / 팀 세션 저널 기록(작성자 귀속 재사용) + 텔레그램 스탠드업 메시지 생성. literal `/명령` = 이름 정확 매칭이라 영어명 신설 (v1.2 한글화 사고의 역방향 재발 방지).
+- 🆕 `docs/dev-guide-en.md`: 영어 dev 가이드 (브랜치·small PR·daily rebase·DoD·스탠드업 양식·금지영역) — team-guide와 같은 원격 자동갱신 채널.
+- 🔄 `hooks/team-guide-fetch.js`: 역할 분기 — `~/.claude/zulgap/role`이 `dev`면 dev-guide-en.md fetch(캐시 `dev-guide.cache.md`), **staff 경로·캐시 파일명은 기존과 동일(회귀 0)**. 훅은 설치 시점 심기라 기존 직원 PC는 옛 훅 그대로 = 영향 없음.
+- 🔄 `install.ps1`: `param -Role staff|dev` + role 파일 기록 + dev면 `team-CLAUDE-en.md`를 CLAUDE.md로 배치 + dev 완료 안내 영어.
+- 🆕 `install-dev.bat` (CRLF·ASCII 검증): 개발자 더블클릭 진입점 (`install.ps1 -Role dev`).
+- 🆕 `team-CLAUDE-en.md`: 영어 안전 지침 stub (production 인프라·시크릿·migration·master push 금지).
+- 📦 zip: `claude-team-pack-for-staff_v1.18.zip` 재생성 필요 (install.ps1/install-dev.bat/team-CLAUDE-en.md 추가 — 부트스트랩 7파일). 기존 직원은 재설치 불필요(스킬·가이드는 원격 자동).
+- 👤 대상: 신규 개발자 설치만 `install-dev.bat` 사용. 기존 직원 조치 없음.
+
 ## v1.17 (2026-07-05) — 플러그인 전용 (원격 배포만 → 재설치 불필요) — 자동 갱신 정상화
 **`version` 필드 제거 — 팀원이 재설치 없이 최신 스킬을 자동으로 받게 (사장님 mandate "배포만 하면 재설치 없이")**
 - 🐛 근본: `plugin.json`·`marketplace.json`의 `version`이 `0.1.0`에 동결 → Claude Code가 "버전 그대로 = 갱신 없음"으로 보고 옛 캐시 유지 → 블로그·이미지·인입·검단가온·노블냥 5개 스킬이 기존 직원 PC에 영영 안 내려감(신나래 실측: 3개짜리 구버전 로드, `/노블냥` 미노출).
