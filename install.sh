@@ -9,8 +9,9 @@
 #   5) (optional) Jedi (company data) connection — only if you have a personal token
 #
 # Usage (remote, no local files needed — everything is fetched from GitHub):
-#   staff: curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash
-#   dev  : curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash -s -- --role dev
+#   staff : curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash
+#   dev   : curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash -s -- --role dev
+#   master: curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash -s -- --role master  (어드민 기기 — CLAUDE.md 보존)
 #
 # @AI:CONSTRAINT 원격 curl 실행 전제 — $PSScriptRoot 같은 로컬 동봉 파일 없음. 필요 파일 전부 raw fetch.
 # @AI:CONSTRAINT settings.json/.claude.json 병합 로직은 install.ps1과 동일 계약(맵 형태, 멱등, .bak 백업).
@@ -29,8 +30,10 @@ while [ $# -gt 0 ]; do
     *) shift ;;
   esac
 done
-if [ "$ROLE" != "staff" ] && [ "$ROLE" != "dev" ]; then
-  echo "[ERROR] --role must be 'staff' or 'dev' (got: $ROLE)"; exit 1
+# v1.20: role의 원천은 제디 토큰 JWT claim(훅이 매 세션 유도) — 이 인자는 토큰 없는 초기 폴백 + CLAUDE.md stub 선택용.
+# master = 사장님(어드민 기기): CLAUDE.md 안 건드림 + 훅이 팀 가이드 주입 skip.
+if [ "$ROLE" != "staff" ] && [ "$ROLE" != "dev" ] && [ "$ROLE" != "master" ]; then
+  echo "[ERROR] --role must be 'staff', 'dev' or 'master' (got: $ROLE)"; exit 1
 fi
 
 if [ "$(uname -s)" != "Darwin" ]; then
@@ -108,17 +111,22 @@ mkdir -p "$ZULGAP_DIR"
 printf '%s' "$ROLE" > "$ZULGAP_DIR/role"
 ok "role file written ($ROLE)"
 
-STUB="team-CLAUDE.md"; [ "$ROLE" = "dev" ] && STUB="team-CLAUDE-en.md"
-if fetch "$RAW/$STUB" "$WORK/stub.md"; then
-  # @AI:INTENT 사장님 맥 등 기존 CLAUDE.md가 있으면 덮기 전 백업 (install.ps1엔 없던 안전장치 — 맥은 어드민 겸용 가능성)
-  if [ -f "$CLAUDE_DIR/CLAUDE.md" ] && ! cmp -s "$WORK/stub.md" "$CLAUDE_DIR/CLAUDE.md"; then
-    cp "$CLAUDE_DIR/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md.bak"
-    warn "[note] existing CLAUDE.md backed up to CLAUDE.md.bak"
-  fi
-  cp "$WORK/stub.md" "$CLAUDE_DIR/CLAUDE.md"
-  ok "team CLAUDE.md placed ($STUB)"
+if [ "$ROLE" = "master" ]; then
+  # @AI:CONSTRAINT master(어드민 기기)는 CLAUDE.md를 절대 덮지 않음 — 개인 마스터 설정 보존 (v1.20)
+  warn "[skip] master role — personal CLAUDE.md preserved (no team stub)"
 else
-  warn "[warn] could not fetch $STUB — skipping CLAUDE.md"
+  STUB="team-CLAUDE.md"; [ "$ROLE" = "dev" ] && STUB="team-CLAUDE-en.md"
+  if fetch "$RAW/$STUB" "$WORK/stub.md"; then
+    # @AI:INTENT 기존 CLAUDE.md가 있으면 덮기 전 백업 (어드민 겸용 기기 안전장치)
+    if [ -f "$CLAUDE_DIR/CLAUDE.md" ] && ! cmp -s "$WORK/stub.md" "$CLAUDE_DIR/CLAUDE.md"; then
+      cp "$CLAUDE_DIR/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md.bak"
+      warn "[note] existing CLAUDE.md backed up to CLAUDE.md.bak"
+    fi
+    cp "$WORK/stub.md" "$CLAUDE_DIR/CLAUDE.md"
+    ok "team CLAUDE.md placed ($STUB)"
+  else
+    warn "[warn] could not fetch $STUB — skipping CLAUDE.md"
+  fi
 fi
 
 # ---- 4. hooks (fetched to fixed location) ----
@@ -246,7 +254,11 @@ LAUNCHER="$HOME/Desktop/Zulgap Claude.command"
 
 # ---- 8. Done ----
 cyan ""
-if [ "$ROLE" = "dev" ]; then
+if [ "$ROLE" = "master" ]; then
+  cyan "=== 준비 완료 (master — 개인 설정 보존됨) ==="
+  echo "  플러그인·훅·제디만 등록됐습니다. CLAUDE.md는 건드리지 않았습니다."
+  echo "  터미널에서 claude 실행 → 팀 스킬(/시작·/start-dev 등) 사용 가능."
+elif [ "$ROLE" = "dev" ]; then
   cyan "=== Setup complete! How to start ==="
   echo "  1) Double-click 'Zulgap Claude.command' on your Desktop (or run 'claude' in Terminal)"
   echo "  2) First run: log in with the account the boss gave you"
