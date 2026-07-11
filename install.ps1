@@ -9,7 +9,9 @@
 
 # @AI:INTENT v1.18 역할 분기 — dev면 영어 지침(team-CLAUDE-en.md) + role 파일 기록(훅이 dev 가이드 fetch).
 #   param은 주석 뒤 첫 실행문이어야 함(PowerShell 문법). ValidateSet으로 오타 차단.
-param([ValidateSet('staff','dev')][string]$Role = 'staff')
+#   v1.20: role의 원천은 제디 토큰 JWT claim(훅이 매 세션 유도) — 이 인자는 토큰 없는 초기 폴백 + CLAUDE.md stub 선택용.
+#   master = 사장님(어드민 기기): CLAUDE.md 안 건드림 + 훅이 팀 가이드 주입 skip. 개인 설정과 공존.
+param([ValidateSet('staff','dev','master')][string]$Role = 'staff')
 
 $ErrorActionPreference = "Stop"
 Write-Host ""
@@ -106,11 +108,16 @@ New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
 $zulgapDirEarly = Join-Path $claudeDir "zulgap"
 New-Item -ItemType Directory -Force -Path $zulgapDirEarly | Out-Null
 Set-Content -Path (Join-Path $zulgapDirEarly "role") -Value $Role -Encoding Ascii -NoNewline
-$stubName = if ($Role -eq 'dev') { "team-CLAUDE-en.md" } else { "team-CLAUDE.md" }
-$src = Join-Path $PSScriptRoot $stubName
-if (Test-Path $src) {
-  Copy-Item $src (Join-Path $claudeDir "CLAUDE.md") -Force
-  Write-Host "[OK] 팀 지침(CLAUDE.md) 배치됨 ($stubName)" -ForegroundColor Green
+# @AI:CONSTRAINT master(어드민 기기)는 CLAUDE.md를 절대 덮지 않음 — 개인 마스터 설정 보존 (v1.20)
+if ($Role -eq 'master') {
+  Write-Host "[SKIP] master role — 개인 CLAUDE.md 보존 (팀 지침 미배치)" -ForegroundColor Yellow
+} else {
+  $stubName = if ($Role -eq 'dev') { "team-CLAUDE-en.md" } else { "team-CLAUDE.md" }
+  $src = Join-Path $PSScriptRoot $stubName
+  if (Test-Path $src) {
+    Copy-Item $src (Join-Path $claudeDir "CLAUDE.md") -Force
+    Write-Host "[OK] 팀 지침(CLAUDE.md) 배치됨 ($stubName)" -ForegroundColor Green
+  }
 }
 
 # 6. 줄갭 플러그인 자동 등록 (~/.claude/settings.json)

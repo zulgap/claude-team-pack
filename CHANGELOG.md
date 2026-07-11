@@ -10,6 +10,14 @@
 
 ---
 
+## v1.20 (2026-07-12) — role SSOT = 제디 토큰 (원격+installer · zip 변경 있음)
+**역할(master/dev/staff)의 단일 원천을 토큰 JWT claim으로 통일 (사장님 mandate "관리 SSOT = 토큰별 구분")**
+- 🔄 `hooks/team-guide-fetch.js`: 매 세션 제디 토큰(`~/.claude.json` → 데스크탑 config 폴백, Win/mac 양쪽) role claim 라이브 유도 — `admin|master`→master(**가이드 주입 skip**, 개인 컨텍스트 보존) / `dev|developer|engineer`→dev / 그 외(PM·MEMBER·USER)→staff. 토큰 없으면 role 파일 폴백 → staff. **토큰↔파일 불일치 시 토큰 우선** (역할 변경 = 토큰 재발급 1곳, drift 원천 제거).
+- 🔄 `install.ps1`·`install.sh`: `--role master` 추가 — **CLAUDE.md를 절대 덮지 않음**(개인 마스터 설정 보존, 어드민 기기용).
+- 실측 근거: 사장님 토큰 role=`ADMIN` / 발급 스크립트 role = `--role 인자 > 배정 role > 'USER'` → 기존 직원(PM/MEMBER) 자동 staff 매핑 = 회귀 0. 기존 설치 PC는 옛 훅 그대로라 이중 안전.
+- ⚠️ 운영 규칙: 개발자 토큰은 반드시 `issue-mcp-token.js --role dev`로 발급.
+- 📦 zip v1.20 재생성 필요 (install.ps1 + hooks/team-guide-fetch.js 변경분).
+
 ## v1.19 (2026-07-12) — macOS 설치기 (원격 전용 · zip 변경 없음)
 **`install.sh` — 맥 한 줄 설치 (Wave 1.5, 사장님 맥 어드민 겸용 + 인턴 맥 대비)**
 - 🆕 `install.sh`: `curl -fsSL .../install.sh | bash -s -- [--role dev]` — **로컬 파일 의존 0** (스텁·훅·브리지 전부 raw fetch, zip 불필요). install.ps1과 동일 계약: HTTPS insteadOf·플러그인 자동 등록(맵 형태)·훅 2종 멱등 등록·제디 토큰(브리지 고정 위치)·role 파일. 추가 안전장치: 기존 `~/.claude/CLAUDE.md` 덮기 전 `.bak` 백업(어드민 맥), 데스크탑 런처 `Zulgap Claude.command`.
