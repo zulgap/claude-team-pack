@@ -10,6 +10,12 @@
 
 ---
 
+## v1.21 (2026-07-14) — 스킬 패키징 프로토콜 v1 + 썸네일 1호 인증 (플러그인 전용 · zip 변경 없음)
+**멀티테넌트 제품화 PR-1 — 공유 스킬 표준 규격 신설 (JEDI Business OS 1단계)**
+- 🆕 `docs/skill-packaging-spec.md`: 스킬 3층 분리(본체/프리셋/연결) 정본 — 본체 테넌트 리터럴 0 하드리밋, frontmatter `tier`/`preset_slots`/`requires` 선언, 설치 인터뷰 규약(§3), 마켓 등록 심사 5항목(§4), shared/tenant-only 등급(§5). 앞으로 팀팩·마켓에 올라가는 공유 스킬은 이 규격 준수.
+- ✅ `skills/썸네일` **1호 인증** (스킬 자체는 PR #29에서 추가됨): 본체에서 채널·회사 리터럴 전부 제거(프리셋 참조로 치환) + frontmatter 3필드 선언 + 근거·실측 출처를 `PROVENANCE.md`로 분리. 동작 변경 0 — 프리셋(`presets/`) 값이 동일하게 주입됨.
+- 근거 spec: `2026-07-14-teampack-productization-skill-packaging.md` (PR-1/4). 직원 반영 = 앱 재시작 시 autoUpdate 자동.
+
 ## v1.20 (2026-07-12) — role SSOT = 제디 토큰 (원격+installer · zip 변경 있음)
 **역할(master/dev/staff)의 단일 원천을 토큰 JWT claim으로 통일 (사장님 mandate "관리 SSOT = 토큰별 구분")**
 - 🔄 `hooks/team-guide-fetch.js`: 매 세션 제디 토큰(`~/.claude.json` → 데스크탑 config 폴백, Win/mac 양쪽) role claim 라이브 유도 — `admin|master`→master(**가이드 주입 skip**, 개인 컨텍스트 보존) / `dev|developer|engineer`→dev / 그 외(PM·MEMBER·USER)→staff. 토큰 없으면 role 파일 폴백 → staff. **토큰↔파일 불일치 시 토큰 우선** (역할 변경 = 토큰 재발급 1곳, drift 원천 제거).
