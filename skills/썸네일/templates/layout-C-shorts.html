@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<!-- 레이아웃 C — 쇼츠 9:16. 실측: 가연 세로. 상단 1/3 센터 2~3줄 + (선택) 하단 자막바 -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+/* {{BASE_CSS}} */
+html, body { width: 1080px; height: 1920px; overflow: hidden; }
+.thumb { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: #111; }
+
+.scrim-top { height: 720px; }
+.scrim-bottom { height: 420px; }
+
+/* 제목: 상단 1/3, 가운데 정렬, 2~3줄. 세로라 크게 ≈ 104px */
+.title-box { position: absolute; left: 50px; right: 50px; top: 120px; text-align: center; }
+.title { font-size: 104px; letter-spacing: -3px; }
+.title .l2 { display: block; }
+
+/* 하단 자막(선택) — 쇼츠 특유의 자동자막 바 느낌 */
+.subtitle { position: absolute; left: 50px; right: 50px; bottom: 150px; text-align: center;
+  font-size: 58px; }
+.role-label { top: 40px; right: 40px; font-size: 48px; }
+</style>
+</head>
+<body>
+  <div class="thumb {{ACC_CLASS}}">
+    <img class="bg" src="{{background_url}}" alt="">
+    <div class="scrim-top"></div>
+    {{#if subtitle}}<div class="scrim-bottom"></div>{{/if}}
+    {{QUOTES}}
+    <div class="title-box"><div class="title" id="title">{{{title_html}}}</div></div>
+    {{#if subtitle}}<div class="subtitle">{{subtitle}}</div>{{/if}}
+    {{#if role}}<div class="role-label">({{role}})</div>{{/if}}
+    {{#if channel}}<div class="watermark" style="left:40px;right:auto;bottom:40px">{{channel}}</div>{{/if}}
+  </div>
+  <script>
+    (function () {
+      function fit() {
+        var el = document.getElementById('title'); if (!el) return;
+        var box = el.parentElement; var maxH = 620; var size = 104, floor = 60;
+        el.style.fontSize = size + 'px';
+        while ((el.scrollWidth > box.clientWidth || el.scrollHeight > maxH) && size > floor) {
+          size -= 3; el.style.fontSize = size + 'px';
+        }
+      }
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+      else window.addEventListener('load', fit);
+      setTimeout(fit, 400);
+    })();
+  </script>
+</body>
+</html>
