@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<!-- 레이아웃 A — 하단 2줄 임팩트 (기본). 실측: 한방언니 전부·엔노블 롱폼·가연 롱폼
+     @AI:DEPENDS card-renderer(Chromium)가 Google Fonts 웹폰트 로드 → 한글 Black 900 픽셀 정확 -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+/* {{BASE_CSS}} */
+html, body { width: 1280px; height: 720px; overflow: hidden; }
+.thumb { position: relative; width: 1280px; height: 720px; overflow: hidden; background: #111; }
+
+/* 하단 스크림: 2줄 텍스트 영역 대비 (실측 하단 약 42%) */
+.scrim-bottom { height: 360px; }
+
+/* 우측 진행자 얼굴 (선택) — 있으면 오른쪽 32%, 없으면 배경만 */
+.host { position: absolute; right: 0; top: 0; height: 100%; width: 34%;
+  object-fit: cover; object-position: top center; }
+.host-fade { position: absolute; right: 34%; top: 0; height: 100%; width: 90px;
+  background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 100%); } /* 필요시 경계 페이드 */
+
+/* 제목: 하단 2줄. 실측 = 프레임 높이 16~18% ≈ 116px */
+.title-box { position: absolute; left: 56px; right: 56px; bottom: 40px; }
+.title { font-size: 116px; }
+.title .l2 { display: block; }   /* 2줄 강제 분리 (윗줄 흰 / 아랫줄 강조) */
+
+/* 서브카피(선택): 제목 위 작은 맥락 자막 */
+.subtitle { position: absolute; left: 56px; right: 400px; }
+</style>
+</head>
+<body>
+  <div class="thumb {{ACC_CLASS}}">
+    <img class="bg" src="{{background_url}}" alt="">
+    {{#if host_url}}<img class="host" src="{{host_url}}" alt=""><div class="host-fade"></div>{{/if}}
+    <div class="scrim-bottom"></div>
+    {{QUOTES}}
+    {{#if subtitle}}<div class="subtitle" style="bottom:290px">{{subtitle}}</div>{{/if}}
+    <div class="title-box"><div class="title" id="title">{{{title_html}}}</div></div>
+    {{#if role}}<div class="role-label">({{role}})</div>{{/if}}
+    {{#if channel}}<div class="watermark">{{channel}}</div>{{/if}}
+  </div>
+  <script>
+    // @AI:INTENT auto-fit — 2줄 제목이 폭/높이 넘치면 폰트 축소. 폰트 로드 후 실행.
+    (function () {
+      function fit() {
+        var el = document.getElementById('title'); if (!el) return;
+        var box = el.parentElement;                 // title-box
+        var maxH = 340;                             // 하단 2줄 안전 높이
+        var size = 116, floor = 60;
+        el.style.fontSize = size + 'px';
+        while ((el.scrollWidth > box.clientWidth || el.scrollHeight > maxH) && size > floor) {
+          size -= 3; el.style.fontSize = size + 'px';
+        }
+      }
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+      else window.addEventListener('load', fit);
+      setTimeout(fit, 400);
+    })();
+  </script>
+</body>
+</html>
