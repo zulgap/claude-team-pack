@@ -137,7 +137,17 @@ try {
   if (-not ($s.PSObject.Properties.Name -contains 'enabledPlugins') -or $null -eq $s.enabledPlugins) {
     $s | Add-Member -NotePropertyName enabledPlugins -NotePropertyValue ([pscustomobject]@{}) -Force
   }
-  $s.enabledPlugins | Add-Member -NotePropertyName 'zulgap@zulgap-team-pack' -NotePropertyValue $true -Force
+  # @AI:INTENT v2.0 플러그인 3분리 — 신규 설치는 신 플러그인만 활성 (구 zulgap은 기존 PC 전환기 병존용).
+  #   role 분기: dev/master만 dev-pack. hook-doctor-v2와 동일 매핑 (hooks/hook-doctor-v2.js 동기 필수).
+  $s.enabledPlugins | Add-Member -NotePropertyName 'jedi-core@zulgap-team-pack' -NotePropertyValue $true -Force
+  $s.enabledPlugins | Add-Member -NotePropertyName 'zulgap-pack@zulgap-team-pack' -NotePropertyValue $true -Force
+  if ($Role -eq 'dev' -or $Role -eq 'master') {
+    $s.enabledPlugins | Add-Member -NotePropertyName 'dev-pack@zulgap-team-pack' -NotePropertyValue $true -Force
+  }
+  # 재실행(기존 PC에서 install.bat 재실행 = hook-doctor 실패 시 폴백 경로) — 구 플러그인 비활성 전환
+  if ($s.enabledPlugins.PSObject.Properties.Name -contains 'zulgap@zulgap-team-pack') {
+    $s.enabledPlugins.'zulgap@zulgap-team-pack' = $false
+  }
 
   # 6.5 안내문 원격 자동갱신 훅 (standalone SessionStart) — team-guide.md를 매 세션 GitHub에서 받아 주입
   # @AI:CONSTRAINT standalone 훅만 additionalContext 주입됨(#16538). 플러그인 번들 훅 금지 -> settings.json에 직접 등록.
@@ -179,6 +189,8 @@ try {
   }
 
   ($s | ConvertTo-Json -Depth 50) | Set-Content $settingsPath -Encoding UTF8
+  # 설치기가 이미 신 플러그인 구성을 써줬으므로 hook-doctor v2 재실행 불필요 — 플래그 기록
+  Set-Content -Path (Join-Path $zulgapDir ".hook-doctor-v2.done") -Value (Get-Date -Format o) -Encoding Ascii -NoNewline
   Write-Host "[OK] 줄갭 플러그인 자동 등록됨 (메뉴 안 건드려도 됨)" -ForegroundColor Green
 } catch {
   Write-Host "[경고] 플러그인 자동 등록 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red

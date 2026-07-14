@@ -10,6 +10,15 @@
 
 ---
 
+## v2.0 (2026-07-15) — 플러그인 3분리 (멀티테넌트 제품화 PR-3 · ★ zip 재생성·노션 첨부 교체 필요)
+**단일 플러그인 → jedi-core / zulgap-pack / dev-pack 분리 (JEDI Business OS 1단계, spec 2026-07-14-teampack-productization)**
+- 🆕 `plugins/jedi-core/` (공유 코어 — 시작·저장·이미지·키워드·인입·썸네일 + 노션·PPT·한글 MCP) / `plugins/zulgap-pack/` (줄갭 전용 — 검단가온보고서·노블냥·블로그*) / `plugins/dev-pack/` (start-dev·wrapup-dev). *블로그는 레포명 하드코딩 정화 후 core 승격 예정.
+- 🔄 구 `zulgap` 플러그인 = **전환기 병존** (manifest `skills` 필드가 신 경로 3곳을 가리킴 — 전환 안 된 PC도 스킬 계속 작동, fail-safe). 플러그인 스킬은 `플러그인명:스킬명` namespace라 이름 충돌 원천 불가(공식 문서 확인). 전원 전환 확인 후 다음 릴리스에서 구 정의 제거.
+- 🆕 `hooks/hook-doctor-v2.js`: 기존 직원 무재설치 전환 — enabledPlugins를 신 3플러그인으로 flip(role 분기: dev/master만 dev-pack, 토큰 JWT claim > role 파일 > staff — team-guide-fetch.js와 동일 매핑). 멱등 + fail-safe(실패 시 구 플러그인 그대로 = 스킬 정상). 채널 = team-guide.md·dev-guide-en.md 자가점검 v2 섹션(`.hook-doctor-v2.done` 플래그). ⚠️ master(사장님) PC는 가이드 주입 skip이라 수동 전환(설정 1줄 또는 install 재실행).
+- 🔄 `install.ps1`·`install.sh`: 신규 설치 = 신 플러그인만 활성 + role 분기(dev/master→dev-pack 추가) + 재실행 시 구 플러그인 비활성(hook-doctor 실패 PC 폴백 경로) + `.hook-doctor-v2.done` 선기록.
+- 롤백 = 이 repo git revert (플러그인 콘텐츠는 원격 pull — revert 커밋이 곧 전 직원 롤백). settings 롤백 = `zulgap@zulgap-team-pack: true` 1줄.
+- 📦 zip v2.0 재생성 필요 (install.ps1 변경). **③ 노션 첨부 교체는 사장님 수동.**
+
 ## v1.21 (2026-07-14) — 스킬 패키징 프로토콜 v1 + 썸네일 1호 인증 (플러그인 전용 · zip 변경 없음)
 **멀티테넌트 제품화 PR-1 — 공유 스킬 표준 규격 신설 (JEDI Business OS 1단계)**
 - 🆕 `docs/skill-packaging-spec.md`: 스킬 3층 분리(본체/프리셋/연결) 정본 — 본체 테넌트 리터럴 0 하드리밋, frontmatter `tier`/`preset_slots`/`requires` 선언, 설치 인터뷰 규약(§3), 마켓 등록 심사 5항목(§4), shared/tenant-only 등급(§5). 앞으로 팀팩·마켓에 올라가는 공유 스킬은 이 규격 준수.

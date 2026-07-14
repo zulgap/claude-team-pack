@@ -1,0 +1,8 @@
+{
+  "name": "zulgap-pack",
+  "description": "줄갭 전용 팩 (tenant-only) — 검단가온보고서·노블냥 + 블로그(프로토콜 준수 후 core 승격 예정)",
+  "author": {
+    "name": "ZULGAP"
+  },
+  "homepage": "https://github.com/zulgap/claude-team-pack"
+}

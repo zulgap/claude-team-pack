@@ -150,7 +150,12 @@ if (fs.existsSync(p)) {
 s.extraKnownMarketplaces = s.extraKnownMarketplaces || {};
 s.extraKnownMarketplaces['zulgap-team-pack'] = { source: { source: 'github', repo: 'zulgap/claude-team-pack' }, autoUpdate: true };
 s.enabledPlugins = s.enabledPlugins || {};
-s.enabledPlugins['zulgap@zulgap-team-pack'] = true;
+// v2.0 플러그인 3분리 — 신규 설치는 신 플러그인만 활성 (role 분기 = hook-doctor-v2.js와 동기 필수)
+s.enabledPlugins['jedi-core@zulgap-team-pack'] = true;
+s.enabledPlugins['zulgap-pack@zulgap-team-pack'] = true;
+const role = String(process.env.ZULGAP_ROLE || 'staff');
+if (role === 'dev' || role === 'master') s.enabledPlugins['dev-pack@zulgap-team-pack'] = true;
+if (Object.prototype.hasOwnProperty.call(s.enabledPlugins, 'zulgap@zulgap-team-pack')) s.enabledPlugins['zulgap@zulgap-team-pack'] = false;
 s.hooks = s.hooks || {};
 function hasCmd(groups, needle) {
   for (const g of [].concat(groups || [])) for (const h of [].concat((g && g.hooks) || [])) {
@@ -170,8 +175,10 @@ fs.writeFileSync(p, JSON.stringify(s, null, 2) + '\n');
 console.log('settings-merged');
 NODE_SETTINGS_EOF
 
-if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMPT="$HOOK_PROMPT" node "$WORK/merge-settings.js"; then
+if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMPT="$HOOK_PROMPT" ZULGAP_ROLE="$ROLE" node "$WORK/merge-settings.js"; then
   ok "Zulgap plugin auto-registered (settings.json)"
+  # 설치기가 이미 신 플러그인 구성을 써줬으므로 hook-doctor v2 재실행 불필요 — 플래그 기록
+  printf '%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$ZULGAP_DIR/.hook-doctor-v2.done"
 else
   fail "[warn] plugin auto-register failed — after launching claude run:"
   echo  "  /plugin marketplace add zulgap/claude-team-pack"

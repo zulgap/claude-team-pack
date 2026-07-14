@@ -32,7 +32,9 @@
 ### (참고) 자동 등록이 안 됐을 때 — 수동 등록
 ```
 /plugin marketplace add zulgap/claude-team-pack
-/plugin install zulgap@zulgap-team-pack
+/plugin install jedi-core@zulgap-team-pack
+/plugin install zulgap-pack@zulgap-team-pack
+/plugin install dev-pack@zulgap-team-pack   (개발자만)
 /reload-plugins
 ```
 
@@ -90,7 +92,7 @@ curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/instal
 2. 직원: **"줄갭 Claude" 재시작하면 자동으로 최신** — 재설치 불필요.
    - 원리: 매니페스트에 `version`을 두지 않아(커밋 SHA 기반) 커밋마다 새 버전으로 인식 + `autoUpdate=true`(install이 설정) → 세션 시작 시 자동 pull.
 
-새 스킬을 추가하려면 `skills/<이름>/SKILL.md` 폴더를 더하고 push 하면 됩니다. **`version` 필드는 다시 넣지 마세요** — 넣으면 그 값에 고정돼 직원 PC가 갱신을 못 받습니다(2026-07 사고 원인).
+새 스킬을 추가하려면 해당 팩의 `plugins/<팩>/skills/<이름>/SKILL.md` 폴더를 더하고 push 하면 됩니다 (공유 스킬=jedi-core·프로토콜 준수 / 줄갭 전용=zulgap-pack / 개발자=dev-pack). **`version` 필드는 다시 넣지 마세요** — 넣으면 그 값에 고정돼 직원 PC가 갱신을 못 받습니다(2026-07 사고 원인).
 
 > **기존 직원(이 fix 이전 설치)은 딱 1번 전환 스텝**: "줄갭 Claude" 재시작 → 그래도 새 스킬이 안 보이면 `/plugin marketplace update zulgap-team-pack` 한 줄 실행(또는 `install.bat` 재실행). 이 1회 이후로는 재시작만으로 항상 최신.
 
