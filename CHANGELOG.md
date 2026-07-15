@@ -10,6 +10,12 @@
 
 ---
 
+## v2.1 (2026-07-15) — `/스킬` 명령 신설 (플러그인 전용 · zip 변경 없음)
+**팀원이 지금 쓸 수 있는 스킬을 한눈에 + 즉시 실행 (jedi-core 코어 메타 스킬)**
+- 🆕 `plugins/jedi-core/skills/스킬`: `/스킬` 또는 "무슨 스킬 있어" → 이 PC에 설치된 줄갭 스킬 목록을 설명과 함께 카테고리로 보여주고, 이름·번호를 말하면 그 자리에서 바로 실행. 파일 스캔 없이 Claude Code가 주입하는 "사용 가능 스킬 목록"을 렌더 → **설치된 것 = 이 팀원 보유분**이라 테넌트·역할 자동 정합, 새 스킬이 배포되면 목록에 자동 표시.
+- 설명은 각 스킬 자체 description(SSOT)에서 → 본문 하드코딩 0(드리프트 방지). 본체 테넌트 리터럴 0(스킬 패키징 프로토콜 §1 준수) — 회사 전용 스킬은 실행 시점 목록에서 동적 배치.
+- 📦 zip 변경 없음(부트스트랩 5파일 무변경) — 원격 pull로 전 직원 자동 반영. spec `2026-07-15-teampack-skill-list-command`.
+
 ## v2.0 (2026-07-15) — 플러그인 3분리 (멀티테넌트 제품화 PR-3 · ★ zip 재생성·노션 첨부 교체 필요)
 **단일 플러그인 → jedi-core / zulgap-pack / dev-pack 분리 (JEDI Business OS 1단계, spec 2026-07-14-teampack-productization)**
 - 🆕 `plugins/jedi-core/` (공유 코어 — 시작·저장·이미지·키워드·인입·썸네일 + 노션·PPT·한글 MCP) / `plugins/zulgap-pack/` (줄갭 전용 — 검단가온보고서·노블냥·블로그*) / `plugins/dev-pack/` (start-dev·wrapup-dev). *블로그는 레포명 하드코딩 정화 후 core 승격 예정.
