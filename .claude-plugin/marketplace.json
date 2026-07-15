@@ -5,8 +5,35 @@
   },
   "plugins": [
     {
+      "name": "jedi-core",
+      "description": "제디 공용 코어 — 시작·저장·이미지·키워드·인입·썸네일 스킬 + 노션·PPT·한글 MCP",
+      "source": {
+        "source": "github",
+        "repo": "zulgap/claude-team-pack",
+        "path": "plugins/jedi-core"
+      }
+    },
+    {
+      "name": "zulgap-pack",
+      "description": "줄갭 전용 팩 (tenant-only) — 검단가온보고서·노블냥·블로그",
+      "source": {
+        "source": "github",
+        "repo": "zulgap/claude-team-pack",
+        "path": "plugins/zulgap-pack"
+      }
+    },
+    {
+      "name": "dev-pack",
+      "description": "개발자 팩 — start-dev·wrapup-dev (dev/master role 전용)",
+      "source": {
+        "source": "github",
+        "repo": "zulgap/claude-team-pack",
+        "path": "plugins/dev-pack"
+      }
+    },
+    {
       "name": "zulgap",
-      "description": "줄갭 팀원용 콘텐츠 작업 도구 — 시작·저장·블로그·인입·이미지·검단가온보고서·노블냥 + dev(start-dev·wrapup-dev) 스킬 + 노션·PPT·한글·제디 MCP",
+      "description": "[전환기 병존 — 다음 릴리스에서 제거] 구 단일 플러그인. hook-doctor v2가 신 3플러그인으로 전환",
       "source": {
         "source": "github",
         "repo": "zulgap/claude-team-pack",
