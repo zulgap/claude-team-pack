@@ -188,6 +188,23 @@ try {
     $s.hooks.UserPromptSubmit = @($s.hooks.UserPromptSubmit) + $pcEntry
   }
 
+  # 6.7 PreCompact 훅 (standalone) — 컨텍스트 압축 직전 자동 핸드오프 스냅샷 + 배너
+  # @AI:CONSTRAINT Desktop Code탭은 #27527로 훅 미발화 → CLI/터미널 사용분에만 작동(픽스되면 자동 개통). 실패해도 조용히 통과.
+  #   Desktop 사용자의 핸드오프는 /저장 스킬(핸드오프 섹션)이 담당 — 스킬은 그 탭에서도 돎.
+  $hoSrc = Join-Path $PSScriptRoot "hooks\precompact-handoff.js"
+  $hoDst = Join-Path $zulgapDir "precompact-handoff.js"
+  if (Test-Path $hoSrc) { Copy-Item $hoSrc $hoDst -Force }
+  $hoCmd = "node `"$hoDst`""
+  if (-not ($s.hooks.PSObject.Properties.Name -contains 'PreCompact') -or $null -eq $s.hooks.PreCompact) {
+    $s.hooks | Add-Member -NotePropertyName PreCompact -NotePropertyValue @() -Force
+  }
+  $hoAlready = $false
+  foreach ($g in @($s.hooks.PreCompact)) { foreach ($h in @($g.hooks)) { if ($h.command -like '*precompact-handoff.js*') { $hoAlready = $true } } }
+  if (-not $hoAlready) {
+    $hoEntry = [pscustomobject]@{ matcher = ''; hooks = @([pscustomobject]@{ type = 'command'; command = $hoCmd; timeout = 15 }) }
+    $s.hooks.PreCompact = @($s.hooks.PreCompact) + $hoEntry
+  }
+
   ($s | ConvertTo-Json -Depth 50) | Set-Content $settingsPath -Encoding UTF8
   # 설치기가 이미 신 플러그인 구성을 써줬으므로 hook-doctor v2 재실행 불필요 — 플래그 기록
   Set-Content -Path (Join-Path $zulgapDir ".hook-doctor-v2.done") -Value (Get-Date -Format o) -Encoding Ascii -NoNewline
