@@ -10,6 +10,13 @@
 
 ---
 
+## v2.3 (2026-07-17) — 맥 더블클릭 설치파일 + 설치 시점 role 토큰 유도 (설치기 전용 · zip 변경 없음)
+**"설치파일이 왜 역할별로 나뉘나?" (사장님) → 안 나뉘게 통일. role의 원천 = 토큰(v1.20 독트린)을 설치 시점까지 확장.**
+- 🆕 `install.command`: 맥 더블클릭 설치파일 1개 (윈도우 install.bat 대응). install.sh 원격 실행 1줄 래퍼 — 로직 추가 금지. Gatekeeper는 우클릭→열기 1회. `.gitattributes`에 `*.command eol=lf` (CRLF shebang 방지, *.sh와 동일 사유).
+- 🔄 `install.sh` §2.5 / `install.ps1` §4.5: **JEDI_TOKEN을 role 분기 전에 선입력** → JWT claim에서 staff/dev/master 자동 유도해 `--role`/`-Role` 인자를 덮어씀 (매핑 = hooks/team-guide-fetch.js와 동일 — admin/master→master·dev/developer/engineer→dev·그 외→staff, **3곳 동기 필수**). 합성 JWT 3종(ADMIN/dev/PM) 양 OS 실측 PASS. 토큰 없으면 인자 폴백(기존 동작 그대로 — 기존 직원 회귀 0).
+- 효과: 관리자 맥/윈도우 설치도 별도 파일 불필요 — install.command / install.bat 하나로 전 역할 커버 (master는 CLAUDE.md 보존 자동 적용). `install-dev.bat`은 토큰 없는 원격 개발자용 폴백으로 존치.
+- 📦 zip 변경 없음(신규 설치부터 적용, 기존 설치 PC 무영향). 롤백 = git revert.
+
 ## v2.2 (2026-07-16) — /저장 프롬프트 수집 + 핸드오프 (데이터 해자 팀원 개통 · 플러그인 전용 · zip 변경 없음)
 **진단: 팀원 프롬프트가 `prompt_log`에 0건 = 표면 문제.** 팀원 주력 = Claude Code 데스크탑(Code탭)인데 [GitHub #27527](https://github.com/anthropics/claude-code/issues/27527)로 settings.json 훅이 전부 미발화 → `prompt-capture.js`(UserPromptSubmit 훅)가 안 돎. 스킬·bash는 그 탭에서도 정상 작동하므로 **캡처를 훅 → /저장 스킬로 이동해 우회**.
 - 🆕 `plugins/jedi-core/skills/저장/collect-prompts.js`: /저장 실행 시 세션 프롬프트를 결정론 추출(`CLAUDE_CODE_SESSION_ID` env → transcript jsonl) → `prompt_log`로 전송(기존 `/mcp/ext/prompt-log` 재사용). turn_uuid 멱등 = 훅과 중복 0(실측: 훅 잡은 것과 turn_uuid 정확히 일치 → 재적재 0). 실행자 토큰 → 그 팀원 테넌트 + `is_owner=false`. 토큰없음/실패 시 조용히 skip.

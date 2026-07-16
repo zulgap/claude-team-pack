@@ -63,26 +63,30 @@
 | 그 외 (`PM`/`MEMBER`/`USER`…) | **staff** | 기존 한국어 가이드 (기존 직원 자동 매핑) |
 
 - **역할 변경 = 토큰 재발급 1곳** (`issue-mcp-token.js --role dev`) — 다음 세션부터 자동 반영. role 파일은 토큰 없는 설치 초기의 폴백일 뿐.
+- **v2.3~: 설치 시점에도 토큰이 role을 결정** — 설치 중 붙여넣은 JEDI_TOKEN의 claim으로 staff/dev/master가 자동 유도되어 `--role`/`-Role` 인자를 덮어씁니다. **설치파일이 역할별로 나뉘지 않는 이유** (인자는 토큰 없이 설치할 때의 폴백일 뿐).
 - ⚠️ 개발자 토큰은 반드시 `--role dev`로 발급할 것 (안 주면 배정 role(PM/MEMBER)이 박혀 staff로 매핑됨).
 - 이 매핑은 안내문/워크플로우 선택용 — 데이터 권한은 종전대로 서버가 토큰을 검증해 집행.
 
 ---
 
-## 🍎 macOS 설치 (v1.19~) — zip 불필요, 터미널 한 줄
+## 🍎 macOS 설치 (v1.19~) — 더블클릭 1개 파일 (역할은 토큰이 자동 결정)
 
-필요 파일을 전부 GitHub에서 받아오므로 zip이 필요 없습니다. 터미널(Terminal)에 한 줄:
+**방법 A (권장, 더블클릭)**: [`install.command`](https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.command) 내려받아 더블클릭. 역할(직원/개발자/관리자)은 설치 중 붙여넣는 **제디 토큰이 자동 결정**하므로 파일은 이거 하나입니다.
+> Gatekeeper가 "확인되지 않은 개발자" 경고를 띄우면: 파일 **우클릭 → 열기(Open) → 열기** 한 번만.
+
+**방법 B (터미널 한 줄)**:
 
 ```bash
-# 직원(staff)
 curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash
 
-# 개발자(dev, 영어 모드)
+# 토큰 없이 특정 역할로 설치할 때만 (폴백): --role dev / --role master
 curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash -s -- --role dev
 ```
 
-하는 일은 Windows판과 동일: git/node/uv(Homebrew 필요 시) + Claude Code + 플러그인 자동 등록 + 훅 2종 + 제디 토큰(선택) + 바탕화면 `Zulgap Claude.command`. 기존 `~/.claude/CLAUDE.md`가 있으면 덮기 전 `.bak` 백업(어드민 맥 안전장치).
+하는 일은 Windows판과 동일: git/node/uv(Homebrew 필요 시) + Claude Code + 플러그인 자동 등록 + 훅 2종 + 제디 토큰(선택) + 바탕화면 `Zulgap Claude.command`. 기존 `~/.claude/CLAUDE.md`가 있으면 덮기 전 `.bak` 백업 — master(관리자 토큰)면 아예 안 건드림.
 
 > Homebrew가 없고 git/node도 없는 새 맥이면 먼저 https://brew.sh 한 줄 설치 후 재실행.
+> 어드민 맥: 토큰은 **기존 기기 것을 복사** (재발급 금지 — 같은 actor·tenant 재발급은 기존 기기 토큰을 폐기). 관리자 개인 환경(~/.claude 스킬·docs·specs)은 별도로 `zulgap/claude-config` clone.
 
 ---
 

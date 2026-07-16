@@ -104,6 +104,39 @@ if [ -x "$CLAUDE_EXE" ] && ! grep -qs '\.local/bin' "$ZSHRC" 2>/dev/null; then
 fi
 { command -v claude >/dev/null 2>&1 || [ -x "$CLAUDE_EXE" ]; } && ok "Claude Code" || warn "[warn] claude not found yet — restart Terminal after install"
 
+# ---- 2.5. Jedi token (asked EARLY — role은 토큰 claim이 SSOT라 role 분기 전에 받는다, v2.3) ----
+# @AI:INTENT v1.20 "role의 원천 = 토큰"을 설치 시점까지 확장 — 토큰 있으면 --role 인자를 덮어써
+#   설치파일 1개로 staff/dev/master 전부 커버 (훅 team-guide-fetch.js와 동일 매핑, 동기 필수).
+cyan ""
+cyan "Do you have a personal Jedi token (JEDI_TOKEN)?"
+echo  "  - Paste the one-line token from the boss. No token? Just press Enter (re-run installer later)."
+JEDI_TOKEN=""
+if [ -t 0 ]; then
+  printf 'JEDI_TOKEN: '; IFS= read -r JEDI_TOKEN || JEDI_TOKEN=""
+elif [ -r /dev/tty ]; then
+  printf 'JEDI_TOKEN: ' > /dev/tty; IFS= read -r JEDI_TOKEN < /dev/tty || JEDI_TOKEN=""
+else
+  warn "[skip] no interactive terminal — Jedi setup skipped (re-run installer in Terminal to add it)"
+fi
+JEDI_TOKEN="$(printf '%s' "$JEDI_TOKEN" | tr -d '[:space:]')"
+
+if [ -n "$JEDI_TOKEN" ]; then
+  TOKEN_ROLE="$(JEDI_TOKEN="$JEDI_TOKEN" node -e '
+try {
+  const seg = (process.env.JEDI_TOKEN || "").split(".")[1] || "";
+  const b = Buffer.from(seg.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+  const r = String((JSON.parse(b) || {}).role || "").toLowerCase();
+  if (r === "admin" || r === "master") console.log("master");
+  else if (r === "dev" || r === "developer" || r === "engineer") console.log("dev");
+  else if (r) console.log("staff");
+} catch (e) {}
+' 2>/dev/null)"
+  if [ -n "$TOKEN_ROLE" ] && [ "$TOKEN_ROLE" != "$ROLE" ]; then
+    warn "[role] token claim → $TOKEN_ROLE (overrides --role $ROLE)"
+    ROLE="$TOKEN_ROLE"
+  fi
+fi
+
 # ---- 3. role file + CLAUDE.md stub (fetched — no local files in curl mode) ----
 CLAUDE_DIR="$HOME/.claude"
 ZULGAP_DIR="$CLAUDE_DIR/zulgap"
@@ -193,20 +226,7 @@ else
   echo  "  /plugin install zulgap@zulgap-team-pack"
 fi
 
-# ---- 6. Jedi (company data) — optional, personal token only ----
-cyan ""
-cyan "Do you have a personal Jedi token (JEDI_TOKEN)?"
-echo  "  - Paste the one-line token from the boss. No token? Just press Enter (re-run installer later)."
-JEDI_TOKEN=""
-if [ -t 0 ]; then
-  printf 'JEDI_TOKEN: '; IFS= read -r JEDI_TOKEN || JEDI_TOKEN=""
-elif [ -r /dev/tty ]; then
-  printf 'JEDI_TOKEN: ' > /dev/tty; IFS= read -r JEDI_TOKEN < /dev/tty || JEDI_TOKEN=""
-else
-  warn "[skip] no interactive terminal — Jedi setup skipped (re-run installer in Terminal to add it)"
-fi
-JEDI_TOKEN="$(printf '%s' "$JEDI_TOKEN" | tr -d '[:space:]')"
-
+# ---- 6. Jedi (company data) — optional, token was collected at step 2.5 ----
 if [ -n "$JEDI_TOKEN" ]; then
   # bridge를 고정 위치에 설치 (zip 폴더 이동으로 경로 깨짐 방지 — Windows판과 동일 설계)
   BRIDGE_DIR="$ZULGAP_DIR/mcp-bridge"

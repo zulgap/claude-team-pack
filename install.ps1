@@ -101,6 +101,31 @@ if (Test-Path $claudeExe) {
 Update-Path
 if ((Test-Path $claudeExe) -and ($env:Path -notlike "*$claudeBin*")) { $env:Path = "$env:Path;$claudeBin" }
 
+# 4.5. 제디 토큰 선입력 — role은 토큰 claim이 SSOT라 role 분기 전에 받는다 (v2.3)
+# @AI:INTENT v1.20 "role의 원천 = 토큰"을 설치 시점까지 확장 — 토큰 있으면 -Role 인자를 덮어써
+#   설치파일 1개로 staff/dev/master 전부 커버 (훅 team-guide-fetch.js·install.sh 2.5와 동일 매핑, 3곳 동기 필수).
+Write-Host ""
+Write-Host "제디(회사 데이터) 연결용 개인 토큰이 있나요?" -ForegroundColor Cyan
+Write-Host "  - 사장님이 발급해준 'JEDI_TOKEN' 한 줄을 붙여넣으세요 (없으면 그냥 Enter - 나중에 다시 실행하면 됨)."
+$jediToken = Read-Host "JEDI_TOKEN"
+if ($jediToken) { $jediToken = $jediToken.Trim() }
+if ($jediToken -and $jediToken.Length -gt 0) {
+  try {
+    $seg = $jediToken.Split('.')[1].Replace('-', '+').Replace('_', '/')
+    switch ($seg.Length % 4) { 2 { $seg += '==' } 3 { $seg += '=' } }
+    $claims = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($seg)) | ConvertFrom-Json
+    $r = ([string]$claims.role).ToLower()
+    $tokenRole = $null
+    if ($r -in @('admin', 'master')) { $tokenRole = 'master' }
+    elseif ($r -in @('dev', 'developer', 'engineer')) { $tokenRole = 'dev' }
+    elseif ($r) { $tokenRole = 'staff' }
+    if ($tokenRole -and $tokenRole -ne $Role) {
+      Write-Host "[role] 토큰 claim → $tokenRole (-Role $Role 대체)" -ForegroundColor Yellow
+      $Role = $tokenRole
+    }
+  } catch { Write-Host "[warn] 토큰 role 해석 실패 — -Role 인자($Role) 유지" -ForegroundColor Yellow }
+}
+
 # 5. 팀 지침(CLAUDE.md) 배치 + 역할(role) 기록
 $claudeDir = "$env:USERPROFILE\.claude"
 New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
@@ -236,14 +261,9 @@ try {
   Write-Host "[참고] 바로가기 생성은 건너뜀 (PowerShell에 claude 입력해도 됩니다)" -ForegroundColor Yellow
 }
 
-# 8. 제디(회사 데이터) 연결 - 개인 토큰 받은 직원만 (없으면 아무것도 안 함 = 기존 도구 100% 안전)
+# 8. 제디(회사 데이터) 연결 - 토큰은 4.5에서 선입력됨 (없으면 아무것도 안 함 = 기존 도구 100% 안전)
 # @AI:CONSTRAINT 토큰 있을 때만 등록. 토큰 없는 직원은 제디 항목 자체가 안 생겨 노션/PPT/한글에 영향 0.
-Write-Host ""
-Write-Host "제디(회사 데이터) 연결용 개인 토큰이 있나요?" -ForegroundColor Cyan
-Write-Host "  - 사장님이 발급해준 'JEDI_TOKEN' 한 줄을 붙여넣으세요 (없으면 그냥 Enter - 나중에 다시 실행하면 됨)."
-$jediToken = Read-Host "JEDI_TOKEN"
-if ($jediToken -and $jediToken.Trim().Length -gt 0) {
-  $jediToken = $jediToken.Trim()
+if ($jediToken -and $jediToken.Length -gt 0) {
   # @AI:INTENT 브리지를 zip 폴더가 아닌 고정 위치(~/.claude/zulgap/mcp-bridge)에 설치.
   #   직원이 zip 폴더를 옮기거나 지워도 ~/.claude.json의 브리지 경로가 안 깨짐
   #   (2026-07 신나래 -32000 = zip 폴더 이동으로 경로 깨짐 근본 차단).

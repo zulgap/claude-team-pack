@@ -2,3 +2,5 @@
 *.bat text eol=crlf
 # install.sh must be LF (CRLF shebang = /bin/bash^M bad interpreter on macOS)
 *.sh text eol=lf
+# .command (macOS double-click) is bash too — same LF rule
+*.command text eol=lf
