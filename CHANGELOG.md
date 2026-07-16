@@ -15,6 +15,7 @@
 - 🆕 `install.command`: 맥 더블클릭 설치파일 1개 (윈도우 install.bat 대응). install.sh 원격 실행 1줄 래퍼 — 로직 추가 금지. Gatekeeper는 우클릭→열기 1회. `.gitattributes`에 `*.command eol=lf` (CRLF shebang 방지, *.sh와 동일 사유).
 - 🔄 `install.sh` §2.5 / `install.ps1` §4.5: **JEDI_TOKEN을 role 분기 전에 선입력** → JWT claim에서 staff/dev/master 자동 유도해 `--role`/`-Role` 인자를 덮어씀 (매핑 = hooks/team-guide-fetch.js와 동일 — admin/master→master·dev/developer/engineer→dev·그 외→staff, **3곳 동기 필수**). 합성 JWT 3종(ADMIN/dev/PM) 양 OS 실측 PASS. 토큰 없으면 인자 폴백(기존 동작 그대로 — 기존 직원 회귀 0).
 - 효과: 관리자 맥/윈도우 설치도 별도 파일 불필요 — install.command / install.bat 하나로 전 역할 커버 (master는 CLAUDE.md 보존 자동 적용). `install-dev.bat`은 토큰 없는 원격 개발자용 폴백으로 존치.
+- ⚠️ **macOS 15(Sequoia)+ Gatekeeper 실측 (2026-07-17 사장님 맥)**: "우클릭→열기" 우회 폐지 — .command 파일 경로는 시스템 설정→개인정보 보호 및 보안→"그래도 열기" 필요. **맥 1순위 안내 = 터미널 한 줄(curl | bash, 차단 없음)**, zip 파일은 방법 B로 강등 (README·노션 팀원용/관리자용 페이지 동기 완료).
 - 📦 zip 변경 없음(신규 설치부터 적용, 기존 설치 PC 무영향). 롤백 = git revert.
 
 ## v2.2 (2026-07-16) — /저장 프롬프트 수집 + 핸드오프 (데이터 해자 팀원 개통 · 플러그인 전용 · zip 변경 없음)

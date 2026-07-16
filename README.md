@@ -71,10 +71,7 @@
 
 ## 🍎 macOS 설치 (v1.19~) — 더블클릭 1개 파일 (역할은 토큰이 자동 결정)
 
-**방법 A (권장, 더블클릭)**: [`install.command`](https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.command) 내려받아 더블클릭. 역할(직원/개발자/관리자)은 설치 중 붙여넣는 **제디 토큰이 자동 결정**하므로 파일은 이거 하나입니다.
-> Gatekeeper가 "확인되지 않은 개발자" 경고를 띄우면: 파일 **우클릭 → 열기(Open) → 열기** 한 번만.
-
-**방법 B (터미널 한 줄)**:
+**방법 A (권장, 터미널 한 줄)** — Gatekeeper 차단 자체가 없어 가장 확실:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash
@@ -82,6 +79,11 @@ curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/instal
 # 토큰 없이 특정 역할로 설치할 때만 (폴백): --role dev / --role master
 curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash -s -- --role dev
 ```
+
+역할(직원/개발자/관리자)은 설치 중 붙여넣는 **제디 토큰이 자동 결정**합니다.
+
+**방법 B (파일 더블클릭)**: [Release의 zip](https://github.com/zulgap/claude-team-pack/releases/latest) 내려받아 압축 해제 → `install.command` 더블클릭.
+> ⚠️ **macOS 15(Sequoia)+는 "우클릭→열기" Gatekeeper 우회가 폐지됨** (2026-07-17 실측). 차단되면: 더블클릭(경고 "완료") → **시스템 설정 → 개인정보 보호 및 보안 → 맨 아래 "그래도 열기"** → 암호 입력. 번거로우면 방법 A.
 
 하는 일은 Windows판과 동일: git/node/uv(Homebrew 필요 시) + Claude Code + 플러그인 자동 등록 + 훅 2종 + 제디 토큰(선택) + 바탕화면 `Zulgap Claude.command`. 기존 `~/.claude/CLAUDE.md`가 있으면 덮기 전 `.bak` 백업 — master(관리자 토큰)면 아예 안 건드림.
 
