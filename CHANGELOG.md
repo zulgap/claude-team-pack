@@ -10,6 +10,14 @@
 
 ---
 
+## v2.2 (2026-07-16) — /저장 프롬프트 수집 + 핸드오프 (데이터 해자 팀원 개통 · 플러그인 전용 · zip 변경 없음)
+**진단: 팀원 프롬프트가 `prompt_log`에 0건 = 표면 문제.** 팀원 주력 = Claude Code 데스크탑(Code탭)인데 [GitHub #27527](https://github.com/anthropics/claude-code/issues/27527)로 settings.json 훅이 전부 미발화 → `prompt-capture.js`(UserPromptSubmit 훅)가 안 돎. 스킬·bash는 그 탭에서도 정상 작동하므로 **캡처를 훅 → /저장 스킬로 이동해 우회**.
+- 🆕 `plugins/jedi-core/skills/저장/collect-prompts.js`: /저장 실행 시 세션 프롬프트를 결정론 추출(`CLAUDE_CODE_SESSION_ID` env → transcript jsonl) → `prompt_log`로 전송(기존 `/mcp/ext/prompt-log` 재사용). turn_uuid 멱등 = 훅과 중복 0(실측: 훅 잡은 것과 turn_uuid 정확히 일치 → 재적재 0). 실행자 토큰 → 그 팀원 테넌트 + `is_owner=false`. 토큰없음/실패 시 조용히 skip.
+- 🔄 `plugins/jedi-core/skills/저장/SKILL.md`: ① **0단계 프롬프트 수집**(저널 여부 무관 항상 실행) ② **핸드오프 프롬퍼 섹션**(작업 미완료 시 `~/.claude/specs/`에 다음 세션 진입점 5블록 작성) 추가.
+- 🆕 `hooks/precompact-handoff.js` + install.ps1 §6.7 / install.sh PreCompact 등록: 컨텍스트 압축 직전 자동 핸드오프 스냅샷 + 터미널 배너. ⚠️ **Desktop Code탭은 #27527로 미발화** — CLI/터미널 사용분에만 작동(버그 픽스되면 자동 개통). Desktop 핸드오프의 실질 담당은 /저장 스킬 핸드오프 섹션(스킬이라 그 탭에서도 돎).
+- **한계(운영 지침 필요)**: 수집은 팀원이 /저장을 돌려야 발화(Desktop은 자동 훅이 다 죽어 자동 발화 불가). "세션 끝 /저장"을 지침화 권장.
+- 📦 zip 변경 없음(플러그인·훅은 원격 pull 자동). PreCompact 훅만 재설치 필요(단 Desktop 미발화라 급하지 않음). 롤백 = git revert.
+
 ## v2.1 (2026-07-15) — `/스킬` 명령 신설 (플러그인 전용 · zip 변경 없음)
 **팀원이 지금 쓸 수 있는 스킬을 한눈에 + 즉시 실행 (jedi-core 코어 메타 스킬)**
 - 🆕 `plugins/jedi-core/skills/스킬`: `/스킬` 또는 "무슨 스킬 있어" → 이 PC에 설치된 줄갭 스킬 목록을 설명과 함께 카테고리로 보여주고, 이름·번호를 말하면 그 자리에서 바로 실행. 파일 스캔 없이 Claude Code가 주입하는 "사용 가능 스킬 목록"을 렌더 → **설치된 것 = 이 팀원 보유분**이라 테넌트·역할 자동 정합, 새 스킬이 배포되면 목록에 자동 표시.
