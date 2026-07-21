@@ -10,6 +10,16 @@
 
 ---
 
+## v2.4 (2026-07-22) — 플러그인 '실물 설치' 누락 봉합 + verify-then-flip (★ zip 재생성 필요)
+**진단: `enabledPlugins`에 true를 써도 플러그인은 설치되지 않는다. 설치 코드가 레포 어디에도 없었다.**
+Claude Code 플러그인에는 대장이 둘이고 서로를 안 채운다 — ① 활성화 = `settings.json` `enabledPlugins` / ② 설치 = `~/.claude/plugins/installed_plugins.json` + `plugins/cache/`(=`claude plugin install`만 채움). **미설치 플러그인이 enabled면 에러 없이 조용히 무시**된다. 그런데 `install.ps1` §6 · `install.sh` · `hooks/hook-doctor-v2.js` 셋 다 ①만 쓰고 ②를 채우는 코드가 없었다.
+- 🐛 **실사고 (2026-07-21 사장님 PC)**: 신 3플러그인 `enabledPlugins` 3줄 true + 마켓플레이스 clone 최신인데 `installed_plugins.json` zulgap 0건 → **스킬 12개 전부 미표시**. `claude plugin install` 3회로 복구(멱등·2초·exit 0 실측).
+- 🚨 **잠재 사고 (이번에 막은 것)**: 세 경로 모두 구 `zulgap`을 `false`로 내리면서 신 3개는 설치하지 않았다. 구 `zulgap` manifest의 `skills` 필드가 신 3경로를 가리키는 **병존 설계 = 스킬이 실제로 뜨는 유일한 경로**이므로, 구를 끄는 순간 미설치 PC는 **스킬 0개**가 된다. hook-doctor-v2 주석이 표방한 "실패 시 구 플러그인 그대로 = 스킬 정상" fail-safe는 훅 자신이 구를 끄기 때문에 **작동하지 않았다**.
+- 🔄 `install.ps1` §6.8/6.9 · `install.sh` §5.8/5.9 · `hooks/hook-doctor-v2.js`: **실물 설치(`claude plugin install <p>@zulgap-team-pack --scope user`) 호출 + verify-then-flip** — 신 플러그인 설치가 **전부 성공한 뒤에만** 구 `zulgap`을 비활성. 실패 시 구는 켜진 채 유지(스킬 계속 작동) + `.hook-doctor-v2.done` 플래그 미기록 → 다음 세션 자동 재시도. role 분기(dev/master만 dev-pack)는 3곳 동기 유지.
+- 🔄 `hook-doctor-v2.js`: ① '전환 완료' 판정에 **실물 설치 여부(`isInstalled`) 포함** — 활성화만 보면 미설치를 완료로 오독해 영구히 스킬 0개 ② `git insteadOf` 이식(설치가 SSH로 붙는 [#47088] 예방 — `install.ps1` §3.5/`install.sh`엔 있었으나 훅엔 없었음. 사장님 PC 첫 install이 `Permission denied (publickey)`로 실패해 실증) ③ 자체 타임아웃 8초 → 210초(clone 포함).
+- ✅ **검증**: 격리 HOME 2케이스 6/6 PASS(설치됨→flip / 설치실패→구 유지·플래그 미기록·exit 0). **mutation**: `if (installOk)` 가드를 제거하면 케이스 2가 정확히 FAIL(`구 zulgap=false`) — 테스트가 그 가드를 실제로 잡음을 실증. `install.sh` flip 블록은 키 있음→false·키 없음(신규 PC)→무변경 격리 검증.
+- 📦 **zip 재생성 필요** (`install.ps1`·`install.sh` = 부트스트랩 파일). 기존 설치 PC는 훅 원격 pull로 자동 반영. 롤백 = git revert.
+
 ## v2.3 (2026-07-17) — 맥 더블클릭 설치파일 + 설치 시점 role 토큰 유도 (설치기 전용 · zip 변경 없음)
 **"설치파일이 왜 역할별로 나뉘나?" (사장님) → 안 나뉘게 통일. role의 원천 = 토큰(v1.20 독트린)을 설치 시점까지 확장.**
 - 🆕 `install.command`: 맥 더블클릭 설치파일 1개 (윈도우 install.bat 대응). install.sh 원격 실행 1줄 래퍼 — 로직 추가 금지. Gatekeeper는 우클릭→열기 1회. `.gitattributes`에 `*.command eol=lf` (CRLF shebang 방지, *.sh와 동일 사유).
