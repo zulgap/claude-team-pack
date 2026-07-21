@@ -191,7 +191,8 @@ s.enabledPlugins['jedi-core@zulgap-team-pack'] = true;
 s.enabledPlugins['zulgap-pack@zulgap-team-pack'] = true;
 const role = String(process.env.ZULGAP_ROLE || 'staff');
 if (role === 'dev' || role === 'master') s.enabledPlugins['dev-pack@zulgap-team-pack'] = true;
-if (Object.prototype.hasOwnProperty.call(s.enabledPlugins, 'zulgap@zulgap-team-pack')) s.enabledPlugins['zulgap@zulgap-team-pack'] = false;
+// @AI:FRAGILE 구 zulgap 비활성은 여기서 하지 않는다 — 신 플러그인 '실물 설치' 성공 후에만 (verify-then-flip, 아래 5.8).
+//   먼저 끄고 나중에 설치하면 설치 실패 PC는 구·신이 동시에 죽어 스킬 0개가 된다 (2026-07-21 실사고 클래스).
 s.hooks = s.hooks || {};
 function hasCmd(groups, needle) {
   for (const g of [].concat(groups || [])) for (const h of [].concat((g && g.hooks) || [])) {
@@ -218,12 +219,58 @@ NODE_SETTINGS_EOF
 
 if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMPT="$HOOK_PROMPT" HOOK_HANDOFF="$HOOK_HANDOFF" ZULGAP_ROLE="$ROLE" node "$WORK/merge-settings.js"; then
   ok "Zulgap plugin auto-registered (settings.json)"
-  # 설치기가 이미 신 플러그인 구성을 써줬으므로 hook-doctor v2 재실행 불필요 — 플래그 기록
-  printf '%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$ZULGAP_DIR/.hook-doctor-v2.done"
+
+  # ---- 5.8 plugin '실물' 설치 (★ 이게 빠지면 스킬이 안 뜬다) ----
+  # @AI:CONSTRAINT Claude Code 플러그인은 대장이 둘이고 서로를 안 채운다:
+  #   ① 활성화 = settings.json enabledPlugins (위 merge-settings.js까지)
+  #   ② 설치   = ~/.claude/plugins/installed_plugins.json + plugins/cache/  <- `claude plugin install`만 채움
+  #   enabledPlugins에 true를 써도 자동 설치되지 않고, 미설치 플러그인은 '조용히 무시'된다(에러 0).
+  # @AI:DEPENDS SSH 클론 버그(#47088) 예방은 위 git insteadOf 블록 — 선행 필수.
+  CLAUDE_BIN="$(command -v claude || true)"
+  [ -z "$CLAUDE_BIN" ] && [ -x "$HOME/.local/bin/claude" ] && CLAUDE_BIN="$HOME/.local/bin/claude"
+  WANT_PLUGINS="jedi-core zulgap-pack"
+  if [ "$ROLE" = "dev" ] || [ "$ROLE" = "master" ]; then WANT_PLUGINS="$WANT_PLUGINS dev-pack"; fi
+  INSTALL_OK=1
+  if [ -z "$CLAUDE_BIN" ]; then
+    INSTALL_OK=0
+    warn "[warn] claude not found on PATH — plugin install skipped"
+  else
+    echo "Installing Zulgap plugins (may take a while)..."
+    "$CLAUDE_BIN" plugin marketplace add zulgap/claude-team-pack >/dev/null 2>&1 || true
+    for P in $WANT_PLUGINS; do
+      if "$CLAUDE_BIN" plugin install "$P@zulgap-team-pack" --scope user >/dev/null 2>&1; then
+        ok "  $P"
+      else
+        INSTALL_OK=0
+        warn "  [fail] $P"
+      fi
+    done
+  fi
+
+  # ---- 5.9 verify-then-flip — 신 플러그인 실물 확인 후에만 구 플러그인을 끈다 ----
+  # @AI:FRAGILE 이 조건을 없애면 설치 실패 PC에서 구·신이 동시에 죽는다(스킬 0개). 순서가 곧 fail-safe.
+  if [ "$INSTALL_OK" = "1" ]; then
+    SETTINGS_PATH="$CLAUDE_DIR/settings.json" node -e '
+      const fs = require("fs"); const p = process.env.SETTINGS_PATH;
+      try {
+        const s = JSON.parse(fs.readFileSync(p, "utf8"));
+        if (s.enabledPlugins && Object.prototype.hasOwnProperty.call(s.enabledPlugins, "zulgap@zulgap-team-pack")) {
+          s.enabledPlugins["zulgap@zulgap-team-pack"] = false;
+          fs.writeFileSync(p, JSON.stringify(s, null, 2) + "\n");
+        }
+      } catch (_) { /* 실패해도 구 플러그인이 켜진 채 = 스킬 정상 */ }
+    ' 2>/dev/null || true
+    # 설치기가 신 플러그인 구성을 완결 — hook-doctor v2 재실행 불필요
+    printf '%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$ZULGAP_DIR/.hook-doctor-v2.done"
+  else
+    # @AI:INTENT 플래그를 쓰지 않는다 -> hook-doctor v2가 다음 세션에 재시도. 구 플러그인은 켜진 채 = 스킬 계속 작동.
+    warn "[warn] plugin install incomplete — existing skills keep working."
+    echo  "  manual fallback: claude plugin install jedi-core@zulgap-team-pack --scope user"
+  fi
 else
   fail "[warn] plugin auto-register failed — after launching claude run:"
   echo  "  /plugin marketplace add zulgap/claude-team-pack"
-  echo  "  /plugin install zulgap@zulgap-team-pack"
+  echo  "  /plugin install jedi-core@zulgap-team-pack"
 fi
 
 # ---- 6. Jedi (company data) — optional, token was collected at step 2.5 ----

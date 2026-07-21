@@ -169,10 +169,8 @@ try {
   if ($Role -eq 'dev' -or $Role -eq 'master') {
     $s.enabledPlugins | Add-Member -NotePropertyName 'dev-pack@zulgap-team-pack' -NotePropertyValue $true -Force
   }
-  # 재실행(기존 PC에서 install.bat 재실행 = hook-doctor 실패 시 폴백 경로) — 구 플러그인 비활성 전환
-  if ($s.enabledPlugins.PSObject.Properties.Name -contains 'zulgap@zulgap-team-pack') {
-    $s.enabledPlugins.'zulgap@zulgap-team-pack' = $false
-  }
+  # @AI:FRAGILE 구 zulgap 비활성은 여기서 하지 않는다 — 신 플러그인 '실물 설치'가 성공한 뒤 §6.8에서만 (verify-then-flip).
+  #   먼저 끄고 나중에 설치하면, 설치 실패 PC는 구·신이 동시에 죽어 스킬 0개가 된다 (2026-07-21 실사고 클래스).
 
   # 6.5 안내문 원격 자동갱신 훅 (standalone SessionStart) — team-guide.md를 매 세션 GitHub에서 받아 주입
   # @AI:CONSTRAINT standalone 훅만 additionalContext 주입됨(#16538). 플러그인 번들 훅 금지 -> settings.json에 직접 등록.
@@ -231,9 +229,51 @@ try {
   }
 
   ($s | ConvertTo-Json -Depth 50) | Set-Content $settingsPath -Encoding UTF8
-  # 설치기가 이미 신 플러그인 구성을 써줬으므로 hook-doctor v2 재실행 불필요 — 플래그 기록
-  Set-Content -Path (Join-Path $zulgapDir ".hook-doctor-v2.done") -Value (Get-Date -Format o) -Encoding Ascii -NoNewline
-  Write-Host "[OK] 줄갭 플러그인 자동 등록됨 (메뉴 안 건드려도 됨)" -ForegroundColor Green
+
+  # 6.8 플러그인 '실물' 설치 (★ 이게 빠지면 스킬이 안 뜬다)
+  # @AI:CONSTRAINT Claude Code 플러그인에는 대장이 둘이고 서로를 안 채운다:
+  #   ① 활성화 = settings.json enabledPlugins (여기까지가 위 6번)
+  #   ② 설치   = ~/.claude/plugins/installed_plugins.json + plugins/cache/  <- `claude plugin install`만 채움
+  #   enabledPlugins에 true를 써도 자동 설치되지 않고, 미설치 플러그인은 '조용히 무시'된다(에러 0).
+  #   2026-07-21 사장님 PC 실사고: 3줄 true + 마켓플레이스 clone 최신인데 스킬 12개 전부 미표시.
+  # @AI:DEPENDS 설치가 SSH로 붙는 버그(#47088)는 §3.5 git insteadOf가 예방 — 그 블록이 선행돼야 함.
+  $wantPlugins = @('jedi-core', 'zulgap-pack')
+  if ($Role -eq 'dev' -or $Role -eq 'master') { $wantPlugins += 'dev-pack' }
+  $claudeCmd = if (Test-Path $claudeExe) { $claudeExe } else { 'claude' }
+  Write-Host "[설치 중] 줄갭 플러그인 실물 (몇 십 초 걸릴 수 있음)..." -ForegroundColor Yellow
+  $installOk = $true
+  try { & $claudeCmd plugin marketplace add zulgap/claude-team-pack 2>&1 | Out-Null } catch { }
+  foreach ($p in $wantPlugins) {
+    try {
+      $out = (& $claudeCmd plugin install "$p@zulgap-team-pack" --scope user 2>&1) | Out-String
+      if ($LASTEXITCODE -ne 0) {
+        $installOk = $false
+        Write-Host ("  [실패] " + $p + " - " + $out.Trim()) -ForegroundColor DarkYellow
+      } else {
+        Write-Host ("  [OK] " + $p) -ForegroundColor Green
+      }
+    } catch {
+      $installOk = $false
+      Write-Host ("  [실패] " + $p + " - " + $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+  }
+
+  # 6.9 verify-then-flip — 신 플러그인 실물이 확인된 뒤에만 구 플러그인을 끈다
+  # @AI:FRAGILE 이 조건을 없애면 설치 실패 PC에서 구·신이 동시에 죽는다(스킬 0개). 순서가 곧 fail-safe.
+  if ($installOk) {
+    $s2 = (Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json)
+    if ($s2.enabledPlugins.PSObject.Properties.Name -contains 'zulgap@zulgap-team-pack') {
+      $s2.enabledPlugins.'zulgap@zulgap-team-pack' = $false
+      ($s2 | ConvertTo-Json -Depth 50) | Set-Content $settingsPath -Encoding UTF8
+    }
+    # 설치기가 신 플러그인 구성을 완결했으므로 hook-doctor v2 재실행 불필요 — 플래그 기록
+    Set-Content -Path (Join-Path $zulgapDir ".hook-doctor-v2.done") -Value (Get-Date -Format o) -Encoding Ascii -NoNewline
+    Write-Host "[OK] 줄갭 플러그인 자동 등록됨 (메뉴 안 건드려도 됨)" -ForegroundColor Green
+  } else {
+    # @AI:INTENT 플래그를 쓰지 않는다 -> hook-doctor v2가 다음 세션에 재시도. 구 플러그인은 켜진 채 = 스킬 계속 작동.
+    Write-Host "[경고] 플러그인 실물 설치 실패 - 기존 스킬은 그대로 작동합니다." -ForegroundColor Yellow
+    Write-Host "  화면을 사장님께 보내주세요 (수동 폴백: claude plugin install jedi-core@zulgap-team-pack --scope user)" -ForegroundColor DarkYellow
+  }
 } catch {
   Write-Host "[경고] 플러그인 자동 등록 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red
   # @AI:INTENT 일반 안내만 찍으면 원인 미상(직원 화면만으론 진단 불가) -> 실제 예외 메시지 1줄 노출.
