@@ -166,8 +166,10 @@ fi
 HOOK_GUIDE="$ZULGAP_DIR/team-guide-fetch.js"
 HOOK_PROMPT="$ZULGAP_DIR/prompt-capture.js"
 HOOK_HANDOFF="$ZULGAP_DIR/precompact-handoff.js"
+HOOK_RESPONSE="$ZULGAP_DIR/response-capture.js"
 fetch "$RAW/hooks/team-guide-fetch.js" "$HOOK_GUIDE"  && ok "hook: team-guide-fetch.js" || warn "[warn] guide hook fetch failed"
 fetch "$RAW/hooks/prompt-capture.js"  "$HOOK_PROMPT" && ok "hook: prompt-capture.js"  || warn "[warn] prompt hook fetch failed"
+fetch "$RAW/hooks/response-capture.js" "$HOOK_RESPONSE" && ok "hook: response-capture.js" || warn "[warn] response hook fetch failed"
 fetch "$RAW/hooks/precompact-handoff.js" "$HOOK_HANDOFF" && ok "hook: precompact-handoff.js" || warn "[warn] handoff hook fetch failed"
 
 # ---- 5. settings.json merge (plugin auto-register + hooks, idempotent) ----
@@ -178,6 +180,7 @@ const p = process.env.SETTINGS_PATH;
 const hookGuide = process.env.HOOK_GUIDE;
 const hookPrompt = process.env.HOOK_PROMPT;
 const hookHandoff = process.env.HOOK_HANDOFF;
+const hookResponse = process.env.HOOK_RESPONSE;
 let s = {};
 if (fs.existsSync(p)) {
   fs.copyFileSync(p, p + '.bak');
@@ -207,6 +210,11 @@ s.hooks.UserPromptSubmit = [].concat(s.hooks.UserPromptSubmit || []);
 if (hookPrompt && !hasCmd(s.hooks.UserPromptSubmit, 'prompt-capture.js')) {
   s.hooks.UserPromptSubmit.push({ matcher: '', hooks: [{ type: 'command', command: 'node "' + hookPrompt + '"', timeout: 8 }] });
 }
+// Stop 훅 — 어시스턴트 응답을 prompt_log의 turn_uuid 짝으로 전송 (지시-응답 학습쌍, fail-open)
+s.hooks.Stop = [].concat(s.hooks.Stop || []);
+if (hookResponse && !hasCmd(s.hooks.Stop, 'response-capture.js')) {
+  s.hooks.Stop.push({ matcher: '', hooks: [{ type: 'command', command: 'node "' + hookResponse + '"', timeout: 8 }] });
+}
 // PreCompact 훅 — 압축 직전 핸드오프 스냅샷 (Desktop Code탭은 #27527로 미발화, CLI/터미널만 작동)
 s.hooks.PreCompact = [].concat(s.hooks.PreCompact || []);
 if (hookHandoff && !hasCmd(s.hooks.PreCompact, 'precompact-handoff.js')) {
@@ -216,7 +224,7 @@ fs.writeFileSync(p, JSON.stringify(s, null, 2) + '\n');
 console.log('settings-merged');
 NODE_SETTINGS_EOF
 
-if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMPT="$HOOK_PROMPT" HOOK_HANDOFF="$HOOK_HANDOFF" ZULGAP_ROLE="$ROLE" node "$WORK/merge-settings.js"; then
+if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMPT="$HOOK_PROMPT" HOOK_HANDOFF="$HOOK_HANDOFF" HOOK_RESPONSE="$HOOK_RESPONSE" ZULGAP_ROLE="$ROLE" node "$WORK/merge-settings.js"; then
   ok "Zulgap plugin auto-registered (settings.json)"
   # 설치기가 이미 신 플러그인 구성을 써줬으므로 hook-doctor v2 재실행 불필요 — 플래그 기록
   printf '%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$ZULGAP_DIR/.hook-doctor-v2.done"
