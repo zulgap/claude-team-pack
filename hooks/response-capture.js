@@ -18,8 +18,19 @@ const crypto = require('crypto');
 // 안전 타임아웃 — 5초 내 무조건 종료 (턴 종료 절대 지연 X)
 setTimeout(() => process.exit(0), 5000);
 
+// @AI:INTENT 스킬/커맨드 턴 재구성 — transcript엔 <command-name>/<command-args> 태그 문자열이 기록되지만
+//   UserPromptSubmit 훅(prompt-capture)은 원발화("/시작 <args>")를 받는다. 같은 원문으로 재구성해야
+//   sha256(session:prompt) turn_uuid가 일치해 쌍이 성립 (2026-07-23 실측: 재구성 해시 = 지시 행 uuid 정확 일치).
+function reconstructCommand(s) {
+  if (s.includes('<local-command-stdout>')) return null; // 커맨드 출력 엔트리 — 프롬프트 아님
+  const name = (s.match(/<command-name>([\s\S]*?)<\/command-name>/) || [])[1];
+  if (!name) return s;
+  const args = (s.match(/<command-args>([\s\S]*?)<\/command-args>/) || [])[1];
+  return args && args.trim() ? `${name} ${args}` : name;
+}
+
 function textOfContent(content) {
-  if (typeof content === 'string') return content;
+  if (typeof content === 'string') return reconstructCommand(content);
   if (Array.isArray(content)) {
     if (content.some((c) => c && c.type === 'tool_result')) return null; // 도구 결과 턴 — 프롬프트 아님
     const parts = content.filter((c) => c && c.type === 'text' && typeof c.text === 'string').map((c) => c.text);
@@ -44,12 +55,14 @@ process.stdin.on('end', () => {
       try { entries.push(JSON.parse(line)); } catch (_) { /* skip */ }
     }
 
-    // 마지막 실 user 프롬프트 (sidechain/도구결과 제외)
+    // 마지막 실 user 프롬프트 (sidechain/도구결과/meta 제외)
+    // @AI:DEPENDS isMeta 스킵 필수 — 스킬 턴은 원발화(#N) 뒤에 전개문(isMeta=true)이 별도 user 엔트리로
+    //   붙는다. meta를 프롬프트로 집으면 지시 훅과 다른 turn_uuid가 되어 쌍이 영구 분리 (7f5846e0 사고).
     let userIdx = -1;
     let promptText = '';
     for (let i = entries.length - 1; i >= 0; i--) {
       const e = entries[i];
-      if (e && e.type === 'user' && e.isSidechain !== true && e.message) {
+      if (e && e.type === 'user' && e.isSidechain !== true && e.isMeta !== true && e.message) {
         const t = textOfContent(e.message.content);
         if (t && t.trim().length >= 2) { userIdx = i; promptText = t; break; }
       }
