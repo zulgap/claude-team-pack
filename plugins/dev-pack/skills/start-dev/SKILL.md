@@ -1,6 +1,8 @@
 ---
 name: start-dev
 description: Developer session starter for Zulgap dev team. Loads your assigned tasks from the Notion Dev Task Board and reminds you of the workflow rules. Use at the start of every work session — "/start-dev", "start work", "what should I work on", "good morning", "let's begin".
+version: 1.0.0
+origin: teampack
 ---
 
 # start-dev — Developer Session Start (Zulgap Dev Team)

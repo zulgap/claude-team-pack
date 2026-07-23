@@ -15,6 +15,8 @@ requires:
   jedi_tools: [ext_generate_image]
   endpoints: ["/mcp/ext/render-thumbnail"]
   config: []
+version: 1.0.0
+origin: teampack
 ---
 
 # 썸네일 — 대본 → 기획 3안 → 대화 수정 → 생성 (팀원용)

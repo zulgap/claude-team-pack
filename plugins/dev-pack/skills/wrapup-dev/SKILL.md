@@ -1,6 +1,8 @@
 ---
 name: wrapup-dev
 description: Developer session wrap-up for Zulgap dev team. Logs today's work to the Notion team session journal (with author attribution) and generates the written standup message (Yesterday/Today/Blockers) to paste into Telegram. Use at the end of every work session — "/wrapup-dev", "wrap up", "end of day", "finish work", "log my work".
+version: 1.0.0
+origin: teampack
 ---
 
 # wrapup-dev — Developer Session Wrap-up (Zulgap Dev Team)
