@@ -211,6 +211,22 @@ try {
     $s.hooks.UserPromptSubmit = @($s.hooks.UserPromptSubmit) + $pcEntry
   }
 
+  # 6.6b 응답 캡처 훅 (standalone Stop) — 어시스턴트 응답을 prompt_log turn_uuid 짝으로 전송 (지시-응답 학습쌍)
+  # @AI:CONSTRAINT prompt-capture와 동일 fail-open — 토큰 없으면 조용히 skip, 턴 종료 절대 차단 X.
+  $rcSrc = Join-Path $PSScriptRoot "hooksesponse-capture.js"
+  $rcDst = Join-Path $zulgapDir "response-capture.js"
+  if (Test-Path $rcSrc) { Copy-Item $rcSrc $rcDst -Force }
+  $rcCmd = "node `"$rcDst`""
+  if (-not ($s.hooks.PSObject.Properties.Name -contains 'Stop') -or $null -eq $s.hooks.Stop) {
+    $s.hooks | Add-Member -NotePropertyName Stop -NotePropertyValue @() -Force
+  }
+  $rcAlready = $false
+  foreach ($g in @($s.hooks.Stop)) { foreach ($h in @($g.hooks)) { if ($h.command -like '*response-capture.js*') { $rcAlready = $true } } }
+  if (-not $rcAlready) {
+    $rcEntry = [pscustomobject]@{ matcher = ''; hooks = @([pscustomobject]@{ type = 'command'; command = $rcCmd; timeout = 8 }) }
+    $s.hooks.Stop = @($s.hooks.Stop) + $rcEntry
+  }
+
   # 6.7 PreCompact 훅 (standalone) — 컨텍스트 압축 직전 자동 핸드오프 스냅샷 + 배너
   # @AI:CONSTRAINT Desktop Code탭은 #27527로 훅 미발화 → CLI/터미널 사용분에만 작동(픽스되면 자동 개통). 실패해도 조용히 통과.
   #   Desktop 사용자의 핸드오프는 /저장 스킬(핸드오프 섹션)이 담당 — 스킬은 그 탭에서도 돎.
