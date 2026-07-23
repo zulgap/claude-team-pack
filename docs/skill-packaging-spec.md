@@ -64,15 +64,16 @@ requires:                       # 필요한 연결 (설치 시 충족 확인)
 4. **`presets/<회사>.md` 생성** — 동봉 예시 프리셋의 섹션 구조를 그대로 따라 작성
 5. **`requires` 충족 확인** — 제디 도구/endpoint 미가용이면 **명시 안내** (silent 진행 금지)
 
-## §4 마켓 등록 심사 5항목 (품질 게이트)
+## §4 마켓 등록 심사 6항목 (품질 게이트)
 
 | # | 항목 | 검증 방법 |
 |---|---|---|
 | ① | 본체 테넌트 리터럴 0 | `grep -E "<회사명들\|노션ID들>" skills/<스킬>/SKILL.md` → 0건 (PROVENANCE.md·presets/ 제외) |
-| ② | preset_slots 선언 완비 | frontmatter에 `tier` + `preset_slots` 존재, required 슬롯 ≥1 |
+| ② | preset_slots 선언 완비 | frontmatter에 `tier` + `preset_slots` 존재, required 슬롯 ≥1. `version` + `origin`(personal/teampack)도 필수 (mtime 추측 제거 — 2026-07-22 정책 헌법 §7) |
 | ③ | 예시 프리셋 ≥1 동봉 | `presets/` 폴더에 실사용 검증된 프리셋 1개+ |
 | ④ | requires 선언 | 제디 도구·endpoint·config 의존 전부 명시 |
 | ⑤ | 프롬프트 3종 패턴 준수 | 지시문이 수치 하드리밋 / 금지 리터럴 열거 / 예시쌍+셀프체크 중 ≥1 사용 (`prompt-authoring-protocol.md`) |
+| ⑥ | 플러그인 이름 집합 일치 | `node scripts/check-plugin-consistency.js` → exit 0 (marketplace.json ↔ install.ps1 ↔ install.sh ↔ hook-doctor-v2.js, 활성화 집합 + 레거시 잔존 2단 검사. 2026-07-22 정책 헌법 §7 드리프트 봉합) |
 
 이 표가 그대로 **미래 마켓플레이스의 등록 심사 기준**이다.
 

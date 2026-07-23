@@ -294,7 +294,7 @@ try {
   Write-Host "[경고] 플러그인 자동 등록 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red
   # @AI:INTENT 일반 안내만 찍으면 원인 미상(직원 화면만으론 진단 불가) -> 실제 예외 메시지 1줄 노출.
   Write-Host ("  (원인: " + $_.Exception.Message + ")") -ForegroundColor DarkYellow
-  Write-Host "  * claude 실행 후 폴백: /plugin marketplace add zulgap/claude-team-pack -> /plugin install zulgap@zulgap-team-pack" -ForegroundColor DarkYellow
+  Write-Host "  * claude 실행 후 폴백: /plugin marketplace add zulgap/claude-team-pack -> /plugin install jedi-core@zulgap-team-pack, zulgap-pack@zulgap-team-pack (dev/master는 dev-pack@zulgap-team-pack 추가)" -ForegroundColor DarkYellow
 }
 
 # 7. 바탕화면 "줄갭 Claude" 바로가기 (더블클릭 -> claude 실행)
