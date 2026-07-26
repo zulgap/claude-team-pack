@@ -1,7 +1,7 @@
 # 직원 배포 패키지 변경 이력 (CHANGELOG)
 
 > 직원에게 전달하는 부트스트랩 zip(`claude-team-pack-for-staff_vX.Y.zip`)의 버전·변경 내역 정본.
-> 플러그인 본체(스킬 `/시작`·`/저장`·`/블로그` + 노션/PPT/한글 도구)는 GitHub 마켓플레이스로 별도 설치되며, 이 zip은 **직원 PC 부트스트랩**(install.bat → Git/Node/uv + 제디 토큰 등록)만 담는다.
+> 플러그인 본체(스킬 `/jedi-start`·`/jedi-save`·`/zulgap-blog` + 노션/PPT/한글 도구)는 GitHub 마켓플레이스로 별도 설치되며, 이 zip은 **직원 PC 부트스트랩**(install.bat → Git/Node/uv + 제디 토큰 등록)만 담는다.
 
 ## 파일명 규칙
 - 형식: `claude-team-pack-for-staff_vX.Y.zip` (파일명에 버전 표기 — 옛 zip과 한눈에 구분)
@@ -9,6 +9,20 @@
 - 새 버전 배포 시: ① 이 CHANGELOG에 항목 추가 → ② zip 재생성(버전 bump) → ③ 노션 팀원용 페이지 첨부 교체 + 관리자용 빠른 참조 파일명 갱신
 
 ---
+
+## v2.5 (2026-07-26) — 스킬 이름 한글→ASCII 전환 (엉뚱한 스킬 실행 봉합 · 플러그인 전용 · zip 변경 없음)
+**진단: 한글 스킬 이름이 명령 식별자에서 문자당 `-`로 소실 → 같은 글자수끼리 전부 겹쳤다.**
+- 🐛 **실사고 (팀원 이지연 보고 · 사장님 화면 실측 확인)**: `/저장`을 부르면 `인입`이 실행됐다. 원인은 Agent Skills 표준이 스킬 이름을 **kebab-case(소문자·숫자·하이픈)** 로 규정하는데 우리 이름이 전부 한글이라, 화면에 `jedi-core:--` 로 뜬 것. **2글자 4개(스킬·시작·인입·저장)가 전부 `--`, 3글자 3개(썸네일·이미지·키워드)가 전부 `---`** 로 동일해져 Claude가 구분할 수 없었다. zulgap-pack도 `노블냥`·`블로그`가 3글자로 겹침.
+- 🚨 **v2.0 판단 정정**: 당시 "플러그인 스킬은 `플러그인명:스킬명` namespace라 **이름 충돌 원천 불가**(공식 문서 확인)"이라고 적었으나, 공식 문서 원문은 *"they cannot conflict **with other levels**"* — **개인·프로젝트 레벨과의** 충돌을 말한 것이지 **같은 플러그인 안 스킬 간** 충돌을 보장하지 않는다. 문장을 넓게 읽은 것이 이번 사고의 배경.
+- 🔄 **스킬 이름 10개 ASCII 전환** (폴더명은 한글 유지 — frontmatter `name` 이 명령의 마지막 세그먼트만 대체하므로 경로 참조 무변경): jedi-core `jedi-start`·`jedi-save`·`jedi-skills`·`jedi-ingest`·`jedi-thumbnail`·`jedi-image`·`jedi-keyword` / zulgap-pack `zulgap-blog`·`zulgap-noblenyang`·`zulgap-gaon-report`. **`/jedi` 또는 `/zulgap` 까지만 쳐도 팩별 목록이 뜬다.**
+- ✅ **전환기 안전망**: 각 스킬 `description` 에 **옛 한글 명령을 그대로 남기고 새 이름을 추가**했다(`"/jedi-save", "/저장", ...`). 습관대로 `/저장`을 친 팀원도 매칭으로 구제된다. 자연어("마무리해줘")는 원래대로 작동.
+- 🔄 `plugins/jedi-core/skills/스킬/SKILL.md` **선별 규칙 수정 (숨은 사고)**: 기존 규칙이 *"이름에 `:` 있으면 남의 플러그인 → 제외"* 였는데 **우리 플러그인 스킬도 `:`가 붙는다.** 그대로 두면 `/jedi-skills` 목록에서 줄갭 스킬이 전부 사라진다. `:` **앞**을 보고 우리 팩(jedi-core/zulgap-pack/dev-pack)이면 포함하도록 교체 + `jedi-`/`zulgap-` 접두 주 판정 추가.
+- 🆕 `scripts/check-plugin-consistency.js` **Tier C 신설 (재발 방지)**: C-1 이름 규격(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, 비-ASCII 차단) / C-2 플러그인 내 중복 / **C-3 플러그인 간 bare 충돌**(접두 없는 `/name` 호출이 불확정해지는 경우). Tier A/B는 **플러그인** 이름만 봤고 **스킬** 이름은 아무도 안 봐서 이 사고가 통과했다. mutation 테스트로 가드 실증(한글 재도입 → C-1 FAIL / 이름 중복 → C-3 FAIL).
+- 🔄 `docs/skill-packaging-spec.md` §4 심사 **⑦ 스킬 이름 ASCII kebab-case** 추가 — 앞으로 마켓 등록 심사 항목.
+- 🔄 팀원 노출 문구 일괄 갱신: `team-guide.md`(전환 안내 배너 + 명령 9줄, 누락돼 있던 `/jedi-keyword` 추가) · `team-CLAUDE.md` · `docs/1password-setup.md` · `README.md` · `install.ps1`/`install.sh` 설치 완료 안내 · `hooks/precompact-handoff.js` 압축 임박 배너 · `hooks/response-capture.js` 주석.
+- ⚡ **zip 변경 없음** — 부트스트랩 5파일 무변경이고 `team-CLAUDE.md`도 `install.sh`가 원격 raw로 fetch. 기존 직원은 **앱 재시작 시 autoUpdate로 자동 반영**.
+- ⚠️ **이 PR은 compatibility bridge다** — 구 `zulgap` 플러그인 병존은 그대로 남아 있어(팀원 화면에 같은 스킬이 2벌 보일 수 있음) 이름 충돌만 해소한 것. 구 플러그인 제거는 "전원 전환 확인" 후 별건(§ 후속).
+- 근거 spec: `~/.claude/specs/2026-07-26-teampack-skill-name-ascii.md` (codex critique 3건 반영).
 
 ## v2.4 (2026-07-22) — 플러그인 '실물 설치' 누락 봉합 + verify-then-flip (★ zip 재생성 필요)
 **진단: `enabledPlugins`에 true를 써도 플러그인은 설치되지 않는다. 설치 코드가 레포 어디에도 없었다.**

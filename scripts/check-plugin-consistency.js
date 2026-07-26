@@ -84,4 +84,66 @@ for (const [name, src] of Object.entries(sources)) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tier C — 스킬 이름 규격 + 명령 충돌 (2026-07-26 신설)
+// @AI:INTENT 한글 스킬 이름이 Claude Code 식별자에서 문자당 '-'로 붕괴해
+//   `jedi-core:--` 4개가 겹치고 엉뚱한 스킬이 실행된 사고(팀원 실측). Tier A/B는
+//   '플러그인' 이름만 봤고 '스킬' 이름은 아무도 안 봐서 그대로 통과했다.
+// @AI:CONSTRAINT Agent Skills 표준 = kebab-case(소문자·숫자·하이픈, 문자로 시작).
+//   비-ASCII는 명령 이름에서 소실되므로 여기서 fail-closed로 막는다.
+// C-3(bare 충돌)은 사용자가 `/이름`을 접두 없이 칠 때 어느 스킬이 잡힐지가
+//   플러그인 경계를 넘어 결정되기 때문에 — 플러그인별 검사만으론 못 잡는다.
+const SKILL_NAME_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+const pluginDirs = fs.readdirSync(path.join(ROOT, 'plugins'), { withFileTypes: true })
+  .filter((d) => d.isDirectory())
+  .map((d) => d.name);
+
+// @AI:FRAGILE Tier C 전용 실패 플래그 — 전역 `fail`을 재사용하면 Tier A/B 실패까지 삼켜
+//   'C-3 FAIL'과 'C PASS'가 동시에 찍힌다(자기검증에서 실제로 관측). 분리 유지할 것.
+let failC = 0;
+let skillCount = 0;
+const allNames = new Map(); // bare name -> [plugin/dir, ...]
+for (const plug of pluginDirs) {
+  const skillsDir = path.join(ROOT, 'plugins', plug, 'skills');
+  if (!fs.existsSync(skillsDir)) continue;
+  const perPlugin = new Map(); // bare name -> dir (플러그인 내 중복)
+  for (const d of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    const md = path.join(skillsDir, d.name, 'SKILL.md');
+    if (!fs.existsSync(md)) continue;
+    // frontmatter name (없으면 디렉토리명이 명령이 된다 — 그 경우도 규격 대상)
+    const m = fs.readFileSync(md, 'utf8').match(/^name:[ \t]*(.+?)[ \t]*$/m);
+    const name = m ? m[1] : d.name;
+    const where = `${plug}/${d.name}`;
+    skillCount += 1;
+
+    // C-1 이름 규격
+    if (!SKILL_NAME_RE.test(name)) {
+      console.error(`  FAIL [C-1 이름규격] ${where}: name='${name}' — kebab-case(소문자·숫자·하이픈, 문자로 시작)만 허용. 비-ASCII는 명령에서 '-'로 소실된다`);
+      failC = 1;
+    }
+    // C-2 플러그인 내 중복 (같은 plugin:name 이 둘)
+    if (perPlugin.has(name)) {
+      console.error(`  FAIL [C-2 플러그인내중복] ${plug}: name='${name}' 중복 — ${perPlugin.get(name)} vs ${d.name}`);
+      failC = 1;
+    }
+    perPlugin.set(name, d.name);
+    allNames.set(name, [...(allNames.get(name) || []), where]);
+  }
+}
+// C-3 플러그인 간 bare 충돌 (`/name` 을 접두 없이 쳤을 때 어느 쪽이 잡힐지 불확정)
+for (const [name, wheres] of allNames) {
+  if (wheres.length > 1) {
+    console.error(`  FAIL [C-3 bare충돌] name='${name}' 이 ${wheres.length}곳: ${wheres.join(', ')} — 접두 없는 /${name} 호출이 불확정`);
+    failC = 1;
+  }
+}
+if (skillCount === 0) {
+  console.error('  FAIL [C] 스킬을 하나도 못 찾음 — plugins/*/skills 경로 파싱 실패 의심');
+  failC = 1;
+} else if (failC === 0) {
+  console.log(`  PASS [C 스킬이름] ${skillCount}개 — 규격 위반 0 / 중복 0 / bare 충돌 0`);
+}
+if (failC) fail = 1;
+
 process.exit(fail);

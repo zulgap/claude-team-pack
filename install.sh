@@ -347,7 +347,7 @@ cyan ""
 if [ "$ROLE" = "master" ]; then
   cyan "=== 준비 완료 (master — 개인 설정 보존됨) ==="
   echo "  플러그인·훅·제디만 등록됐습니다. CLAUDE.md는 건드리지 않았습니다."
-  echo "  터미널에서 claude 실행 → 팀 스킬(/시작·/start-dev 등) 사용 가능."
+  echo "  터미널에서 claude 실행 → 팀 스킬(/jedi-start·/start-dev 등) 사용 가능."
 elif [ "$ROLE" = "dev" ]; then
   cyan "=== Setup complete! How to start ==="
   echo "  1) Double-click 'Zulgap Claude.command' on your Desktop (or run 'claude' in Terminal)"
@@ -361,7 +361,7 @@ else
   echo "  1) 바탕화면 'Zulgap Claude.command' 더블클릭 (또는 터미널에서 claude 입력)"
   echo "  2) 처음 한 번 로그인 창이 뜨면 -> 사장님이 알려준 같은 계정으로 로그인"
   echo "  3) 처음 열 때 줄갭 도구가 자동으로 설치돼요 (잠깐 기다리기)"
-  printf '\033[32m  4) 화면에 /시작 입력 후 Enter -> 줄갭 작업 현황이 뜨면 성공! (마무리: /저장)\033[0m\n'
+  printf '\033[32m  4) 화면에 /jedi-start 입력 후 Enter -> 줄갭 작업 현황이 뜨면 성공! (마무리: /jedi-save)\033[0m\n'
   echo ""
   printf '\033[32m* 막히면 그 화면을 캡처해서 사장님께 보내세요.\033[0m\n'
 fi
