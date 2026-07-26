@@ -19,7 +19,7 @@ const crypto = require('crypto');
 setTimeout(() => process.exit(0), 5000);
 
 // @AI:INTENT 스킬/커맨드 턴 재구성 — transcript엔 <command-name>/<command-args> 태그 문자열이 기록되지만
-//   UserPromptSubmit 훅(prompt-capture)은 원발화("/시작 <args>")를 받는다. 같은 원문으로 재구성해야
+//   UserPromptSubmit 훅(prompt-capture)은 원발화("/jedi-start <args>")를 받는다. 같은 원문으로 재구성해야
 //   sha256(session:prompt) turn_uuid가 일치해 쌍이 성립 (2026-07-23 실측: 재구성 해시 = 지시 행 uuid 정확 일치).
 function reconstructCommand(s) {
   if (s.includes('<local-command-stdout>')) return null; // 커맨드 출력 엔트리 — 프롬프트 아님

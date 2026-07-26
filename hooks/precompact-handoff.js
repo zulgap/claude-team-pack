@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PreCompact 훅 — 컨텍스트 압축(자동/수동) 직전 발화.
 //   ① 터미널 배너: "곧 압축됨 — 저장/핸드오프 아직이면 지금"
-//   ② 자동 핸드오프 스냅샷 파일(결정론): 최근 user 발화 + repo 상태 + /저장 안내 → ~/.claude/specs/
+//   ② 자동 핸드오프 스냅샷 파일(결정론): 최근 user 발화 + repo 상태 + /jedi-save 안내 → ~/.claude/specs/
 //   결정론만 — LLM 호출 0(API키 의존 0·재귀 0). 5섹션 큐레이션은 /저장(사람/Claude)이 담당.
 // 등록: ~/.claude/settings.json hooks.PreCompact
 'use strict';
@@ -91,7 +91,7 @@ ${recent.length ? recent.map((u, i) => `${i + 1}. ${u.text.replace(/\n+/g, ' ').
 
   // 터미널 배너 (systemMessage = UI 표시)
   const savedHint = handoffPath ? `\n자동 스냅샷 저장됨: ${handoffPath}` : '';
-  const banner = `⚠️ 컨텍스트 압축 임박(${trigger}). 이번 세션 저널·핸드오프 아직이면 지금 /저장 하세요.${savedHint}`;
+  const banner = `⚠️ 컨텍스트 압축 임박(${trigger}). 이번 세션 저널·핸드오프 아직이면 지금 /jedi-save 하세요.${savedHint}`;
 
   process.stdout.write(JSON.stringify({ systemMessage: banner, suppressOutput: true }));
 }

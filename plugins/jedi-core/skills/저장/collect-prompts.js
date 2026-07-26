@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// collect-prompts.js — /저장 스킬이 부르는 결정론 프롬프트 수집기.
+// collect-prompts.js — /jedi-save 스킬이 부르는 결정론 프롬프트 수집기.
 //   현재 세션의 유저 프롬프트를 transcript에서 추출해 judgmentos prompt_log로 bulk 전송(데이터 해자).
 //   @AI:INTENT 팀원 주력 표면=Claude Code 데스크탑 Code탭은 #27527로 UserPromptSubmit 훅이 죽음.
 //     스킬(AI 실행)은 그 탭에서도 도니, 캡처를 훅→스킬로 옮겨 우회한다.
