@@ -259,6 +259,8 @@ try {
   Write-Host "[설치 중] 줄갭 플러그인 실물 (몇 십 초 걸릴 수 있음)..." -ForegroundColor Yellow
   $installOk = $true
   try { & $claudeCmd plugin marketplace add zulgap/claude-team-pack 2>&1 | Out-Null } catch { }
+  # @AI:INTENT add는 이미 등록된 마켓의 카탈로그를 새로 받지 않는다 - 낡은 카탈로그로 install하면 구 sha가 박힌다.
+  try { & $claudeCmd plugin marketplace update zulgap-team-pack 2>&1 | Out-Null } catch { }
   foreach ($p in $wantPlugins) {
     try {
       $out = (& $claudeCmd plugin install "$p@zulgap-team-pack" --scope user 2>&1) | Out-String
@@ -266,6 +268,9 @@ try {
         $installOk = $false
         Write-Host ("  [실패] " + $p + " - " + $out.Trim()) -ForegroundColor DarkYellow
       } else {
+        # @AI:INTENT install은 '이미 설치됨'이면 갱신하지 않는다. 이 스크립트 재실행이 기존 직원의 수동 복구
+        #   경로이므로 설치 성공 뒤 update를 한 번 더 때린다(최신이면 no-op). 실패해도 설치는 유효 -> installOk 불변.
+        try { & $claudeCmd plugin update "$p@zulgap-team-pack" 2>&1 | Out-Null } catch { }
         Write-Host ("  [OK] " + $p) -ForegroundColor Green
       }
     } catch {

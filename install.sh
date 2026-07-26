@@ -245,8 +245,13 @@ if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMP
   else
     echo "Installing Zulgap plugins (may take a while)..."
     "$CLAUDE_BIN" plugin marketplace add zulgap/claude-team-pack >/dev/null 2>&1 || true
+    # @AI:INTENT add는 이미 등록된 마켓의 카탈로그를 새로 받지 않는다 — 낡은 카탈로그로 install하면 구 sha가 박힌다.
+    "$CLAUDE_BIN" plugin marketplace update zulgap-team-pack >/dev/null 2>&1 || true
     for P in $WANT_PLUGINS; do
       if "$CLAUDE_BIN" plugin install "$P@zulgap-team-pack" --scope user >/dev/null 2>&1; then
+        # @AI:INTENT install은 '이미 설치됨'이면 갱신하지 않는다. 이 스크립트 재실행이 기존 직원의 수동 복구
+        #   경로이므로 설치 성공 뒤 update를 한 번 더 때린다(최신이면 no-op). 실패해도 설치는 유효 -> INSTALL_OK 불변.
+        "$CLAUDE_BIN" plugin update "$P@zulgap-team-pack" >/dev/null 2>&1 || true
         ok "  $P"
       else
         INSTALL_OK=0

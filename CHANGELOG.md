@@ -10,6 +10,26 @@
 
 ---
 
+## v2.6 (2026-07-26) — 플러그인 자동 갱신 봉합 (설치 시점 버전 영구 고정 해소 · 윈도우 zip 재생성 권장)
+**진단: 서드파티 마켓플레이스는 Claude Code 자동 갱신 대상이 아니다. 그리고 갱신을 부를 코드·지시문이 양쪽 다 자기차단돼 있었다.**
+- 🐛 **실사고 (2026-07-26 사장님 PC)**: 스킬 이름 ASCII 개편(v2.5)이 머지 5일 뒤에도 안 닿아 `/` 화면에 `zulgap:--`·`zulgap:---`가 그대로였다. `installed_plugins.json`·`enabledPlugins` 2장부는 **계속 정상**이었고, 실물 로드 소스는 `plugins/cache/zulgap-team-pack/<plugin>/f6dca84eb219/`(7/20 설치 sha)에 **핀 고정**돼 있었다. 복구 = `claude plugin marketplace update` + `plugin update` ×3 (→ `e44fd0e`, 15초).
+- 🚨 **v1.17 전제 정정**: v1.17은 `version` 필드를 제거해 "팀원 재설치 없이 자동 갱신"을 확보했다고 적었고 v2.5도 "앱 재시작 시 autoUpdate로 자동 반영"이라 썼다. **실측 반증** — `known_marketplaces.json` `lastUpdated`가 내장 `claude-plugins-official`만 계속 갱신되고(세션 중 10:07→11:29 목격) 서드파티 3개(zulgap-team-pack 7/19 · superpowers-marketplace 7/22 · openai-codex 7/22)는 **전부 정지**. version 필드를 빼면 갱신이 *가능*해지는 건 맞지만 **갱신을 트리거하는 주체가 없었다.** `version` 재유입 차단 가드(`a6d0171`)는 그대로 유효 — 제거하지 말 것.
+- 🚨 **자기차단 2중 발견 (한쪽만 고치면 무효)**: ① `hooks/hook-doctor-v2.js`의 `alreadyNew` 조기 return — `isInstalled()`가 '키가 있나'만 보고 버전을 안 보므로 전환 성공 순간 영구 true가 되어 뒤쪽이 한 번도 실행되지 않는다. ② `team-guide.md` §37이 `.hook-doctor-v2.done`이 있으면 **섹션 전체를 무시**하라고 지시 → 전환 끝난 PC는 훅을 받지도 실행하지도 않는다.
+- 🔄 `hooks/hook-doctor-v2.js`: **`maybeRefresh()` 신설** — 조기 return **앞에서** 24시간 throttle(`.plugin-refresh.stamp`)로 `marketplace update` + `plugin update`(팩마다). 버전 비교로 판정하지 않는다(원격 sha를 알려면 `marketplace update`가 선행돼야 하는 닭-달걀) → throttle된 주기로 무조건 update, 최신이면 no-op. 예산 180s < 워치독 210s. 스탬프를 update **앞에** 찍어 네트워크 실패 시 매 세션 최대 180s 지연을 막는다(실패해도 스킬은 정상 작동).
+- 🔄 `team-guide.md` §37: **`.done` 게이트 제거** — "있어도 건너뛰지 말 것" + 판정은 스크립트가 한다(LLM이 파일 날짜를 계산하지 말 것). 스로틀을 지시문에서 **코드로** 옮긴 것.
+- 🔄 `install.sh` §5.8 / `install.ps1` §6.8: `marketplace add` 뒤에 **`marketplace update`** 추가(add는 이미 등록된 마켓의 카탈로그를 새로 받지 않아 낡은 sha가 박힌다) + `plugin install` 성공 뒤 **`plugin update`** 추가(install은 '이미 설치됨'이면 갱신하지 않는데, 이 스크립트 재실행이 기존 직원의 수동 복구 경로다). 실패해도 `INSTALL_OK`/`$installOk` 불변 = v2.4 verify-then-flip fail-safe 무손상.
+- ✅ **검증**: 사장님 PC end-to-end — `갱신 확인` 출력 + `known_marketplaces.lastUpdated` 실변동(12:09→12:12) + 15.7초. throttle 재실행 시 갱신 안 함(lastUpdated 불변). **mutation**: 호출을 조기 return **뒤로** 옮긴 사본은 갱신 0·스탬프 미생성 — 두 파일의 유일한 차이가 배치이므로 그 배치가 원인임을 실증. 문법 3종(`node --check` / `bash -n` / PowerShell 파서) PASS.
+- ⚠️ **부트스트랩 데드락 — 기존 직원 1회 수동 조치 불가피**: 이 수정은 훅·지시문으로 배달되는데 갱신이 막힌 PC는 그 배달 경로 자체가 낡아 있다. 아래를 1회 안내할 것. 그 뒤로는 자립한다(24시간마다 자동).
+  ```bash
+  claude plugin marketplace update zulgap-team-pack
+  claude plugin update jedi-core@zulgap-team-pack
+  claude plugin update zulgap-pack@zulgap-team-pack
+  claude plugin update dev-pack@zulgap-team-pack   # dev/master만
+  ```
+  `team-guide.md`는 원격 fetch라 지시문 갱신 자체는 자동으로 닿는다 → 다음 세션에 훅이 새로 받아진다. 위 4줄은 그보다 빠른 즉시 복구용.
+- 📦 **윈도우 zip 재생성 권장(필수 아님)**: `install.bat`이 `%~dp0install.ps1`로 **zip 동봉본**을 실행하므로 신규 윈도우 설치에 반영하려면 재생성 필요. 맥은 `install.command`가 원격 `install.sh`를 curl하므로 무관. 재생성 전 신규 설치도 훅이 24시간 내 갱신하므로 회귀는 없다.
+- ℹ️ `.hook-doctor-v2.done` 쓰기(`install.sh`·`install.ps1`·`done()`)는 게이트 제거로 **흔적만 남았다** — 전환 이력 가시화 용도로 유지. 이 파일을 다시 게이트로 쓰지 말 것.
+
 ## v2.5 (2026-07-26) — 스킬 이름 한글→ASCII 전환 (엉뚱한 스킬 실행 봉합 · 플러그인 전용 · zip 변경 없음)
 **진단: 한글 스킬 이름이 명령 식별자에서 문자당 `-`로 소실 → 같은 글자수끼리 전부 겹쳤다.**
 - 🐛 **실사고 (팀원 이지연 보고 · 사장님 화면 실측 확인)**: `/저장`을 부르면 `인입`이 실행됐다. 원인은 Agent Skills 표준이 스킬 이름을 **kebab-case(소문자·숫자·하이픈)** 로 규정하는데 우리 이름이 전부 한글이라, 화면에 `jedi-core:--` 로 뜬 것. **2글자 4개(스킬·시작·인입·저장)가 전부 `--`, 3글자 3개(썸네일·이미지·키워드)가 전부 `---`** 로 동일해져 Claude가 구분할 수 없었다. zulgap-pack도 `노블냥`·`블로그`가 3글자로 겹침.

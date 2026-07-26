@@ -18,6 +18,12 @@ const SETTINGS = path.join(os.homedir(), '.claude', 'settings.json');
 const INSTALLED = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
 const FLAG = path.join(ZULGAP_DIR, '.hook-doctor-v2.done');
 const MP = 'zulgap-team-pack';
+const REFRESH_STAMP = path.join(ZULGAP_DIR, '.plugin-refresh.stamp');
+const REFRESH_EVERY_MS = 24 * 60 * 60 * 1000;
+// @AI:CONSTRAINT 갱신 예산은 아래 워치독(210s)보다 작아야 한다 — marketplace 60s + plugin 40s×3 = 180s.
+//   숫자를 올릴 땐 워치독도 같이 올릴 것(안 올리면 마지막 팩이 조용히 잘린다).
+const REFRESH_MP_TIMEOUT = 60000;
+const REFRESH_PLUGIN_TIMEOUT = 40000;
 
 // @AI:CONSTRAINT 실물 설치(clone)가 포함되므로 8초로는 부족 — 개별 install 60초 × 최대 3개 + 여유.
 setTimeout(() => { try { console.log('[hook-doctor-v2] timeout — skip'); } catch (_) {} process.exit(0); }, 210000);
@@ -53,6 +59,29 @@ function installPlugin(key) {
     execFileSync(claudeBin(), ['plugin', 'install', key, '--scope', 'user'], { stdio: 'ignore', timeout: 60000 });
     return true;
   } catch (_) { return false; }
+}
+
+// @AI:INTENT 전환이 끝나도 '갱신'은 계속 필요하다. 서드파티 마켓플레이스는 Claude Code 자동 갱신 대상이
+//   아니다 — 2026-07-26 실측: known_marketplaces.json lastUpdated가 내장 claude-plugins-official만 계속
+//   갱신되고 서드파티 3개(zulgap-team-pack 7/19 · superpowers 7/22 · openai-codex 7/22)는 전부 정지.
+//   아무도 update를 안 부르면 팀원 PC는 설치 시점 sha에 영구히 묶인다(사장님 PC가 7/21 f6dca84로 고정돼
+//   스킬 ASCII 리네임 #44가 5일간 미도달 — install/enabled 2장부는 그동안 계속 PASS였다).
+// @AI:CONSTRAINT 버전 비교로 판정하지 않는다 — 원격 sha를 알려면 marketplace update가 선행돼야 하는
+//   닭-달걀이다. 그래서 throttle된 주기로 update를 무조건 때린다. 이미 최신이면 no-op이라 안전.
+// @AI:FRAGILE 스탬프를 update '앞에' 찍는다 — 네트워크 실패 시 매 세션 재시도하면 직원 세션 시작이
+//   매번 최대 180s 느려진다. 실패해도 스킬은 계속 작동하므로 다음 창(24h)에 다시 시도하는 편이 낫다.
+function maybeRefresh(keys) {
+  try {
+    if (Date.now() - fs.statSync(REFRESH_STAMP).mtimeMs < REFRESH_EVERY_MS) return false;
+  } catch (_) { /* 스탬프 없음 = 첫 실행 → 진행 */ }
+  try { fs.mkdirSync(ZULGAP_DIR, { recursive: true }); fs.writeFileSync(REFRESH_STAMP, new Date().toISOString()); } catch (_) {}
+  ensureGitHttps();
+  // 카탈로그 먼저 — 이게 낡으면 새 sha를 '볼 수조차' 없어서 plugin update가 no-op이 된다.
+  try { execFileSync(claudeBin(), ['plugin', 'marketplace', 'update', MP], { stdio: 'ignore', timeout: REFRESH_MP_TIMEOUT }); } catch (_) {}
+  for (const k of keys) {
+    try { execFileSync(claudeBin(), ['plugin', 'update', k], { stdio: 'ignore', timeout: REFRESH_PLUGIN_TIMEOUT }); } catch (_) {}
+  }
+  return true;
 }
 
 function done(msg) {
@@ -111,7 +140,13 @@ if (role === 'dev' || role === 'master') want['dev-pack@' + MP] = true;
 const wantKeys = Object.keys(want);
 // @AI:INTENT '전환 완료' 판정에 실물 설치까지 포함 — 활성화만 보면 미설치 상태를 완료로 오독해 영구히 스킬 0개가 된다.
 const alreadyNew = wantKeys.every((k) => ep[k] === true && isInstalled(k)) && ep['zulgap@' + MP] !== true;
-if (alreadyNew) return done('이미 전환됨 — 정상 (변경 0, role=' + role + ')');
+if (alreadyNew) {
+  // @AI:FRAGILE 이 조기 return 뒤에 갱신 로직을 두면 영구 미도달이다 — isInstalled()는 '키가 있나'만 보고
+  //   버전을 안 보므로, 전환이 성공한 순간 alreadyNew가 영구 true가 되어 뒤쪽이 한 번도 실행되지 않는다.
+  //   갱신은 반드시 return '앞에' 있어야 한다.
+  const refreshed = maybeRefresh(wantKeys);
+  return done('이미 전환됨 — 정상 (변경 0, role=' + role + (refreshed ? ', 갱신 확인' : '') + ')');
+}
 
 try { fs.copyFileSync(SETTINGS, SETTINGS + '.bak-hookdoctor2'); } catch (_) { /* 백업 실패해도 진행 — 원본은 단일 write */ }
 for (const k of wantKeys) ep[k] = true;
@@ -119,6 +154,8 @@ for (const k of wantKeys) ep[k] = true;
 // 신 플러그인 '실물' 설치 — 이게 성공해야만 구 플러그인을 끌 수 있다.
 ensureGitHttps();
 try { execFileSync(claudeBin(), ['plugin', 'marketplace', 'add', 'zulgap/claude-team-pack'], { stdio: 'ignore', timeout: 60000 }); } catch (_) {}
+// @AI:INTENT add는 '이미 등록됨'이면 카탈로그를 새로 안 받는다 — 낡은 카탈로그로 install하면 구 sha가 박힌다.
+try { execFileSync(claudeBin(), ['plugin', 'marketplace', 'update', MP], { stdio: 'ignore', timeout: REFRESH_MP_TIMEOUT }); } catch (_) {}
 let installOk = true;
 for (const k of wantKeys) {
   if (isInstalled(k)) continue;
