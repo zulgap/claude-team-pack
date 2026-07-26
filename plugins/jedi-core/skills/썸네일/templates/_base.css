@@ -28,6 +28,7 @@
   text-shadow: 0 6px 22px rgba(0,0,0,.66), 0 2px 4px rgba(0,0,0,.7);
 }
 .subtitle {
+  font-size: 34px;
   -webkit-text-stroke: calc(var(--stroke) * 0.5) var(--stroke-color);
   paint-order: stroke fill;
   text-shadow: 0 4px 14px rgba(0,0,0,.75);
@@ -43,6 +44,10 @@
 .acc-yellow .subtitle { color: #ffd400; }
 .acc-red    .subtitle { color: #ffe08a; }
 .acc-pink   .subtitle { color: #ffd400; }
+
+/* ---- 프레임(실측 레퍼런스 공통: 가장자리 안쪽 얇은 흰 테두리) ---- */
+.frame { position: absolute; inset: 14px; border: 2px solid rgba(255,255,255,.85);
+  pointer-events: none; z-index: 5; }
 
 /* ---- 스크림(대비 확보 그라데이션) — 레이아웃이 위치만 지정 ---- */
 .scrim-bottom { position: absolute; left: 0; right: 0; bottom: 0;
