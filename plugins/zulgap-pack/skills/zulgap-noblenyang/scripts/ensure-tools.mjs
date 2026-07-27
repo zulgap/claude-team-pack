@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const skillDir = path.resolve(__dirname, '..');   // skills/노블냥
+const skillDir = path.resolve(__dirname, '..');   // skills/zulgap-noblenyang
 const require = createRequire(import.meta.url);
 
 let ffmpeg = null, installed = false;
