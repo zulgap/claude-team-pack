@@ -10,6 +10,22 @@
 
 ---
 
+## v2.7 (2026-07-28) — 스킬 폴더명 ASCII 전환 (v2.5 무효 봉합 · 플러그인 전용 · zip 변경 없음)
+**진단: v2.5(name만 ASCII)가 팀원 PC에서 무효 — 스킬 12개 중 7개 호출 불가.** 스킬 중복 판정(dedup)은
+frontmatter `name` 치환 **전** 폴더명 기반 ID에서 일어난다. 한글 폴더는 문자당 `-`로 뭉개져 같은
+글자수끼리 전부 겹치고(2글자 4개 → `--`, 3글자 5개 → `---`) 그룹당 하나만 생존, 생존자만 새 ASCII
+이름으로 응답했다(팀원 실측: `/jedi-ingest`·`/jedi-thumbnail`만 동작). v2.5의 "폴더 유지" 근거였던
+공식 문서 "name replaces the directory name"은 **생존자에게만** 적용되는 것이었다.
+- 🔄 스킬 폴더 10개 rename — `SKILL.md`의 `name` 값과 동일하게 (예: `skills/저장` → `skills/jedi-save`).
+  경로 참조 전수 grep: 런타임 참조 0건(스크립트 호출은 전부 상대/marketplace 경로), 주석 1건만 정정.
+- 🆕 `check-plugin-consistency.js` **C-4** — 폴더명 ≠ `name` 이면 FAIL (mutation 검증: 한글 폴더 재도입 → exit 1).
+  v2.5의 Tier C는 frontmatter만 봐서 이 사고가 통과했다.
+- 📖 `skill-packaging-spec.md` §4 ⑦ 폴더명 규칙 추가.
+- ⚠️ **머지만으로 팀원 PC 자동 정상화 아님** — 서드파티 마켓플레이스는 Claude Code 자동 갱신 대상이
+  아니므로(v2.6 참조) 각 PC에서 `hook-doctor-v2` maybeRefresh 24h 주기 또는 수동
+  `claude marketplace update` + `plugin update` 후 반영. 슬래시 명령은 v2.5 그대로(`/jedi-*`, `/zulgap-*`).
+- 📦 zip 변경 없음. 롤백 = PR 단위 revert (rename + C-4 + 문서가 한 묶음).
+
 ## v2.6 (2026-07-26) — 플러그인 자동 갱신 봉합 (설치 시점 버전 영구 고정 해소 · 윈도우 zip 재생성 권장)
 **진단: 서드파티 마켓플레이스는 Claude Code 자동 갱신 대상이 아니다. 그리고 갱신을 부를 코드·지시문이 양쪽 다 자기차단돼 있었다.**
 - 🐛 **실사고 (2026-07-26 사장님 PC)**: 스킬 이름 ASCII 개편(v2.5)이 머지 5일 뒤에도 안 닿아 `/` 화면에 `zulgap:--`·`zulgap:---`가 그대로였다. `installed_plugins.json`·`enabledPlugins` 2장부는 **계속 정상**이었고, 실물 로드 소스는 `plugins/cache/zulgap-team-pack/<plugin>/f6dca84eb219/`(7/20 설치 sha)에 **핀 고정**돼 있었다. 복구 = `claude plugin marketplace update` + `plugin update` ×3 (→ `e44fd0e`, 15초).

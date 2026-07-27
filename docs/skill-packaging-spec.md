@@ -74,7 +74,7 @@ requires:                       # 필요한 연결 (설치 시 충족 확인)
 | ④ | requires 선언 | 제디 도구·endpoint·config 의존 전부 명시 |
 | ⑤ | 프롬프트 3종 패턴 준수 | 지시문이 수치 하드리밋 / 금지 리터럴 열거 / 예시쌍+셀프체크 중 ≥1 사용 (`prompt-authoring-protocol.md`) |
 | ⑥ | 플러그인 이름 집합 일치 | `node scripts/check-plugin-consistency.js` → exit 0 (marketplace.json ↔ install.ps1 ↔ install.sh ↔ hook-doctor-v2.js, 활성화 집합 + 레거시 잔존 2단 검사. 2026-07-22 정책 헌법 §7 드리프트 봉합) |
-| ⑦ | **스킬 이름 ASCII kebab-case** | 같은 스크립트의 **Tier C**. `name`은 `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` — **한글·비-ASCII 금지**(명령 식별자에서 문자당 `-`로 소실 → 같은 글자수끼리 전부 겹쳐 엉뚱한 스킬이 실행됨. 2026-07-26 실사고). 플러그인 내 중복 0 + **플러그인 간 bare 이름 충돌 0**(접두 없는 `/name` 호출이 불확정해지므로). 팩 접두 권장: jedi-core → `jedi-*`, zulgap-pack → `zulgap-*` |
+| ⑦ | **스킬 이름 ASCII kebab-case** | 같은 스크립트의 **Tier C**. `name`은 `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` — **한글·비-ASCII 금지**(명령 식별자에서 문자당 `-`로 소실 → 같은 글자수끼리 전부 겹쳐 엉뚱한 스킬이 실행됨. 2026-07-26 실사고). 플러그인 내 중복 0 + **플러그인 간 bare 이름 충돌 0**(접두 없는 `/name` 호출이 불확정해지므로). 팩 접두 권장: jedi-core → `jedi-*`, zulgap-pack → `zulgap-*`. 🔴 **폴더명도 `name`과 동일한 ASCII 필수**(C-4) — 스킬 중복 판정(dedup)은 frontmatter 치환 **전** 폴더명 기반 ID에서 일어나 한글 폴더는 같은 글자수끼리 겹쳐 하나만 생존한다(2026-07-28 실사고: name만 ASCII로 바꾼 v2.5가 무효였음) |
 
 이 표가 그대로 **미래 마켓플레이스의 등록 심사 기준**이다.
 
