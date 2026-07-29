@@ -66,19 +66,31 @@ const RAW = 'https://raw.githubusercontent.com/zulgap/claude-team-pack/main/';
 //   부모가 시작한 비동기 요청은 완료 전에 죽는다(= 조용한 미갱신). 자식은 부모 종료와 무관하다.
 // @AI:INTENT master도 기동한다 — 아래 master 조기 종료보다 **앞에** 둔 이유. 사장님 PC가 7/21 버전에
 //   5일간 묶였던 게 정확히 이 자리를 지나쳤기 때문이다.
+// @AI:CONSTRAINT 🔴 v1·v2를 **순차** 실행한다 — 둘 다 settings.json을 읽고 쓰므로 병렬로 돌리면
+//   나중에 쓴 쪽이 앞의 변경을 통째로 덮는다(lost update). 순서를 지키는 실체는 **execFileSync의 동기성**이다
+//   — step(i+1)을 exec 앞으로 옮겨도 https.get은 콜백만 등록하고 반환하므로 v1이 끝난 뒤에야 v2가 돈다
+//   (mutation으로 확인). 진짜 위험은 둘을 각각 spawn해 **동시에** 띄우는 구조 변경이니 그것만 하지 말 것.
+//   v1 먼저: 가볍고(8s 워치독) prompt-capture 훅만 등록한다. v2는 최대 210s라 뒤에 둔다.
 (function launchDoctor() {
   const boot = [
     "const https=require('https'),fs=require('fs'),os=require('os'),path=require('path');",
     "const {execFileSync}=require('child_process');",
-    "const d=path.join(os.homedir(),'.claude','zulgap','hook-doctor-v2.js');",
-    // 받기 실패해도 로컬 기존본으로 실행 — 네트워크가 갱신을 막을 뿐 전환까지 막지는 않게 한다
-    "function run(){try{execFileSync(process.execPath,[d],{stdio:'ignore',timeout:210000});}catch(_){}}",
-    "const r=https.get('" + RAW + "hooks/hook-doctor-v2.js',{timeout:8000},(res)=>{",
-    "  if(res.statusCode!==200){res.resume();return run();}",
-    "  let s='';res.on('data',(c)=>{s+=c;});",
-    "  res.on('end',()=>{try{fs.mkdirSync(path.dirname(d),{recursive:true});fs.writeFileSync(d,s);}catch(_){}run();});",
-    "});",
-    "r.on('error',run);r.on('timeout',()=>{r.destroy();run();});",
+    "const dir=path.join(os.homedir(),'.claude','zulgap');",
+    // [파일명, 워치독보다 넉넉한 실행 timeout] — 순서가 곧 실행 순서다
+    "const items=[['hook-doctor.js',30000],['hook-doctor-v2.js',210000]];",
+    "function step(i){",
+    "  if(i>=items.length)return;",
+    "  const [name,tmo]=items[i];const d=path.join(dir,name);",
+    // 받기 실패해도 로컬 기존본으로 실행 — 네트워크가 갱신을 막을 뿐 실행까지 막지는 않게 한다
+    "  const go=()=>{try{execFileSync(process.execPath,[d],{stdio:'ignore',timeout:tmo});}catch(_){}step(i+1);};",
+    "  const r=https.get('" + RAW + "hooks/'+name,{timeout:8000},(res)=>{",
+    "    if(res.statusCode!==200){res.resume();return go();}",
+    "    let s='';res.on('data',(c)=>{s+=c;});",
+    "    res.on('end',()=>{try{fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(d,s);}catch(_){}go();});",
+    "  });",
+    "  r.on('error',go);r.on('timeout',()=>{r.destroy();go();});",
+    "}",
+    "step(0);",
   ].join('\n');
   try {
     const { spawn } = require('child_process');
