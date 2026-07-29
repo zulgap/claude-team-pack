@@ -10,6 +10,15 @@
 
 ---
 
+## v2.16 (2026-07-30) — install.ps1 dev-pack 누락 봉합 (v2.13이 맥만 고쳤다) · zip 재생성 필요
+**v2.13에서 `install.sh`(맥)만 고치고 `install.ps1`(윈도우)을 빠뜨렸다** — 정작 팀원 주 설치 경로가 윈도우인데.
+`/code-verification` ③ 전수 검색에서 발견. 메모리 교훈 *"보안 fix는 복사본에 안 따라간다"* 가 그대로 재현됐다.
+- 🔴 `install.ps1:169` `if ($Role -eq 'dev' -or 'master') { ... $true }` — **else 없음** → staff PC에 키가 안 생기고,
+  키가 없으면 로드된다(opt-out). v2.13의 효과가 윈도우 설치 PC에는 **닿지 않고 있었다.**
+- ✅ 세 곳 동기 확인: `install.ps1:177` / `install.sh:202` / `hook-doctor-v2.js:154`. 주석에 상호 참조를 박았다.
+- ✅ 검증: PowerShell AST 파서 문법 OK + 3곳 동기 grep.
+- ⚠️ **zip 재생성 필요** — 윈도우 부트스트랩 zip에 `install.ps1`이 들어간다.
+
 ## v2.14 (2026-07-29) — 🔴 갱신 심부름꾼을 훅으로 (오늘 증상 전부의 단일 뿌리) · zip 변경 없음
 **`hook-doctor-v2`가 몇 달째 한 번도 실행되지 않고 있었다.** 팀원 PC 실측: *"auto 모드 차단"*.
 `team-guide.md` 안의 "Claude 전용 지시"(`curl … && node …`)로만 불렸는데, 그건 클로드가 임의 명령을
