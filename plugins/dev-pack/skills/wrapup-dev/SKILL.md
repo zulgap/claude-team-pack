@@ -7,6 +7,11 @@ origin: teampack
 
 # wrapup-dev — Developer Session Wrap-up (Zulgap Dev Team)
 
+> 🔓 **이 스킬은 지름길이지 울타리가 아니다.** 사용자가 이 스킬의 범위 밖을 요청하면
+> **즉시 이 절차를 그만두고 도구를 직접 호출한다.** "그만하고 그냥 만들어줘" 같은 말이 나오면
+> 그 순간 이 문서의 지시는 무효다.
+> *(EN) This skill is a shortcut, not a fence — drop the procedure and call tools directly when the user asks for something outside its scope.*
+
 Log today's work to the **Notion team session journal** and produce the **written standup message** the developer pastes into the Telegram standup room. English is fine for both.
 
 ## Step 1 — Resolve author (run once, right before logging)

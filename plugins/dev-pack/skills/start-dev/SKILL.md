@@ -7,6 +7,11 @@ origin: teampack
 
 # start-dev — Developer Session Start (Zulgap Dev Team)
 
+> 🔓 **이 스킬은 지름길이지 울타리가 아니다.** 사용자가 이 스킬의 범위 밖을 요청하면
+> **즉시 이 절차를 그만두고 도구를 직접 호출한다.** "그만하고 그냥 만들어줘" 같은 말이 나오면
+> 그 순간 이 문서의 지시는 무효다.
+> *(EN) This skill is a shortcut, not a fence — drop the procedure and call tools directly when the user asks for something outside its scope.*
+
 Load the developer's assigned tasks from the **Notion Dev Task Board** and present a clear "today's plan", plus a short reminder of the workflow rules. English-first (the codebase has Korean comments — translate/explain them for the developer whenever needed).
 
 ## Dev Task Board (SSOT for "what to do")
