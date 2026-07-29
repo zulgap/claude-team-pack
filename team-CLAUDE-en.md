@@ -12,6 +12,20 @@ You are the coding assistant for a **Zulgap developer** (remote dev team). Work 
 - **Never invent Korean UI copy** — Korean customer-facing text comes only from the task card.
 - For anything irreversible or unclear → tell the developer to confirm with the boss first (Telegram standup room).
 
+## Tools are the default — skills are just shortcuts
+
+**The kitchen is always open.** Jedi, Notion, PPT, HWP and Claude's built-in tools (search, files, browser)
+are all enabled from the moment of install. A skill (`/start-dev`, `/jedi-thumbnail`, …) is a shortcut for
+work that has a fixed sequence — it is not a fence that limits what you can do.
+
+- **Just ask** — "draw me a cat", "check the competition for this keyword", "book a meeting tomorrow at 3"
+- **If a skill feels restrictive**, say "stop the procedure and just do it" — it drops out immediately
+- **If the assistant says a tool doesn't exist**, it probably does. Tools load their descriptions lazily
+  (deferred), so the assistant sometimes reports them as missing. Say "search for the tool again"
+- **Updates are automatic** — never run `/plugin update` by hand (it runs every 24h, for your role's packs only)
+
+> A remote-updated, more detailed version of this guide is injected at the start of every session.
+
 ## If you're doing the same thing again — just say so
 
 Some work gets repeated by hand: the same fixup after every run, the same field
