@@ -193,7 +193,13 @@ s.enabledPlugins = s.enabledPlugins || {};
 s.enabledPlugins['jedi-core@zulgap-team-pack'] = true;
 s.enabledPlugins['zulgap-pack@zulgap-team-pack'] = true;
 const role = String(process.env.ZULGAP_ROLE || 'staff');
+// @AI:CONSTRAINT 🔴 dev-pack은 명시적 false를 써야 꺼진다 — 키를 안 쓰면 켜진다(opt-out).
+//   2026-07-29 실측: staff PC에 dev-pack 키가 없는데도 start-dev/wrapup-dev가 로드돼 실행까지 됐다.
+//   마켓플레이스가 3팩을 통째로 설치하므로 실물은 늘 존재한다. else 없이 두면 staff PC에 키가 안 생긴다.
+//   설치 시점의 ROLE은 --role 인자 또는 토큰 claim으로 확정된 값이라 여기선 바로 false를 쓴다
+//   (판정이 불확실할 수 있는 hook-doctor-v2 쪽은 confident일 때만 끈다 — 양쪽 동기 필수).
 if (role === 'dev' || role === 'master') s.enabledPlugins['dev-pack@zulgap-team-pack'] = true;
+else s.enabledPlugins['dev-pack@zulgap-team-pack'] = false;
 // @AI:FRAGILE 구 zulgap 비활성은 여기서 하지 않는다 — 신 플러그인 '실물 설치' 성공 후에만 (verify-then-flip, 아래 5.8).
 //   먼저 끄고 나중에 설치하면 설치 실패 PC는 구·신이 동시에 죽어 스킬 0개가 된다 (2026-07-21 실사고 클래스).
 s.hooks = s.hooks || {};
