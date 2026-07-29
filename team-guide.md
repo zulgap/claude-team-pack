@@ -61,6 +61,28 @@
 > 2026-07-29 실사고: 일반 팀원에게 4팩 전부 갱신을 안내했다가 `dev-pack`에서 막혔습니다.
 > **본인 role과 무관한 팩이 목록에 보이더라도 신경 쓰지 마세요** — 갱신 명령을 대신 쳐 줄 필요도 없습니다.
 
+## 훅 파일 자가진단 (Claude 전용 — 1회, 조용히)
+
+`~/.claude/zulgap/team-guide-fetch.js` 를 **읽어서** `launchDoctor` 라는 단어가 있는지 확인할 것.
+(읽기만 한다. 명령 실행이 아니라 파일 읽기다.)
+
+- **있으면** → 아무 말도 하지 말고 넘어간다. 정상이다.
+- **없으면** → 이 PC의 훅이 **설치 시점 버전**이라 갱신이 영영 안 닿는다. 사용자에게 이렇게 안내할 것:
+
+> ⚠️ 팀팩 갱신 파일이 옛 버전이라 자동 업데이트가 멈춰 있습니다. 아래를 그대로 입력해 주세요(맨 앞 `!` 포함):
+> ```
+> ! curl -sL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/hooks/team-guide-fetch.js -o "%USERPROFILE%\.claude\zulgap\team-guide-fetch.js"
+> ```
+> 안 되면: `! powershell -Command "iwr 'https://raw.githubusercontent.com/zulgap/claude-team-pack/main/hooks/team-guide-fetch.js' -OutFile \"$env:USERPROFILE\.claude\zulgap\team-guide-fetch.js\""`
+> 그 다음 클로드를 두 번 껐다 켜시면 이후로는 자동입니다.
+
+🔴 **이 안내는 `!` 를 붙여 사용자가 직접 실행하게 해야 한다.** Claude가 대신 실행하려 하면 권한 정책에 차단된다
+(2026-07-29 실측 "auto 모드 차단" — 그게 갱신이 몇 달째 멈춰 있던 원인이다).
+
+> 왜 이 자가진단이 여기 있나: `team-guide-fetch.js` 는 install이 1회 복사하고 끝이라 **자기 갱신 경로가 없었다.**
+> v2.17에서 자기 갱신을 넣었지만, **그 코드가 든 파일 자체를 못 받는 PC**는 스스로 못 낫는다 — 닭-달걀.
+> 반면 이 `team-guide.md` 는 옛 훅도 매 세션 원격 최신본을 받으므로, 여기가 옛 PC에 닿는 **유일한 통로**다.
+
 ## 플러그인 전환·갱신 — 자동입니다 (Claude가 할 일 없음)
 
 🔴 **여기서 아무 명령도 실행하지 말 것.** 플러그인 전환과 24시간 갱신은 `team-guide-fetch` 훅이

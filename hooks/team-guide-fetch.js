@@ -77,12 +77,17 @@ const RAW = 'https://raw.githubusercontent.com/zulgap/claude-team-pack/main/';
     "const {execFileSync}=require('child_process');",
     "const dir=path.join(os.homedir(),'.claude','zulgap');",
     // [파일명, 워치독보다 넉넉한 실행 timeout] — 순서가 곧 실행 순서다
-    "const items=[['hook-doctor.js',30000],['hook-doctor-v2.js',210000]];",
+    // @AI:CONSTRAINT 🔴 [파일명, 실행 timeout] — **timeout 0 = 받기만 하고 실행하지 않음**.
+    //   `team-guide-fetch.js`(자기 자신)가 목록에 있는 이유: 이 파일을 갱신하는 경로가 그전까지
+    //   **어디에도 없었다**(install이 1회 복사하고 끝). 그래서 훅 파일에 무엇을 넣어도 기존 PC엔
+    //   영원히 안 닿았다 — 2026-07-30 실측: 팀원 PC의 훅이 설치 시점 버전이라 launchDoctor 자체가 없었다.
+    //   자기 갱신은 **다음 세션부터** 반영된다(이번 세션은 이미 옛 파일이 메모리에 로드됨).
+    "const items=[['hook-doctor.js',30000],['hook-doctor-v2.js',210000],['team-guide-fetch.js',0]];",
     "function step(i){",
     "  if(i>=items.length)return;",
     "  const [name,tmo]=items[i];const d=path.join(dir,name);",
     // 받기 실패해도 로컬 기존본으로 실행 — 네트워크가 갱신을 막을 뿐 실행까지 막지는 않게 한다
-    "  const go=()=>{try{execFileSync(process.execPath,[d],{stdio:'ignore',timeout:tmo});}catch(_){}step(i+1);};",
+    "  const go=()=>{if(tmo>0){try{execFileSync(process.execPath,[d],{stdio:'ignore',timeout:tmo});}catch(_){}}step(i+1);};",
     "  const r=https.get('" + RAW + "hooks/'+name,{timeout:8000},(res)=>{",
     "    if(res.statusCode!==200){res.resume();return go();}",
     "    let s='';res.on('data',(c)=>{s+=c;});",
