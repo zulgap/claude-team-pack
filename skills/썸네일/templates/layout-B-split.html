@@ -31,15 +31,35 @@ html, body { width: 1280px; height: 720px; overflow: hidden; }
     {{#if subtitle}}<div class="subtitle">{{subtitle}}</div>{{/if}}
     {{#if role}}<div class="role-label">({{role}})</div>{{/if}}
     {{#if channel}}<div class="watermark">{{channel}}</div>{{/if}}
+    <div class="frame"></div>
   </div>
   <script>
     (function () {
+      // @AI:INTENT 레이아웃 A와 동일 로직 이식 (2026-07-30) — 양방향 auto-fit + 서브카피 연동.
+      //   기존엔 축소만 해서 긴 카피가 좌측 660px 폭을 넘어 4줄로 흩어지고, 서브는 화면 맨 아래에
+      //   고아처럼 떨어져 있었다(F3 실패). A와 같은 기준으로 맞춘다.
       function fit() {
         var el = document.getElementById('title'); if (!el) return;
-        var box = el.parentElement; var maxH = 560; var size = 92, floor = 52;
+        var box = el.parentElement;                 // title-box (width 660)
+        var maxH = 420;                             // 좌측 텍스트 세로 상한 (화면 58%)
+        var size = 92, floor = 44, ceil = 150;
+        function over() { return el.scrollWidth > box.clientWidth || el.scrollHeight > maxH; }
         el.style.fontSize = size + 'px';
-        while ((el.scrollWidth > box.clientWidth || el.scrollHeight > maxH) && size > floor) {
-          size -= 3; el.style.fontSize = size + 'px';
+        if (over()) {
+          while (over() && size > floor) { size -= 3; el.style.fontSize = size + 'px'; }
+        } else {
+          while (!over() && size < ceil) { size += 3; el.style.fontSize = size + 'px'; }
+          if (over()) { size -= 3; el.style.fontSize = size + 'px'; }
+        }
+        // @AI:DEPENDS 서브카피를 제목 박스 **바로 아래**에 붙인다 — bottom 고정이면 제목과 분리돼 따로 논다.
+        //   title-box가 세로 중앙(top:50% translateY(-50%))이므로 그 하단 좌표를 계산해서 얹는다.
+        var sub = document.querySelector('.subtitle');
+        if (sub) {
+          var ss = Math.round(size * 0.5), sfloor = 38;
+          sub.style.fontSize = ss + 'px';
+          while (sub.scrollHeight > ss * 1.4 && ss > sfloor) { ss -= 2; sub.style.fontSize = ss + 'px'; }
+          var boxBottom = (720 / 2) + (el.scrollHeight / 2);   // title-box 하단 y좌표
+          sub.style.bottom = Math.max(30, 720 - boxBottom - ss - 24) + 'px';
         }
       }
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
