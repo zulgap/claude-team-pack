@@ -31,19 +31,26 @@ node "<이 스킬 디렉토리>/collect-prompts.js"
 
 ## 작성자 자동 확인 (적재 직전, 먼저)
 
-공유 계정이라 "누가 했는지"는 개인 제디 토큰의 actor로 식별한다. 적재 직전 **딱 1회** Bash로 실행:
+공유 계정이라 "누가 했는지"는 개인 제디 토큰의 actor로 식별한다. **이름은 서버가 알려준다**(2026-07-29~ — 파일 명단이 아니라 백엔드 `actor.name`). 적재 직전 **딱 1회** Bash로 실행:
 
 ```
-node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/resolve-staff.js"
+node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/teampack-config.js" name
 ```
-- 위 경로가 없으면 `~/.claude/plugins` 아래에서 `resolve-staff.js`를 찾아 실행한다(플러그인 캐시 경로 환경차).
+- 위 경로가 없으면 `~/.claude/plugins` 아래에서 `teampack-config.js`를 찾아 실행한다(캐시 경로 환경차).
+  (구버전 호환: `resolve-staff.js`도 같은 값을 준다 — 내부에서 위 스크립트로 위임)
 - 출력된 **이름 한 줄**을 아래 `작성자` 속성에 넣는다.
-- 출력이 **비어 있으면**(토큰 없는 직원 / 미매핑) `작성자`는 **생략**한다. 스크립트 실패도 무시하고 저널은 정상 적재한다.
+- 출력이 **비어 있으면** `작성자`는 **생략**하고 저널은 정상 적재한다. 다만 이건 정상 상태가 아니다 —
+  🔴 **토큰이 없거나 서버에 닿지 못한 것**이므로 사장님께 알린다(전원 토큰 발급이 원칙).
+  stderr에 `🔴 캐시가 N일 지났습니다` 경고가 뜨면 그대로 보고할 것.
 
 ## 적재 방법
 
 `notion-create-pages` 호출:
-- **parent**: `{"type":"data_source_id","data_source_id":"67bf5daa-64e2-4745-85b6-c67e4a231b44"}`
+- **parent**: `{"type":"data_source_id","data_source_id":"<아래 명령의 출력>"}`
+  ```
+  node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/teampack-config.js" notion.team_journal_ds
+  ```
+  (하드코딩 금지 — 회사마다 DB가 다르다. 출력이 비면 사장님께 온보딩 요청)
   - (줄갭 "팀 세션 저널" DB — 마스터 허브 하위. 직원이 이 DB에 노션 권한이 있어야 적재됨)
 - **properties**:
   - `세션` (title): 이번 작업 한 줄 제목
