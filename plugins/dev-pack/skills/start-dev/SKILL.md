@@ -11,8 +11,11 @@ Load the developer's assigned tasks from the **Notion Dev Task Board** and prese
 
 ## Dev Task Board (SSOT for "what to do")
 
-- Notion database page: `dd1c67d2d88c4a568817d73db916295c`
-- Data source (for queries): `collection://985ecf48-6810-4a4c-9fc3-79b2889dc79f`
+- Data source ID (for queries) — **never hardcode**, get it from the server:
+  ```
+  node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/teampack-config.js" notion.dev_task_board_ds
+  ```
+  Then query `collection://<that id>`. If empty, ask the boss for onboarding.
 - Columns: `Task` (title) / `Status` (Backlog·Todo·In Progress·In Review·Done) / `Priority` (P1·P2·P3) / `Service` / `Assignee` / `PR Link` / `Due`
 - Card body = background + **Acceptance Criteria checklist** (written by the boss). The card is the single source of what "done" means.
 

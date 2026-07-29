@@ -10,6 +10,29 @@
 
 ---
 
+## v2.8 (2026-07-29) — 신원·회사설정 서버 이관 (staff-map.json 파일 명단 탈출 · 플러그인 전용 · zip 변경 없음)
+**배경: 팀원이 `/jedi-start`를 눌렀더니 사장님 개발 트랙이 통째로 떴다.** 추적해보니 원인은 신원 체계가
+아니라 **스킬이 여는 노션 페이지 하나**(마스터 허브 하드코딩)였고, 그 과정에서 이미 만들어져 있는데
+안 쓰는 서버 경로가 드러났다 — `GET /mcp/ext/teampack-config`가 2026-07-14에 배포·검증까지 끝났고
+서버 주석이 스스로 *"actor_name — staff-map.json(팀팩 repo 파일) 대체"*라고 적어뒀는데
+**팀팩이 한 번도 호출하지 않았다**(전수 grep 런타임 호출 0건). 이 릴리스가 그 미착수 배선을 잇는다.
+- 🆕 `teampack-config.js` — 회사 카드(신원·노션 ID) 단일 조회 진입점. `name` / `hub` / `notion.<key>` / `company`.
+  토큰 tenant로 **서버가 카드를 고르므로** 팀팩 파일에 회사별 리터럴을 둘 필요가 없다.
+- 🔄 `resolve-staff.js` — **이름 소스가 파일 → 백엔드**로 이동(내부에서 위 스크립트에 위임).
+  하위 호환 진입점으로 남긴다: 팀원 PC 플러그인 캐시(sha 핀 고정)의 옛 SKILL.md들이 이 경로를 계속 부른다.
+- 🔴 **name에 `staff-map.json` 폴백을 두지 않는다.** 백엔드가 평소 답해버리면 파일이 썩은 사실 자체가
+  은폐되고, 두 소스 불일치를 감지할 게이트가 0개다. 가용성 폴백은 *다른 장부*가 아니라
+  **직전 서버 응답의 캐시**(`~/.claude/zulgap/teampack-config.cache.json`, 4s timeout / stale 7일 fail-loud)다.
+- 🔄 하드코딩 제거 4곳 — `jedi-start`(허브 ID) · `jedi-save`/`wrapup-dev`(팀 저널 DS) · `start-dev`(Dev Task Board DS).
+  본체 스킬의 테넌트 리터럴 **0건** 달성(`zulgap-gaon-report`의 검단가온 페이지는 카드에 키가 없어 별건).
+- ⚠️ **email은 아직 파일에 남는다** — 서버 카드가 `actor.name`만 주고 email 필드가 없다.
+  `staff-map.json` 삭제 전에 email 경로를 먼저 해결해야 한다(지금 지우면 `zulgap-blog`의 git author가
+  전원 공유 계정으로 폴백). 파일 삭제는 별 PR.
+- ✅ 검증: 4키 실호출(name/hub/team_journal_ds/dev_task_board_ds) 전부 정상 + **폴백 3경로**
+  (서버 불가+캐시 fresh → 캐시 사용 / 캐시 8일 → 빈 출력 + 🔴 경고 / 캐시 없음 → 빈 출력).
+  ⚠️ 폴백 테스트 1차가 **무효였다** — `readCreds`가 `env.JUDGMENTOS_URL`을 우선해 sed로 바꾼 기본값이
+  안 쓰였고 실제 서버에 붙어 있었다. 치환 라인 수를 세어 발견 후 재실행.
+
 ## v2.7 (2026-07-28) — 스킬 폴더명 ASCII 전환 (v2.5 무효 봉합 · 플러그인 전용 · zip 변경 없음)
 **진단: v2.5(name만 ASCII)가 팀원 PC에서 무효 — 스킬 12개 중 7개 호출 불가.** 스킬 중복 판정(dedup)은
 frontmatter `name` 치환 **전** 폴더명 기반 ID에서 일어난다. 한글 폴더는 문자당 `-`로 뭉개져 같은

@@ -11,18 +11,27 @@ Log today's work to the **Notion team session journal** and produce the **writte
 
 ## Step 1 — Resolve author (run once, right before logging)
 
-The Claude account is shared, so authorship comes from the developer's personal Jedi token:
+The Claude account is shared, so authorship comes from the developer's personal Jedi token.
+**The name comes from the server** (since 2026-07-29 — backend `actor.name`, not a file list):
 
 ```
-node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/resolve-staff.js"
+node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/teampack-config.js" name
 ```
-- If that path does not exist, find `resolve-staff.js` under `~/.claude/plugins` and run it (plugin cache paths vary).
-- Use the printed name as the `작성자` property below. If output is empty (no token / unmapped), omit `작성자` — the journal entry is still valid. Script failure never blocks logging.
+- If that path does not exist, find `teampack-config.js` under `~/.claude/plugins` and run it (cache paths vary).
+  (Backward compatible: `resolve-staff.js` returns the same value — it delegates to the script above.)
+- Use the printed name as the `작성자` property below.
+- If output is empty, omit `작성자` — the journal entry is still valid. But this is **not** a normal state:
+  🔴 it means no token, or the server was unreachable. Report it to the boss (every member should have a token).
+  If stderr shows `🔴 캐시가 N일 지났습니다`, relay that warning as-is.
 
 ## Step 2 — Append one row to the team session journal
 
 Call `notion-create-pages`:
-- **parent**: `{"type":"data_source_id","data_source_id":"67bf5daa-64e2-4745-85b6-c67e4a231b44"}` (Zulgap "팀 세션 저널" DB)
+- **parent**: `{"type":"data_source_id","data_source_id":"<output of the command below>"}` (team session journal DB)
+  ```
+  node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/teampack-config.js" notion.team_journal_ds
+  ```
+  (never hardcode — the DB differs per company. If empty, ask the boss for onboarding)
 - **properties**:
   - `세션` (title): one-line English title of today's work (e.g. "RPGlobal: keyword list page skeleton")
   - `작성자`: name from Step 1 (omit if empty)
