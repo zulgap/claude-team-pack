@@ -1,71 +1,195 @@
 ---
 name: zulgap-blog
-description: 줄갭 사이트(jeong-korea·zulgap.kr·mamisa 등)에 블로그 글을 작성해 발행. "/zulgap-blog", "블로그 글 써줘", "OO 주제로 글 올려줘", "블로그 발행해줘", "홈페이지에 글 올려줘" 처럼 콘텐츠를 만들어 홈페이지에 올릴 때 사용.
-version: 1.0.0
+description: 블로그 글 1편을 조사 → 개요 확정 → 초안 → 도구 검수 → 시각물 → 노션 카드까지 만든다. 발행은 사람이 확정할 때만. "/zulgap-blog", "블로그 써줘", "OO 주제로 글 써줘", "블로그 글 만들어줘", "홈페이지에 글 올려줘" 에 호출. (제디 토큰 필요)
+version: 2.0.0
 origin: teampack
 ---
 
-# 블로그 발행 (줄갭 사이트)
+# 블로그 — 조사부터 노션 카드까지
 
 > 🔓 **이 스킬은 지름길이지 울타리가 아니다.** 사용자가 이 스킬의 범위 밖을 요청하면
 > **즉시 이 절차를 그만두고 도구를 직접 호출한다.** "그만하고 그냥 만들어줘" 같은 말이 나오면
 > 그 순간 이 문서의 지시는 무효다.
 
-직원이 **주제만** 주면, 사이트 블로그 형식대로 글을 작성하고 git push로 발행한다(→ 자동배포 → 홈페이지 반영). 직원은 git을 몰라도 된다.
+**이 스킬은 내가(클로드 코드가) 직접 판단하고 백엔드 도구를 호출한다.** 서버 워크플로우에 넘기지 않는다 — 그래야 질문이 즉시 오가고, 도구가 실패하면 그 자리에서 고칠 수 있다.
 
-## 사이트 → repo 매핑 (이 목록의 블로그 사이트만 작업)
-| 사이트 | repo |
+> **판정은 사람이 아니라 도구가 한다.** 키워드 등급도, 원고 검수 수치도 내가 세지 않고 도구 반환값을 근거로 제시한다. 직접 세면 틀린다(실사고: 키워드 "5회"라 보고했으나 실제 12회).
+
+## 쓰는 도구 (전부 백엔드 — 미니앱·텔레그램과 공유)
+
+| 단계 | 도구 |
 |---|---|
-| jeong-korea | `zulgap/jeong-korea` |
-| zulgap.kr | `zulgap/zulgap-website` |
-| mamisa | `zulgap/mamisa-market-research` |
-| (judgmentos.zulgap.kr) | 위치 확인 후 추가 예정 |
+| 키워드 | `ext_golden_keyword` |
+| 동료사 실사진 | `ext_search_partner_assets` |
+| 이미지 생성 | `ext_generate_image` |
+| 원고 검수 | `validate_blog_draft` |
+| 카드 생성 | `create_blog_card` |
+| 이미지 첨부 | `attach_blog_card_images` |
+| 발행 | `publish_blog_card_now` |
 
-> 🚨 **위 블로그 repo만 건드린다.** judgmentos(production)·서버·DB·다른 repo는 **절대 건드리지 않는다.** 직원은 콘텐츠 발행자이지 코드/서버 관리자가 아니다.
+---
 
-## 실행 순서
+## STEP 0 — 세 가지 확인 (없으면 묻는다)
 
-1. **사이트 + 주제 확정** — "어느 사이트에, 무슨 주제로 쓸까요?" 직원에게 물어 확정.
+1. **동료사(brand)** — 예: 정코리아 / 줄갭
+2. **채널** — 홈페이지 블로그 / 네이버 블로그
+3. **주제** — 있으면 그대로, 없으면 STEP 1에서 발굴
 
-2. **repo 준비** — 해당 repo가 로컬에 없으면 `git clone https://github.com/zulgap/<repo>.git`, 있으면 `git -C <폴더> pull`.
-   - HTTPS 방식이라 **gh CLI 불필요**. 첫 clone/push 때 GitHub 로그인 창이 뜨면 **본인 GitHub 계정**으로 로그인하면 캐시됨(이후 자동).
-   - "권한 없음/Repository not found"이 나오면 → 사장님께 "이 repo에 초대해주세요" 요청(아직 Collaborator 초대 안 된 사이트).
+🔴 동료사를 모르면 진행 불가 — 시각물 조회가 brand 없이는 거부된다(동료사 간 자료 교차 오염 방지).
 
-3. **블로그 형식 파악 (추측 금지)** — 그 repo의 `content/blog/_TEMPLATE.md`(있으면)와 **기존 글 1개를 Read**해서 형식을 그대로 따른다:
-   - 폴더 위치 (`content/blog/`), 파일명 규칙(`NN-slug.mdx`)
-   - frontmatter 필드 (title·date·excerpt·seoKeywords·faq 등)
-   - 본문 구조 (사이트마다 다를 수 있음 — 반드시 그 repo 것 확인)
+**글 언어를 먼저 확정한다.** 동료사가 영어권 타겟이면(정코리아 등) **제목·H2·H3·FAQ·CTA·캡션까지 전부 영어**로 쓴다. 초안 1차부터 그 언어로 쓴다 — 나중에 번역하면 통째로 다시 써야 한다.
 
-4. **글 작성** — 위 형식대로 `content/blog/<순번>-<slug>.mdx` 생성. 광고슬롯·JSON-LD 등 "사이트가 자동 주입"이라 표시된 건 본문에 직접 쓰지 않는다.
+---
 
-5. **발행 확인 → push** — 직원에게 글 미리보기 + "이 내용으로 올릴까요?" 확인. OK면:
+## STEP 1 — 키워드 (도구가 판정)
 
-   먼저 **커밋 작성자 = 그 직원**으로 박는다(누가 쓴 글인지 GitHub 기록에 남김). Bash로 신원 조회:
-   ```
-   node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/resolve-staff.js"        # 이름
-   node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/resolve-staff.js" email  # 이메일
-   ```
-   (위 경로가 없으면 `~/.claude/plugins` 아래에서 `resolve-staff.js`를 찾아 실행.)
+`ext_golden_keyword` 호출:
+- 한국어 글 → `locale='ko'` (네이버 축: 진입=최근 30일 발행량, 단가=네이버 공식 CPC)
+- 영어 글 → `locale='en'` (구글 축: Google Ads 미국 기준)
+- 주제만 있고 키워드가 없으면 `mode='topic'`, 고객이 실제로 묻는 걸 찾으려면 `mode='question'`
 
-   - **이름·이메일 둘 다 있으면** → 그 직원으로 커밋:
-     ```
-     git -C <폴더> add content/blog/<파일>
-     git -C <폴더> -c user.name="<이름>" -c user.email="<이메일>" commit -m "blog: <제목>"
-     git -C <폴더> push
-     ```
-   - **이메일이 비어 있으면**(staff-map 미등록 직원) → 기존대로 공유 계정 커밋:
-     ```
-     git -C <폴더> add content/blog/<파일>
-     git -C <폴더> -c user.email="zulgap0327@gmail.com" commit -m "blog: <제목>"
-     git -C <폴더> push
-     ```
-   → Vercel/Railway 자동배포.
+**진입(경쟁도)이 1차 축이다** — 단가가 높아도 노출이 안 되면 소용없다.
 
-6. **결과 안내** — "올렸습니다. 몇 분 후 <사이트 URL>/blog 에 반영됩니다."
+결과를 표로 보여주고 추천 1개를 근거와 함께 제시한다. 도구가 안 되면 **추정으로 때우지 말고 그 사실을 말한다.**
 
-## 주의 (직원 안전)
-- **블로그 repo만** — production·서버·DB·다른 repo 금지.
-- 글 형식은 **각 사이트의 _TEMPLATE.md/기존 글을 Read**해서 따른다 (사이트마다 다름).
-- `git config user.email = zulgap0327@gmail.com` (Vercel Hobby 배포 차단 방지).
-- 이미지가 필요하면 `public/images/blog/`에 넣고 상대경로로 참조.
-- push 권한이 없다는 에러가 나면 = 사장님께 "이 repo에 초대해주세요" 요청 (각 사이트 repo collaborator 필요).
+🔴 **STEP 4에 넘길 키워드는 도구가 추천한 1~2개만.** 검수 규칙이 **키워드마다 4~6회 반복**을 요구하므로, 5개를 넣으면 억지 조합이 0회로 잡혀 전부 위반이 된다. 실제 타겟 키워드와 그 부분매치 1개면 충분하다.
+- seed는 **짧게**. 문장형(`living in Korea as a foreigner — practical guides`)은 `no_candidates`로 0건이 나온다. 짧은 seed(`living in Korea`)로 재시도할 것.
+
+---
+
+## STEP 2 — 개요 14칸 (사람 확정 필수)
+
+표로 채워서 보여주고 **"이 개요로 초안을 쓸까요?"** 확인을 받는다. 빈칸이 있으면 먼저 묻는다 — 빈 개요로 쓴 초안은 다시 써야 한다.
+
+| # | 칸 | 내용 |
+|---|---|---|
+| 1 | doc_type | 소개글 / 철학글 / 가치입증글 / 판매글 / 영업사원글 / 트래픽글 |
+| 2 | author_identity | 누구로서 쓰나 |
+| 3 | target_reader | **한 사람으로 좁힌다** |
+| 4 | surface_topic | 겉 주제 (독자가 검색하는 것) |
+| 5 | real_topic | 진짜 주제 (우리가 심고 싶은 것) |
+| 6 | keyword_title | 키워드 넣은 제목 |
+| 7 | hook | 후킹 첫 줄 |
+| 8 | intro | 문제해결형 / 통념깨기형 / 가치입증형 |
+| 9 | body | 솔루션형 / 통념깨기형 / 개념설명형 |
+| 10 | conclusion(CTA) | 사회적증거 / 희소성 / 통념깨기 / 행동촉구 / 영감 / 허들낮추기 / 두려움자극 / 시리즈 |
+| 11 | faq | 고객이 실제로 묻는 질문 (`mode='question'` 결과 활용) |
+| 12 | visuals | 자리 / 종류(표·도식·사진) / 소싱(동료사실사진→도식→공공캡쳐→AI생성) |
+| 13 | visual_facts | 시각물에 들어갈 사실·수치 (**지어내기 금지**) |
+| 14 | references | 참고·출처 |
+
+**갭(궁금증) 9종** — 후킹·소제목에 섞는다: 통념깨기 / 손실회피 / 사회적증거 / 구체성N가지 / 신뢰성 / 공감형 / 끝장 / 이유방법비법 / 이것저것
+
+**시각물 자리 후보**: 도입부 / 핵심 예시 / 신뢰 강화 / 마무리 / 별도 후기 섹션 / FAQ 보강
+
+12번 칸을 정하기 전에 `ext_search_partner_assets`로 **동료사 보유 자료를 먼저 확인한다**(있으면 소싱=동료사실사진, 0건이면 표·도식 또는 AI생성).
+
+---
+
+## STEP 3 — 초안
+
+개요대로 쓴다. 표로 표현되는 것은 **본문 표**로 넣는다(이미지로 만들지 않는다).
+
+이미지가 들어갈 자리에는 마커를 남긴다: `[이미지 ①: 무엇을 보여주는 그림인지]`
+
+🔴 **FAQ는 `### 질문` 형식이어야 파서가 읽는다**:
+
+```markdown
+## FAQ
+
+### Can I get a phone plan without an ARC?
+
+You can get a prepaid SIM with only your passport...
+```
+
+`**Q: …?** A: …` 형식은 **한 건도 안 잡혀** `faq_missing`이 된다. 섹션 헤딩도 `## FAQ` 또는 `## Frequently Asked Questions`만 인정된다.
+
+**외부 자료 인용 하드리밋** (발행 콘텐츠 전체):
+- 직접 인용 = 출처당 **1개**, 한국어 공백포함 **40자 미만**(영문 15단어 미만)
+- **출처(매체명·저작자) 명시 필수** — 저작권법 §37 별도 형사처벌
+- 공표된 자료만. 타사 이미지·차트 캡처 삽입 금지. 가사·시 인용 전면 금지
+
+---
+
+## STEP 4 — 검수 (도구가 센다)
+
+`validate_blog_draft({ markdown, channel, keywords })` 호출.
+
+반환된 `checks`·`violations`를 **그대로 보여준다**. 위반이 있으면 고쳐서 다시 호출한다. 통과할 때까지 반복하되, **내가 직접 세서 "통과했습니다"라고 말하지 않는다.**
+
+---
+
+## STEP 5 — 시각물 (위에서부터, 위가 있으면 아래로 안 간다)
+
+1. **동료사 보유 실사진** — `ext_search_partner_assets`
+   - 반환에 `degraded`가 있으면 "동료사 자료를 못 읽었습니다"를 결과에 **반드시 남긴다**
+   - `blinding_blocked > 0`이면 "얼굴·개인정보 처리가 안 된 사진 N장을 제외했습니다"를 **개수까지** 남긴다
+2. **도식(직접 작성)** — 표로 안 되는 구조·흐름만
+3. **공공 캡쳐** — 공개된 통계·기관 자료만
+4. **AI 생성** — 위 셋이 다 없을 때만. `ext_generate_image`
+
+> ℹ️ **URL 만료는 신경 쓰지 않아도 된다.** 노션 업로드 URL은 1시간이면 만료되지만,
+> STEP 6의 `attach_blog_card_images`가 `rehost: true`(기본)로 **Storage 영구 URL로 재호스팅**한 뒤 삽입한다.
+
+🔴 **`ext_generate_image` 반환은 base64가 통째로 온다 — 1.4M 문자로 컨텍스트를 날린다.**
+반환이 "exceeds maximum allowed tokens"로 잘리면 **당황하지 말 것. 이미지는 이미 만들어졌다.**
+저장된 파일에서 URL만 뽑아 쓴다:
+
+```bash
+grep -oE 'https://[a-z0-9.-]+/storage/v1/object/public/[^"]{10,200}\.(png|jpg|jpeg|webp)' "<저장된 경로>" | head -1
+```
+
+🔴 **`save_image_asset`을 부르지 않는다** — MCP에 노출되지 않은 내부 도구라 호출 자체가 불가능하다.
+필요도 없다: `ext_generate_image`의 post-hook이 **이미 `content_asset`에 자동 등록**한다.
+
+---
+
+## STEP 6 — 노션 카드
+
+1. `create_blog_card({ markdown, title, partner, content_type, keywords })` → 단계 **6(초안_관리자컨펌중)** 으로 생성
+2. `attach_blog_card_images({ notion_page_id, images: [{ marker, url, caption }] })` → 마커 자리에 이미지 삽입 + 마커 제거
+
+**마커가 하나라도 남으면 발행이 차단된다.** 첨부 후 `markers_removed`가 이미지 수와 같은지 확인한다.
+
+---
+
+## STEP 7 — 발행 (사람이 확정할 때만)
+
+카드 링크와 요약을 보여주고 **"이대로 발행할까요?"** 묻는다.
+
+승인받으면 `publish_blog_card_now({ notion_page_id, slug })`.
+
+- 이 도구가 유일한 승격 통로다. 본문 검사(빈 본문·지시문·이미지 마커 잔존)를 통과해야만 단계 7로 올라가고 즉시 발행된다.
+- `status: 'blocked'`가 오면 **우회하지 말고** 사유를 보여주고 원고를 고친다.
+- 발행 실패 시 자동으로 단계 6으로 롤백된다.
+
+🔴 **승인 없이 발행하지 않는다.** 동료사 홈페이지에 공개되는 행위다.
+
+### 발행 가능한 곳
+
+자동 발행은 **등록된 동료사 + 콘텐츠 구분** 조합에서만 된다(미등록 조합은 안전하게 거부된다 — 엉뚱한 사이트에 올라가느니 멈춘다).
+
+지금 열려 있는 곳을 확인하려면 `list_publishable_cards`를 부른다.
+목록에 없는 사이트에 올려야 하면 **직접 git을 건드리지 말고 사장님께 요청**한다(사이트 추가는 repo·토큰이 필요한 작업이다).
+
+---
+
+## 함정 (실측으로 학습된 것)
+
+| 함정 | 증상 |
+|---|---|
+| 영어 채널에 한국어 초안 | 통째로 재작성 — 1차부터 목표 언어로 |
+| **키워드를 3개 이상 넘김** | 각 4~6회 규칙에 전부 걸려 위반 폭증 — 도구 추천 1~2개만 |
+| **FAQ를 `**Q:** A:` 로 씀** | `faq_missing` — `### 질문` + 다음 줄 답변만 인정 |
+| **`ext_generate_image` 반환 통째로 받기** | base64 1.4M 문자 → 컨텍스트 붕괴. **URL만 grep** |
+| **`save_image_asset` 호출 시도** | MCP 미노출 도구라 호출 불가. 자동 등록되므로 불필요 |
+| 마커 잔존 | 발행 게이트가 차단(`typing_directives`) |
+| 검수를 직접 세기 | 실제와 다름 — `validate_blog_draft` 반환값만 근거 |
+| 동료사 미지정 시각물 조회 | 거부됨(교차 오염 방지) |
+| `tenant_not_allowed` | 본인 토큰의 회사 자료만 조회된다. 다른 회사 자료가 필요하면 사장님께 요청 |
+
+> 위 함정 중 **다수가 2026-07-29 첫 실전에서 나왔다.** 배선 검증(단위 테스트)으로는 하나도 안 잡혔다.
+
+## 관련
+
+- 미니앱·텔레그램에서는 백엔드 스킬 `wf_blog_creation`이 같은 도구로 같은 일을 한다. **판정 기준(검수 규칙)은 도구가 한 벌로 갖고 있어** 두 경로가 갈라지지 않는다.

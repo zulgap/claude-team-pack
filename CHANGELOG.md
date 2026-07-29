@@ -28,7 +28,18 @@
   둘 다 "썸네일"을 갖고 있어 자연어 매칭이 갈렸다.
 - 🔴 **갱신 명령 안내 금지** — 갱신은 `hook-doctor-v2`가 24시간마다 자동으로 하고 role에 맞는 팩만 켠다.
   실사고: 일반 팀원에게 4팩 전부 갱신을 안내했다가 `dev-pack`에서 막혔다(그 PC에서 안 쓰는 팩).
-- ✅ 게이트: 이탈문구 12/12 · `allowed-tools` 0건 유지 · 개인↔팀팩 폴더명 충돌 0 · deferred 안내 3파일.
+- 📝 **`zulgap-blog` 스킬 전면 교체 (71줄 → 195줄)** — 사장님 로컬본(`~/.claude/skills/블로그/`, 발행 1편 실증)을 이식.
+  구경로(직접 `git push`)를 **정식 파이프라인**(키워드 조사 → 개요 14칸 → 초안 → `validate_blog_draft` 검수 →
+  시각물 → 노션 카드 → `publish_blog_card_now`)으로 바꿨다. 판정을 사람이 세지 않고 **도구 반환값으로만** 한다.
+  - 🔴 **폴더명은 `zulgap-blog` 유지** — 포팅 핸드오프는 `블로그`(한글)로 맞추라고 했으나 그건 **v2.7 ASCII 전환 이전
+    기준의 낡은 지시**다. dedup이 폴더명 ID로 걸려 팀원 개인 스킬이 조용히 가려진다(v2.5·v2.7에서 봉합한 사고).
+  - 🔧 **이식 중 로컬본 결함 2건 수정**: ① `ext_extract_images_from_source` 호출 지시 제거 — 코드엔 있으나
+    **MCP 미노출**이라 호출 불가능하고, `attach_blog_card_images`가 `rehost:true`로 이미 영구 URL 재호스팅을 한다.
+    ② 발행처를 하드코딩하지 않고 `list_publishable_cards`로 조회 — 실제 등록은 `publish-targets.js` SSOT에
+    **정코리아·줄갭 2곳**뿐인데 구본은 `mamisa`까지 나열하고 있었다.
+  - 🧹 `resolve-staff.js email` 의존 제거 — email 경로 폐기 결정(2026-07-29 사장님)과 맞물려 자연 소멸.
+- ✅ 게이트: 이탈문구 12/12 · `allowed-tools` 0건 유지 · 개인↔팀팩 폴더명 충돌 0 · deferred 안내 3파일 ·
+  블로그 스킬 테넌트 UUID 0 · 미노출 도구 지시 0 · `git -C` 직접 조작 0.
   **게이트 5(팀원 dogfood — `/jedi-thumbnail` 후 "그냥 배너" → 기획안 안 묻고 생성)는 배포 후 실사용 1회로 판정.**
 - ⚠️ **미해결(별건)**: `dev-pack` 활성화가 role=staff PC에서도 관측됐다(사장님 실증). `hook-doctor-v2.js:152`와
   `install.sh:196`이 **켜기만 하고 끄지 않는 비대칭**이라 한 번 켜지면 영구 잔존한다. 원인·수정은 후속.
