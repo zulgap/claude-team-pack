@@ -113,14 +113,18 @@ function roleFromToken() {
   return '';
 }
 
-function resolveRole() {
+// @AI:CONSTRAINT 🔴 'staff로 확인됨'과 '몰라서 staff'를 반드시 구분한다.
+//   dev-pack을 끄는 판단이 여기 달려 있는데, 둘을 같은 값으로 뭉개면 토큰·role 파일을 못 읽은
+//   개발자 PC가 staff로 오판돼 자기 스킬을 잃는다(2026-07-21 '스킬 0개' 사고와 같은 클래스).
+//   confident=false면 **아무것도 끄지 않는다** — 현상 유지가 항상 안전한 쪽이다.
+function resolveRoleWithConfidence() {
   const fromToken = roleFromToken();
-  if (fromToken) return fromToken;
+  if (fromToken) return { role: fromToken, confident: true };
   try {
     const r = fs.readFileSync(path.join(ZULGAP_DIR, 'role'), 'utf8').trim();
-    if (r === 'dev' || r === 'master') return r;
-  } catch (_) {}
-  return 'staff';
+    if (r === 'dev' || r === 'master' || r === 'staff') return { role: r, confident: true };
+  } catch (_) { /* 파일 없음 = 판정 불가 (구버전 설치 PC) */ }
+  return { role: 'staff', confident: false };
 }
 
 let s;
@@ -133,9 +137,21 @@ if (!s || typeof s !== 'object') { console.log('[hook-doctor-v2] settings 형식
 if (!s.enabledPlugins || typeof s.enabledPlugins !== 'object') s.enabledPlugins = {};
 
 const ep = s.enabledPlugins;
-const role = resolveRole();
+const { role, confident } = resolveRoleWithConfidence();
 const want = { ['jedi-core@' + MP]: true, ['zulgap-pack@' + MP]: true };
-if (role === 'dev' || role === 'master') want['dev-pack@' + MP] = true;
+const DEV_KEY = 'dev-pack@' + MP;
+if (role === 'dev' || role === 'master') want[DEV_KEY] = true;
+
+// @AI:CONSTRAINT 🔴 dev-pack은 **명시적 false**를 써야 꺼진다 — 키를 안 쓰면 켜진다.
+//   2026-07-29 실측(팀원 PC): enabledPlugins에 dev-pack 키가 **없는데도** start-dev/wrapup-dev가
+//   로드돼 `/스킬` 목록에 떴고 실행까지 됐다. 마켓플레이스가 3팩을 통째로 설치하므로 실물은 늘 존재하고,
+//   활성화 장부에 키가 없으면 Claude Code가 로드한다(opt-out). 우리는 opt-in인 줄 알고 `if(dev) = true`만
+//   써서 staff PC에 키가 아예 생기지 않았다.
+//   ⚠️ 이 전제 위에 `jedi-skills/SKILL.md:92`의 "목록이 곧 권한 — role 분기 코드 불필요"가 서 있다.
+// @AI:FRAGILE confident일 때만 끈다. 판정 불가 PC는 손대지 않는다(위 resolveRoleWithConfidence 참조).
+const shouldDisableDev = confident && role !== 'dev' && role !== 'master';
+let devFlipped = false;
+if (shouldDisableDev && ep[DEV_KEY] !== false) { ep[DEV_KEY] = false; devFlipped = true; }
 
 const wantKeys = Object.keys(want);
 // @AI:INTENT '전환 완료' 판정에 실물 설치까지 포함 — 활성화만 보면 미설치 상태를 완료로 오독해 영구히 스킬 0개가 된다.
@@ -144,8 +160,18 @@ if (alreadyNew) {
   // @AI:FRAGILE 이 조기 return 뒤에 갱신 로직을 두면 영구 미도달이다 — isInstalled()는 '키가 있나'만 보고
   //   버전을 안 보므로, 전환이 성공한 순간 alreadyNew가 영구 true가 되어 뒤쪽이 한 번도 실행되지 않는다.
   //   갱신은 반드시 return '앞에' 있어야 한다.
+  // @AI:INTENT dev-pack 비활성은 전환 완료 PC에도 필요하다(전환은 끝났는데 dev-pack만 켜진 상태가 실재).
+  //   그래서 이 조기 return 안에서도 저장한다 — 아래 전환 경로의 write에 의존하면 영구 미도달이다.
+  if (devFlipped) {
+    try { fs.copyFileSync(SETTINGS, SETTINGS + '.bak-hookdoctor2'); } catch (_) { /* 백업 실패해도 진행 */ }
+    try { fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2)); } catch (e) {
+      console.log('[hook-doctor-v2] settings 쓰기 실패 — skip: ' + e.message);
+      process.exit(0);
+    }
+  }
   const refreshed = maybeRefresh(wantKeys);
-  return done('이미 전환됨 — 정상 (변경 0, role=' + role + (refreshed ? ', 갱신 확인' : '') + ')');
+  return done('이미 전환됨 — 정상 (변경 ' + (devFlipped ? 'dev-pack 비활성화 — 다음 재시작부터 적용' : '0')
+    + ', role=' + role + (refreshed ? ', 갱신 확인' : '') + ')');
 }
 
 try { fs.copyFileSync(SETTINGS, SETTINGS + '.bak-hookdoctor2'); } catch (_) { /* 백업 실패해도 진행 — 원본은 단일 write */ }

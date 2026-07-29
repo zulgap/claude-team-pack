@@ -10,6 +10,26 @@
 
 ---
 
+## v2.13 (2026-07-29) — dev-pack 명시적 비활성 (staff PC에 개발자 스킬이 뜨던 것 봉합) · zip 변경 없음
+**팀원(staff) PC에서 `/start-dev`·`/wrapup-dev`가 목록에 뜨고 실제로 실행까지 됐다** (2026-07-29 실측).
+`enabledPlugins`에 `dev-pack` 키가 **없는데도** 로드된다 — 마켓플레이스가 3팩을 통째로 설치하므로
+실물은 늘 존재하고, 활성화 장부에 키가 없으면 Claude Code가 로드한다(**opt-out**).
+우리는 opt-in인 줄 알고 `if (dev) = true`만 써서 staff PC엔 키가 아예 생기지 않았다.
+- 🔴 **`install.sh` + `hook-doctor-v2.js` 양쪽에 명시적 `false`** — 켜는 코드만 있고 끄는 코드가 없던 비대칭.
+- 🛡 **fail-safe: 확신 있을 때만 끈다.** `resolveRole()`이 토큰·role 파일을 **둘 다 못 읽으면 `staff`로 폴백**하는데,
+  그대로 끄면 판정 실패한 **개발자 PC가 자기 스킬을 잃는다**(2026-07-21 '스킬 0개' 사고와 같은 클래스).
+  → `resolveRoleWithConfidence()`로 갈라 **"staff로 확인됨"과 "몰라서 staff"를 구분**하고, `confident`일 때만 끈다.
+  판정 불가 PC는 **손대지 않는다**(현상 유지가 항상 안전한 쪽).
+- 🔧 **전환 완료 PC에도 도달** — `alreadyNew` 조기 return 안에서도 저장한다. 아래 전환 경로의 write에만
+  의존하면 이미 전환이 끝난 PC(=문제가 실제로 발생한 그 상태)에는 영구히 미도달이다.
+- 📌 `jedi-skills/SKILL.md:92`의 **"목록이 곧 권한 — role 분기 코드 불필요"** 가 이 `false`에 의존한다는 사실을
+  그 문서에 명시했다. 근거가 다른 파일에 있는데 링크가 없어 오늘 조용히 깨져 있었다.
+- ✅ 검증: 격리 홈에서 **실제 파일 그대로 실행** 5/5 PASS (staff→끔 / dev→켬 / 판정불가→무동작 /
+  판정불가+이미true→유지 / 멱등) + **mutation 3/3 포착**(confident 가드 제거·저장 제거·기록 제거) + 원본 재검증.
+  ⚠️ 1차 mutation은 **CRLF 때문에 치환이 조용히 실패**했다 — 치환 성공 여부를 먼저 확인하지 않았으면 가짜 PASS가 났다.
+- ⚠️ **한계**: `role` 파일도 없고 토큰에 role claim도 없는 PC는 `confident=false`라 **여전히 안 꺼진다**(의도된 안전).
+  그런 PC는 `~/.claude/zulgap/role`을 만들어 주거나 재설치해야 한다.
+
 ## v2.12 (2026-07-29) — staff-map.json 삭제 + email 경로 폐기 (공개 레포에서 개인정보 제거) · zip 변경 없음
 **public 레포에 직원 이메일이 담긴 파일이 익명 접근 가능한 상태로 있었다**(`raw.githubusercontent` 200 실측).
 v2.8에서 신원(name)을 서버로 옮겼지만 **email 하나 때문에 파일을 못 지우고 있었다.**
