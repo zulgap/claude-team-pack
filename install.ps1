@@ -166,8 +166,15 @@ try {
   #   role 분기: dev/master만 dev-pack. hook-doctor-v2와 동일 매핑 (hooks/hook-doctor-v2.js 동기 필수).
   $s.enabledPlugins | Add-Member -NotePropertyName 'jedi-core@zulgap-team-pack' -NotePropertyValue $true -Force
   $s.enabledPlugins | Add-Member -NotePropertyName 'zulgap-pack@zulgap-team-pack' -NotePropertyValue $true -Force
+  # @AI:CONSTRAINT 🔴 dev-pack은 명시적 $false를 써야 꺼진다 — 키를 안 쓰면 켜진다(opt-out).
+  #   2026-07-29 실측: staff PC에 dev-pack 키가 없는데도 start-dev/wrapup-dev가 로드돼 실행까지 됐다.
+  #   마켓플레이스가 3팩을 통째로 설치하므로 실물은 늘 존재한다. else 없이 두면 staff PC에 키가 안 생긴다.
+  #   ⚠️ v2.13에서 install.sh(맥)만 고치고 **이 파일을 빠뜨렸다** — 윈도우가 팀원 주 설치 경로인데.
+  #   같은 코드가 install.sh:201 / hook-doctor-v2.js:150 에도 있다. **셋 다 동기 필수.**
   if ($Role -eq 'dev' -or $Role -eq 'master') {
     $s.enabledPlugins | Add-Member -NotePropertyName 'dev-pack@zulgap-team-pack' -NotePropertyValue $true -Force
+  } else {
+    $s.enabledPlugins | Add-Member -NotePropertyName 'dev-pack@zulgap-team-pack' -NotePropertyValue $false -Force
   }
   # @AI:FRAGILE 구 zulgap 비활성은 여기서 하지 않는다 — 신 플러그인 '실물 설치'가 성공한 뒤 §6.8에서만 (verify-then-flip).
   #   먼저 끄고 나중에 설치하면, 설치 실패 PC는 구·신이 동시에 죽어 스킬 0개가 된다 (2026-07-21 실사고 클래스).
