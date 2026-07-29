@@ -38,6 +38,9 @@
     ② 발행처를 하드코딩하지 않고 `list_publishable_cards`로 조회 — 실제 등록은 `publish-targets.js` SSOT에
     **정코리아·줄갭 2곳**뿐인데 구본은 `mamisa`까지 나열하고 있었다.
   - 🧹 `resolve-staff.js email` 의존 제거 — email 경로 폐기 결정(2026-07-29 사장님)과 맞물려 자연 소멸.
+  - 🔴 **마커는 글이 영어여도 한글 `[이미지 …]`** — 발행 게이트(`publish-core.js:334` `DIRECTIVE_IMAGE_PREFIX=/^이미지/`)가
+    L3 결정론으로 미완성 원고를 차단하는데, 영어 글에 `[Image 1: …]`를 쓰면 그 판정을 빠져나가
+    `unknownBrackets`(LLM 추정)로 넘어간다. 정코리아가 `lang:'en'`이라 실제로 밟을 수 있는 경로.
 - ✅ 게이트: 이탈문구 12/12 · `allowed-tools` 0건 유지 · 개인↔팀팩 폴더명 충돌 0 · deferred 안내 3파일 ·
   블로그 스킬 테넌트 UUID 0 · 미노출 도구 지시 0 · `git -C` 직접 조작 0.
   **게이트 5(팀원 dogfood — `/jedi-thumbnail` 후 "그냥 배너" → 기획안 안 묻고 생성)는 배포 후 실사용 1회로 판정.**
