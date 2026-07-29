@@ -54,6 +54,18 @@ Call `notion-create-pages`:
   - {what I will do next session}
   ```
 
+## Step 2.5 — Index it for search (required, run once)
+
+🔴 **A Notion row alone is not searchable.** Using the **page id** from the create response:
+
+```
+node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/journal-ingest.js" "<page_id>" "<title>" "<one-line summary>"
+```
+- This is what makes the entry findable later (recall / context loaders).
+- **Authorship is resolved server-side from your token** — do not send a name.
+- If it fails, the journal row is already saved. Just **relay the output** and move on.
+- Re-running after an edit re-indexes only then (idempotent).
+
 ## Step 3 — Generate the standup message (for Telegram)
 
 Print this block for the developer to copy-paste into the Telegram standup room:
