@@ -218,4 +218,37 @@ if (failD === 0) {
 }
 if (failD) fail = 1;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tier E — 형제 스킬 폴더명 하드코딩 금지 (2026-07-30 신설)
+// @AI:INTENT v2.20(#62)이 고친 실사고: 썸네일 SKILL.md가 업로드 도구를 `../이미지/`로
+//   가리켰다. 같은 스킬의 폴더명이 팀팩='jedi-image' / 개인='이미지'로 달라서, 관리자
+//   PC에선 동작하고 **직원 PC에선 파일을 못 찾아 실패**했다. 증상이 "인물 사진을 올리면
+//   안 된다"였고 게이트·테스트·CI 어디에도 걸리지 않아 사람이 발견할 때까지 남아 있었다.
+// @AI:CONSTRAINT 판정은 "참조한 파일이 존재하나"가 아니라 **"폴더명이 고정으로 박혔나"**다.
+//   전자는 형제 폴더를 정당하게 가리키는 문장(#62의 수정 결과)까지 위반으로 잡는다
+//   — 실측 오탐 1/12. 후자는 구조 판정이라 결정론 100%·오탐 0이다.
+// @AI:DEPENDS `<...>` 플레이스홀더는 통과시킨다 — #62가 제시한 올바른 작성법이
+//   `../<이미지 스킬 폴더>/scripts/upload-image.mjs` 형태이므로, 이걸 막으면 정답이 FAIL된다.
+const SIBLING_HARDCODE_RE = /\.\.\/([^/\s`)"'<>|]+)\//g;
+let failE = 0;
+for (const { where, raw } of skillFiles) {
+  SIBLING_HARDCODE_RE.lastIndex = 0;
+  const hits = new Set();
+  let m;
+  while ((m = SIBLING_HARDCODE_RE.exec(raw)) !== null) {
+    const name = m[1];
+    if (name === '.' || name === '..') continue; // ../../ 는 플러그인 루트 밖 — 이 검사 대상 아님
+    hits.add(name);
+  }
+  if (hits.size) {
+    const list = [...hits].map((n) => `../${n}/`).join(' · ');
+    console.error(`  FAIL [E 형제폴더하드코딩] ${where}: ${list} — 스킬 폴더명은 설치 형태마다 다르다(팀팩 'jedi-image' vs 개인 '이미지'). 고정 이름을 박으면 한쪽에서 깨진다. \`../<이미지 스킬 폴더>/\` 처럼 플레이스홀더를 쓰고 "형제 폴더를 확인하고 실제 이름을 쓸 것"을 함께 적을 것`);
+    failE = 1;
+  }
+}
+if (failE === 0) {
+  console.log(`  PASS [E 형제폴더] ${skillFiles.length}개 — 폴더명 하드코딩 0`);
+}
+if (failE) fail = 1;
+
 process.exit(fail);
