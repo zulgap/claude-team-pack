@@ -10,6 +10,20 @@
 
 ---
 
+## v2.18 (2026-07-30) — 🔴 썸네일 두 벌 통합 (죽은 사본 제거) · zip 변경 없음
+**썸네일 스킬이 두 곳에 있었고, 직원이 쓰는 쪽은 구버전이었다.**
+- `plugins/jedi-core/skills/jedi-thumbnail/` — 직원이 실제 로드하는 곳. SKILL.md 150줄 (7/29)
+- `skills/썸네일/` — PR #59로 머지된 최신 수리본. SKILL.md 285줄 (7/30)
+
+🔴 **루트 `skills/`는 `plugin.json`의 `skills` 배열에 없다** → 어느 플러그인도 로드하지 않는 **죽은 사본**이었다.
+PR #59의 "팀팩 최초 등록"은 파일이 repo에 들어간 것뿐이고 **직원에게 도달한 적이 없다.**
+그 사이 두 벌은 `SKILL.md`·`compose-thumbnail.mjs`·`_base.css`·채널 파일이 **전부 갈라졌다**(D1~D6 수리분 미전달).
+- 🔧 **통합** — 최신본을 `plugins/jedi-core/skills/jedi-thumbnail/`로 이관하고 루트 `skills/` 제거. **두 벌 구조 자체를 없앤다.**
+- `rules.md`(79줄)·`presets/엔노블.md`(44줄) → `channels/엔노블.md`(171줄)에 흡수 완료 상태라 삭제
+- frontmatter: `name: jedi-thumbnail` 유지(폴더명이 식별자 — 명령어 불변) + 오분류 방지 description(구버전 개선분) 보존 + `version: 2.0.0`/`origin` 추가
+- 검증: 테스트 **20/20 PASS**(어절 공백·34px 폴백·auto-fit 회귀 포함)
+- 📌 **재발 방지**: 팀팩 스킬은 **반드시 `plugins/<팩>/skills/` 아래**에 둘 것. 루트 `skills/`는 로드 경로가 아니다 (PROVENANCE.md에도 명시)
+
 ## v2.17 (2026-07-30) — 🔴 훅 파일 자기 갱신 (닭-달걀 봉합) · zip 변경 없음
 **`team-guide-fetch.js`를 갱신하는 경로가 어디에도 없었다.** install이 1회 복사하고 끝이라,
 그 파일에 무엇을 넣어도 **기존 PC엔 영원히 안 닿는다.**

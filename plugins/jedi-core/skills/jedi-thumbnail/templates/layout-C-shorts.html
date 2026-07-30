@@ -37,12 +37,29 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; }
   </div>
   <script>
     (function () {
+      // @AI:INTENT 양방향 auto-fit 이식 (2026-07-30) — 축소만 하면 짧은 카피가 104px에 머물러 폭을 못 채운다.
+      // @AI:CONSTRAINT A/B 로직을 그대로 복사하지 말 것 — C는 **제목이 상단(top:120), 서브는 하단 자막 바(bottom:150)**로
+      //   의도적으로 분리된 쇼츠 표준 구조다. A/B의 "서브를 제목 아래 붙이기"·"서브를 제목 크기에 비례"는 여기 해당 없음.
+      //   C의 서브는 58px 고정을 유지하되 **한 줄 유지 가드만** 추가한다.
       function fit() {
         var el = document.getElementById('title'); if (!el) return;
-        var box = el.parentElement; var maxH = 620; var size = 104, floor = 60;
+        var box = el.parentElement;
+        var maxH = 620;                              // 1920의 32% — 상단 1/3 배치라 A(35%)보다 낮게 유지
+        var size = 104, floor = 60, ceil = 160;
+        function over() { return el.scrollWidth > box.clientWidth || el.scrollHeight > maxH; }
         el.style.fontSize = size + 'px';
-        while ((el.scrollWidth > box.clientWidth || el.scrollHeight > maxH) && size > floor) {
-          size -= 3; el.style.fontSize = size + 'px';
+        if (over()) {
+          while (over() && size > floor) { size -= 3; el.style.fontSize = size + 'px'; }
+        } else {
+          while (!over() && size < ceil) { size += 3; el.style.fontSize = size + 'px'; }
+          if (over()) { size -= 3; el.style.fontSize = size + 'px'; }
+        }
+        // 서브: 위치·기본크기 유지, 2줄로 접히면만 축소 (높이로 판별 — 폭은 줄바꿈돼서 못 잰다)
+        var sub = document.querySelector('.subtitle');
+        if (sub) {
+          var ss = 58, sfloor = 40;
+          sub.style.fontSize = ss + 'px';
+          while (sub.scrollHeight > ss * 1.4 && ss > sfloor) { ss -= 2; sub.style.fontSize = ss + 'px'; }
         }
       }
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
