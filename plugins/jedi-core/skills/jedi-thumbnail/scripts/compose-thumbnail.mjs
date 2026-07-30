@@ -29,6 +29,15 @@ const LAYOUTS = {
 // 채널 강조색 클래스 (실측: 엔노블=빨강, 한방언니풍=노랑, 가연=핑크)
 const ACC = { yellow: 'acc-yellow', red: 'acc-red', pink: 'acc-pink' };
 
+// @AI:INTENT --font 후보 (전부 Google Fonts 무료). weight가 폰트마다 다른 게 핵심 —
+//   Black Han Sans·Do Hyeon은 굵기가 400 하나뿐이라 900을 주면 브라우저가 가짜 굵기를 만들어 뭉갠다.
+const FONTS = {
+  noto:    { css: "'Noto Sans KR'",  weight: 900, url: 'Noto+Sans+KR:wght@400;700;900' }, // 현행 기본 — 본문용, 임팩트 약함
+  black:   { css: "'Black Han Sans'", weight: 400, url: 'Black+Han+Sans' },               // 유튜브 썸네일 표준, 굵고 납작
+  gothic:  { css: "'Gothic A1'",     weight: 900, url: 'Gothic+A1:wght@700;900' },        // Noto보다 각지고 힘 있음
+  dohyeon: { css: "'Do Hyeon'",      weight: 400, url: 'Do+Hyeon' },                      // 둥글고 친근, 멘토 톤
+};
+
 function fail(msg) { console.error(`❌ ${msg}`); process.exit(1); }
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
@@ -62,6 +71,14 @@ export function assembleHtml(opts) {
     ? `<style>:root{--stroke:${opts.stroke}}</style>`
     : ''; // 프리셋이 외곽선 두께 덮을 때 (엔노블=얇게 4px, 한방언니풍=6px 기본)
 
+  // @AI:INTENT --font 로 채널별 폰트 교체. 미지정 시 _base.css 기본값(Noto 900) 그대로 = 기존 동작 보존.
+  //   weight가 폰트마다 다르다 — Black Han Sans·Do Hyeon은 단일 굵기(400)라 900을 주면 가짜 굵기가 된다.
+  const f = FONTS[(opts.font || '').toLowerCase()];
+  const fontVars = f
+    ? `<link href="https://fonts.googleapis.com/css2?family=${f.url}&display=swap" rel="stylesheet">`
+      + `<style>:root{--font-family:${f.css},sans-serif;--font-weight:${f.weight}}</style>`
+    : '';
+
   html = html
     .replace('/* {{BASE_CSS}} */', baseCss)
     .replace(/\{\{ACC_CLASS\}\}/g, accClass)
@@ -78,8 +95,8 @@ export function assembleHtml(opts) {
     .replace(/\{\{role\}\}/g, esc(opts.role || ''))
     .replace(/\{\{channel\}\}/g, esc(opts.channel || ''));
 
-  // 외곽선 두께 override 주입 (head 끝)
-  if (strokeVars) html = html.replace('</head>', `${strokeVars}\n</head>`);
+  // 외곽선 두께 + 폰트 override 주입 (head 끝 — 기존 <link>/base CSS보다 뒤라 이게 이긴다)
+  if (strokeVars || fontVars) html = html.replace('</head>', `${fontVars}\n${strokeVars}\n</head>`);
   return { html, width: L.width, height: L.height };
 }
 
