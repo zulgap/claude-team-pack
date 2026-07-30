@@ -19,10 +19,14 @@ const DEPRECATED = ['zulgap'];
 const LEGACY_OK = /=\s*\$?false|!==?\s*true|hasOwnProperty|-contains|PSObject/;
 
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-const extract = (text, regex) => {
+// @AI:INTENT regex 1개 또는 배열 — 같은 파일이 활성화를 2가지 표현으로 쓸 수 있다(아래 hook-doctor-v2 주석)
+const extract = (text, regexes) => {
   const out = new Set();
-  let m;
-  while ((m = regex.exec(text)) !== null) out.add(m[1]);
+  for (const regex of [].concat(regexes)) {
+    regex.lastIndex = 0; // @AI:FRAGILE /g 정규식 재사용 시 lastIndex가 남아 첫 매치를 건너뛴다
+    let m;
+    while ((m = regex.exec(text)) !== null) out.add(m[1]);
+  }
   return out;
 };
 
@@ -45,7 +49,15 @@ const sources = {
   },
   'hooks/hook-doctor-v2.js': {
     text: read('hooks/hook-doctor-v2.js'),
-    activation: /\['([\w-]+)@' \+ MP\]\s*(?::|=)\s*true/g,
+    // @AI:INTENT 활성화 표현이 2가지다 — 리터럴 키와 **변수 경유**.
+    //   role 조건부(dev-pack)는 `const DEV_KEY = 'dev-pack@' + MP;` … `want[DEV_KEY] = true`
+    //   형태라 리터럴 정규식에 안 걸린다. 2026-07-29 PR #53이 dev-pack을 조건부로 바꾼 뒤
+    //   게이트가 이 표현을 못 읽어 [A 활성화]가 6개 PR 동안 적색 방치됐다(5인검증 P1 발견).
+    //   → 코드가 아니라 게이트가 틀렸던 사례. 새 표현을 쓸 땐 여기 패턴도 같이 늘릴 것.
+    activation: [
+      /\['([\w-]+)@' \+ MP\]\s*(?::|=)\s*true/g,
+      /const\s+\w+\s*=\s*'([\w-]+)@'\s*\+\s*MP\s*;/g,
+    ],
     legacyMention: (dep) => new RegExp(`'${dep}@' \\+ MP|${dep}@zulgap-team-pack`),
   },
 };
@@ -103,6 +115,7 @@ const pluginDirs = fs.readdirSync(path.join(ROOT, 'plugins'), { withFileTypes: t
 let failC = 0;
 let skillCount = 0;
 const allNames = new Map(); // bare name -> [plugin/dir, ...]
+const skillFiles = []; // Tier D 재사용 — {where, raw}
 for (const plug of pluginDirs) {
   const skillsDir = path.join(ROOT, 'plugins', plug, 'skills');
   if (!fs.existsSync(skillsDir)) continue;
@@ -112,10 +125,12 @@ for (const plug of pluginDirs) {
     const md = path.join(skillsDir, d.name, 'SKILL.md');
     if (!fs.existsSync(md)) continue;
     // frontmatter name (없으면 디렉토리명이 명령이 된다 — 그 경우도 규격 대상)
-    const m = fs.readFileSync(md, 'utf8').match(/^name:[ \t]*(.+?)[ \t]*$/m);
+    const raw = fs.readFileSync(md, 'utf8');
+    const m = raw.match(/^name:[ \t]*(.+?)[ \t]*$/m);
     const name = m ? m[1] : d.name;
     const where = `${plug}/${d.name}`;
     skillCount += 1;
+    skillFiles.push({ where, raw });
 
     // C-1 이름 규격
     if (!SKILL_NAME_RE.test(name)) {
@@ -151,5 +166,56 @@ if (skillCount === 0) {
   console.log(`  PASS [C 스킬이름] ${skillCount}개 — 규격 위반 0 / 중복 0 / bare 충돌 0`);
 }
 if (failC) fail = 1;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tier D — tier 선언 + shared 스킬 테넌트 리터럴(A급) 0건 (2026-07-30 신설)
+// @AI:INTENT 5인검증 실측: 게이트가 보는 규칙은 12/12=100%, 사람 눈만 보는 규칙은 8%.
+//   같은 repo·같은 사람·같은 문서인데 갈린 유일한 차이가 결정론 게이트였다.
+//   packaging-spec §4①(본체 테넌트 리터럴 0)·§0(tier 면제 판정)은 그동안 검사 코드가
+//   0줄이라 "1호 인증" 스킬 본인이 자기 인증 기준을 위반한 채 방치됐다.
+// @AI:CONSTRAINT PROVENANCE.md는 §1이 지정한 **심사 grep 제외 구역**이라 검사 대상이 아니다
+//   (skillFiles는 SKILL.md만 수집하므로 자동 제외). 근거·출처는 거기 두는 것이 정책이다.
+const A_GRADE = [
+  { label: '노션 page/DB ID', re: /\b[0-9a-f]{32}\b/g },
+  { label: '테넌트 UUID', re: /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi },
+  { label: 'UNC 공유폴더 경로', re: /\\\\[A-Za-z0-9._-]+\\/g },
+  { label: '개인 PC 절대경로', re: /[A-Za-z]:\\Users\\/g },
+];
+
+let failD = 0;
+let tenantOnlyHits = 0;
+for (const { where, raw } of skillFiles) {
+  const tm = raw.match(/^tier:[ \t]*(\S+)[ \t]*$/m);
+  // D-1 tier 선언 필수 — 미선언은 "전용이라 면제"인지 "공용인데 미준수"인지 구분 불가(§0 판정 불능)
+  if (!tm) {
+    console.error(`  FAIL [D-1 tier미선언] ${where}: frontmatter에 'tier: shared' 또는 'tier: tenant-only' 한 줄 추가. 미선언 = shared 간주(fail-closed)`);
+    failD = 1;
+    continue;
+  }
+  const tier = tm[1];
+  const hits = A_GRADE.flatMap(({ label, re }) => {
+    re.lastIndex = 0;
+    return (raw.match(re) || []).map(() => label);
+  });
+  if (!hits.length) continue;
+  const summary = [...new Set(hits)].join(' · ');
+  if (tier === 'shared') {
+    // D-2 shared는 타사 배포 후보 — A급이 그대로 따라간다
+    console.error(`  FAIL [D-2 A급리터럴] ${where} (tier: shared): ${hits.length}건 — ${summary}. 값은 채널 파일로, 인프라 설정은 teampack-config 경유, 근거는 PROVENANCE.md로`);
+    failD = 1;
+  } else {
+    // @AI:INTENT tenant-only의 A급은 FAIL로 막지 않는다 — 노블냥 tenant 가드처럼 **격리 장치 자체**가
+    //   A급인 경우가 있어 지우면 안 된다. 해법은 리터럴 제거가 아니라 "그 팩을 그 회사에만 활성화"다.
+    //   지금 FAIL로 만들면 CI가 빨간불로 시작해 아무도 안 보게 된다(경보 피로).
+    tenantOnlyHits += hits.length;
+  }
+}
+if (failD === 0) {
+  console.log(`  PASS [D tier·A급] ${skillFiles.length}개 — tier 미선언 0 / shared A급 리터럴 0`);
+  if (tenantOnlyHits) {
+    console.log(`       ℹ tenant-only 스킬의 A급 ${tenantOnlyHits}건은 정보성(FAIL 아님) — 해법은 리터럴 제거가 아니라 해당 테넌트 전용 활성화`);
+  }
+}
+if (failD) fail = 1;
 
 process.exit(fail);
