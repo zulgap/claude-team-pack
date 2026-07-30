@@ -3,6 +3,7 @@ name: zulgap-noblenyang
 description: 노블냥(엔노블) 숏폼 영상 자동 제작 (줄갭 전용) — 노션 카드 링크 하나로 후킹 인트로 + 본편(한국어 음성·자막) + 1.2배속을 만들어 엔노블 공유폴더에 저장. "/zulgap-noblenyang", "/노블냥", "노블냥 영상 만들어", "노블냥 카드 <링크>" 등에 호출. (줄갭 제디 토큰 필요)
 version: 1.0.0
 origin: teampack
+tier: tenant-only
 ---
 
 # 노블냥 숏폼 자동 제작 (팀원용 · 줄갭 전용)
