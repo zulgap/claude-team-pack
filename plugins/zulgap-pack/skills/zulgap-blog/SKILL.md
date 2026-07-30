@@ -3,6 +3,7 @@ name: zulgap-blog
 description: 블로그 글 1편을 조사 → 개요 확정 → 초안 → 도구 검수 → 시각물 → 노션 카드까지 만든다. 발행은 사람이 확정할 때만. "/zulgap-blog", "블로그 써줘", "OO 주제로 글 써줘", "블로그 글 만들어줘", "홈페이지에 글 올려줘" 에 호출. (제디 토큰 필요)
 version: 2.0.0
 origin: teampack
+tier: tenant-only
 ---
 
 # 블로그 — 조사부터 노션 카드까지
