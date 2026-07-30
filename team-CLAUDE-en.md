@@ -38,7 +38,10 @@ When that happens, **don't quietly keep doing it**. Say it out loud:
 
 It gets written up and sent to the boss. Once approved, it becomes automatic.
 
-- **Don't edit skills or tools directly** — those changes are the boss's (admin) call,
-  even though you can open PRs for regular code.
+- **Your own channel settings: go ahead and make them.** Say `"set this up for the <name> channel"`
+  and it will ask you what it needs and save it to `~/.claude/zulgap/channels/` on your machine —
+  that location **survives auto-updates.**
+- **The skill body (the shared method) goes through the boss** — say `"this part should work like X"`.
+  Editing the body directly means it **gets overwritten on the next update.**
 - Saying it costs nothing and helps most. Nothing has to change today —
   the record accumulates and the boss decides.
