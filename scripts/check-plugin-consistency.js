@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// 플러그인 이름 집합 일치 결정론 체크 — packaging-spec §4 심사 ⑥
+// 플러그인·스킬 규격 결정론 체크 — packaging-spec §4 심사 ⑥⑦⑧⑨
 // @AI:INTENT 4장부 드리프트 재발 차단 (2026-07-22 정책 헌법 §7 — 구 3중 불일치 사고):
 //   ① .claude-plugin/marketplace.json (정의 원본)
 //   ② install.ps1 (윈도우 설치기)     ③ install.sh (맥/리눅스 설치기)
 //   ④ hooks/hook-doctor-v2.js (기존 PC 자가치유 — install과 동일 매핑 필수)
-// 검사 2단:
-//   Tier A — 활성화 집합: ②③④가 활성화(true)하는 이름 집합 == (① − DEPRECATED)
-//   Tier B — 레거시 잔존: DEPRECATED 이름 언급 라인은 비활성화/전환 패턴만 허용
+// 검사 5단 (신설 시 이 목록 + .github/workflows/plugin-consistency.yml + spec §4를 함께 갱신):
+//   Tier A — 활성화 집합: ②③④가 활성화(true)하는 이름 집합 == (① − DEPRECATED)   [spec §4⑥]
+//   Tier B — 레거시 잔존: DEPRECATED 이름 언급 라인은 비활성화/전환 패턴만 허용     [spec §4⑥]
 //            (안내 문구·설치 명령에 구 이름이 남는 드리프트 차단 — install.ps1:297 실사례)
+//   Tier C — 스킬 이름 규격(kebab-case·중복·bare 충돌·폴더명 일치)                 [spec §4⑦]
+//   Tier D — tier 선언 + shared 스킬 A급 리터럴 0                                  [spec §4⑧]
+//   Tier E — 형제 스킬 폴더명 하드코딩 0                                            [spec §4⑨]
 // 불일치 = exit 1 (CI/심사 게이트용). usage: node scripts/check-plugin-consistency.js
 const fs = require('fs');
 const path = require('path');
@@ -229,20 +232,40 @@ if (failD) fail = 1;
 //   — 실측 오탐 1/12. 후자는 구조 판정이라 결정론 100%·오탐 0이다.
 // @AI:DEPENDS `<...>` 플레이스홀더는 통과시킨다 — #62가 제시한 올바른 작성법이
 //   `../<이미지 스킬 폴더>/scripts/upload-image.mjs` 형태이므로, 이걸 막으면 정답이 FAIL된다.
-const SIBLING_HARDCODE_RE = /\.\.\/([^/\s`)"'<>|]+)\//g;
+// @AI:FRAGILE `(?<!\.\.\/)` 룩비하인드가 **필수**다 (v2.24 추가). 없으면 정규식이 `../..`를
+//   한 덩어리로 삼켜 **`..` 개수의 홀짝에 따라 결과가 뒤집힌다** — 실측: 2단 `../../docs/` PASS /
+//   3단 `../../../docs/` FAIL / 4단 PASS / 5단 FAIL. 게다가 3단에서 FAIL 메시지가
+//   **파일에 존재하지 않는 `../docs/`** 를 보고해 개발자가 grep해도 못 찾았다(자력 해결 불가).
+// @AI:CONSTRAINT 대안 `(?<![.\/])` 를 쓰면 **안 된다** — 실사고 원문
+//   `node <이 스킬 폴더>/../<이미지 스킬 폴더>/…` 의 `../`는 `/`에 선행되므로 그 룩비하인드가
+//   실패해 **역사적 사고 자체를 놓친다**(실측 7/7 → 6/7). 배제 대상은 `../` 앞의 `../` 뿐이다.
+// @AI:DEPENDS ALLOW = 형제 '스킬'이 아닌 **일반 디렉토리** 이름. 코드 예시(`require('../shared/x')`)·
+//   문서 링크(`../docs/`)·이미지(`../assets/`)가 SKILL.md에 정당하게 등장한다(실측 오탐 6종).
+//   🔴 스킬 폴더 이름이 이 목록과 같아지면 **그 스킬은 조용히 면제된다** — 그때는 목록에서 지울 것.
+//   현행 12개(`jedi-*`·`zulgap-*`·`start-dev`·`wrapup-dev`)와 충돌 0.
+const SIBLING_HARDCODE_RE = /(?<!\.\.\/)\.\.\/([^/\s`)"'<>|]+)\//g;
+const SIBLING_ALLOW = new Set(['docs', 'assets', 'scripts', 'lib', 'shared', 'channels',
+  'templates', 'references', 'src', 'test', 'tests', 'img', 'images', 'dist', 'build', 'node_modules']);
 let failE = 0;
 for (const { where, raw } of skillFiles) {
-  SIBLING_HARDCODE_RE.lastIndex = 0;
-  const hits = new Set();
-  let m;
-  while ((m = SIBLING_HARDCODE_RE.exec(raw)) !== null) {
-    const name = m[1];
-    if (name === '.' || name === '..') continue; // ../../ 는 플러그인 루트 밖 — 이 검사 대상 아님
-    hits.add(name);
-  }
-  if (hits.size) {
-    const list = [...hits].map((n) => `../${n}/`).join(' · ');
-    console.error(`  FAIL [E 형제폴더하드코딩] ${where}: ${list} — 스킬 폴더명은 설치 형태마다 다르다(팀팩 'jedi-image' vs 개인 '이미지'). 고정 이름을 박으면 한쪽에서 깨진다. \`../<이미지 스킬 폴더>/\` 처럼 플레이스홀더를 쓰고 "형제 폴더를 확인하고 실제 이름을 쓸 것"을 함께 적을 것`);
+  // @AI:INTENT 줄 단위로 도는 이유 = FAIL에 **줄번호와 원문**을 실어야 한다. 전체 문자열로 돌리면
+  //   재구성한 `../X/` 만 보여주게 되고, 그 문자열이 파일에 없는 경우(위 홀짝 사고) 추적이 끊긴다.
+  const bad = [];
+  raw.split(/\r?\n/).forEach((line, i) => {
+    SIBLING_HARDCODE_RE.lastIndex = 0;
+    let m;
+    while ((m = SIBLING_HARDCODE_RE.exec(line)) !== null) {
+      const name = m[1];
+      if (name === '.' || name === '..') continue;            // ../../ = 형제 아님(2단 이상)
+      if (SIBLING_ALLOW.has(name.toLowerCase())) continue;    // 일반 디렉토리
+      bad.push({ no: i + 1, name, line: line.trim().slice(0, 80) });
+    }
+  });
+  if (bad.length) {
+    for (const { no, name, line } of bad) {
+      console.error(`  FAIL [E 형제폴더하드코딩] ${where}:${no} — \`../${name}/\` : ${line}`);
+    }
+    console.error(`       스킬 폴더명은 설치 형태마다 다르다(팀팩 'jedi-image' vs 개인 '이미지'). 고정 이름을 박으면 한쪽에서 깨진다 — \`../<이미지 스킬 폴더>/\` 처럼 플레이스홀더를 쓰고 "형제 폴더를 확인하고 실제 이름을 쓸 것"을 함께 적을 것`);
     failE = 1;
   }
 }
