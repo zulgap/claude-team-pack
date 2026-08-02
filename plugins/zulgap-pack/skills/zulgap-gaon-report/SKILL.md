@@ -43,7 +43,10 @@ DB(data_source): `114efa2f-2c3b-8155-a52a-000b76be5969` (월간 성과 보고서
    - `node <skill>/scripts/blog-download.mjs <출력폴더>` → xlsx 4개 (조회수·순방문·사용시간=전체 월간, 유입분석=지난달 단월 자동)
    - `node <skill>/scripts/searchad-daily.mjs <출력폴더>` → performance_*.csv (일별 노출/클릭 — 검산용)
    - `node <skill>/scripts/searchad-campaigns.mjs <출력폴더>` → campaigns_*.xlsx (6유형 노출/클릭/CTR/CPC/비용 — 정본)
-   - AVI (제디 MCP 셀프서비스, v7.387.0+): ① `ext_avi_measure` 호출 — `{ "tenant_id": "a0000000-0000-0000-0000-000000000002", "runs": 30 }` → `queued` 응답(측정은 백엔드에서 ~10분, 600콜) ② ~10분 뒤 `ext_avi_result` — `{ "tenant_id": 동일 }` → 엔진별(Perplexity/Gemini) 노출률·Top3·SOV·경쟁사 요약 수신. `already_running`이면 대기 후 ②만, `recent_result_exists`(20시간 내 기존 결과)면 바로 ② 조회. 재측정 강행은 `force: true` (회당 비용 $2~12 — 월 1회 원칙).
+   - AVI (제디 MCP 셀프서비스, v7.387.0+): ① `ext_avi_measure` 호출 — `{ "tenant_id": "a0000000-0000-0000-0000-000000000002", "runs": 30 }` → `queued` 응답(측정은 백엔드에서 ~10분, 600콜) ② ~10분 뒤 `ext_avi_result` — `{ "tenant_id": 동일 }` → 엔진별(Perplexity/Gemini) 노출률·Top3·SOV·경쟁사 요약 수신. `already_running`이면 대기 후 ②만, `recent_result_exists`(20시간 내 기존 결과)면 바로 ② 조회. 재측정 강행은 `force: true` (회당 비용 $2~12 — 월 1회 원칙). ③ `ext_avi_analysis` — `{ "tenant_id": 동일, "months": 3 }` → **질문별 노출률 신뢰구간(Wilson) + 경쟁사 동시등장 지형 + 월별 추이**. 요약(②)에 없는 *"지난달 대비 얼마나 변했나"* 와 *"어떤 경쟁사가 우리와 함께 언급되나"* 가 여기서 나온다 (v7.820.0+, **원자료 보존 v7.818.0 이후 측정분부터** — 그 전 달은 `found:false`).
+     - 🔴 **읽을 때 주의**: `measurable:false`인 질문의 `exposure_pct`는 `null`이지 **0이 아니다**(유효 응답 0건 = "못 쟀음" / 0% = "AI가 한 번도 언급 안 함" — 의미가 정반대). 보고서에 0%로 적으면 안 된다.
+     - 🔴 `config_hash`가 다른 구간은 **시계열을 이어 붙이지 말 것**(질문 세트·경쟁사 사전이 바뀐 구간이라 같은 `qid`라도 다른 질문).
+     - 🔴 `mention_count`(전체 등장) ≠ `with_client_count`(**우리가 등장한 답변 안에서의 동반**) — "동시등장"을 말하려면 후자를 쓸 것.
      - 측정 실행이 안 되면(도구 미노출/장애) 이 단계만 사장님께 요청하고 나머지 진행.
 2. **GA4** (Browser MCP, 사장님 크롬 구글 로그인): URL 직접 라우팅 — `https://analytics.google.com/analytics/web/#/a363272208p498878528/reports/reportinghub?params=_u.date00%3DYYYYMMDD%26_u.date01%3DYYYYMMDD%26_u.comparisonOption%3Ddisabled`. 세션·총사용자 정확값 = 좌측 트리 리드생성>잠재고객(All Users 행). 채널그룹 = 리드생성 개요 카드.
 3. **검산**: campaigns_*.xlsx 합계 노출 == performance_*.csv 일별 합계 (26-06: 50,372 일치).
@@ -67,4 +70,4 @@ DB(data_source): `114efa2f-2c3b-8155-a52a-000b76be5969` (월간 성과 보고서
 - 탐색 없이 스크립트를 순차 1회씩만 실행 (창 반복 열림은 사용자 불만 요인)
 
 ## 데이터 소스 ID
-스마트플레이스 place `7708222` / booking `786232` · 검색광고 ad-account `1790170`(ads.naver.com 신 UI) · GA4 `a363272208p498878528`(gd-gaondental.com) · 블로그 `gdgodental` · AVI 결과: 백엔드 `skill_execution`(skill_code='avi_measure', 줄갭 tenant) — `ext_avi_result`로 조회
+스마트플레이스 place `7708222` / booking `786232` · 검색광고 ad-account `1790170`(ads.naver.com 신 UI) · GA4 `a363272208p498878528`(gd-gaondental.com) · 블로그 `gdgodental` · AVI 결과: 집계는 `skill_execution`(skill_code='avi_measure', 줄갭 tenant) → `ext_avi_result` / 원자료는 `avi_measure_record`(질문×엔진×run, v7.818.0~) → `ext_avi_analysis`
