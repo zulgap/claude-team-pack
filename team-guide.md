@@ -84,6 +84,19 @@ plugins/dev-pack/skills      ← 개발자용
 저장소 **맨 위(루트)의 `skills/` 는 로드 경로가 아닙니다.** 거기 넣으면 파일도 있고 자동검사도
 초록인데 **직원 PC에는 안 갑니다** — 증상이 없어 아무도 모릅니다(실제로 난 사고입니다).
 
+### 🔴 이름 — 팩 접두사를 붙여야 목록에 뜹니다
+
+넣는 팩에 맞춰 **이름 앞에 접두사**를 붙입니다. 폴더명과 `SKILL.md` 의 `name:` **둘 다** 같아야 합니다.
+
+| 넣는 곳 | 이름 | 예 |
+|---|---|---|
+| `plugins/jedi-core/skills` | `jedi-*` | `jedi-keyword` · `jedi-thumbnail` |
+| `plugins/zulgap-pack/skills` | `zulgap-*` | `zulgap-blog` · `zulgap-gaon-report` |
+
+위에서 본 것처럼 직원들은 **`/zulgap` 까지 쳤을 때 뜨는 목록**에서 스킬을 찾습니다.
+접두사가 없으면 그 목록에 안 떠서 **아무도 못 찾습니다.**
+(자동검사가 막아주니 틀려도 괜찮습니다 — `FAIL [C-5 팩접두]` 가 뜨면 이름을 고치세요)
+
 ### 올리기 전 두 줄
 
 - `node scripts/check-plugin-consistency.js` → `exit=0` 이면 통과. 건너뛰고 올리면 반려되고 왕복이 생깁니다.
