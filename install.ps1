@@ -82,8 +82,23 @@ if (-not (Get-Command claude -ErrorAction SilentlyContinue) -and -not (Test-Path
   try {
     Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression
   } catch {
+    # @AI:CONSTRAINT 2026-08-03 — winget 설치분은 **자동 갱신이 되지 않는다.**
+    #   실측: 직원 PC가 2026-06-29 19:03 이 폴백으로 설치된 뒤 65일간 2.1.195에 멈춰 있었고,
+    #   에러가 안 나서 본인도 사장님도 몰랐다(쓰는 모델·기능이 통째로 구버전).
+    #   그래서 폴백을 타면 흔적을 남기고 화면에 빨간 경고를 낸다. 조용히 넘어가지 않는다.
     Write-Host "[대체] winget으로 Claude Code 설치 시도..." -ForegroundColor Yellow
-    try { & $winget install -e --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements }
+    try {
+      & $winget install -e --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements
+      # $claudeDir는 아직 미선언(130행)이라 경로를 직접 구성한다 — PowerShell은 변수 hoisting이 없다.
+      $fbDir = Join-Path $env:USERPROFILE ".claude\zulgap"
+      try {
+        New-Item -ItemType Directory -Force -Path $fbDir | Out-Null
+        "winget fallback $(Get-Date -Format o)" | Set-Content -Path (Join-Path $fbDir ".install-fallback") -Encoding UTF8
+      } catch {}
+      Write-Host "[중요] winget으로 설치됐습니다 - 자동 갱신이 되지 않습니다." -ForegroundColor Red
+      Write-Host "       나중에 정리하세요: winget uninstall Anthropic.ClaudeCode" -ForegroundColor Red
+      Write-Host "       그 뒤 재설치:      irm https://claude.ai/install.ps1 | iex" -ForegroundColor Red
+    }
     catch { Write-Host "[경고] Claude Code 자동 설치 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red }
   }
 } else { Write-Host "[OK] Claude Code 확인됨" -ForegroundColor Green }
@@ -100,6 +115,23 @@ if (Test-Path $claudeExe) {
 }
 Update-Path
 if ((Test-Path $claudeExe) -and ($env:Path -notlike "*$claudeBin*")) { $env:Path = "$env:Path;$claudeBin" }
+
+# 4.4 설치 검증 — 경로가 아니라 **버전과 개수**를 본다
+# @AI:INTENT 2026-08-03 — 경로(.local\bin)로 성공/실패를 판정하면 npm 전역 설치를 "실패"로 오판한다.
+#   실측: 직원 PC가 npm 경로로 최신(2.1.220)인데 .local\bin 기준으론 실패로 잡혔다.
+#   판정축은 "실제로 실행되는 것이 무엇이고 몇 개인가"다. PATH 갱신(위 101~102행) 뒤에 둘 것.
+$claudeFound = @()
+try { $claudeFound = @(& where.exe claude 2>$null | Where-Object { $_ }) } catch {}
+if ($claudeFound.Count -gt 1) {
+  Write-Host "[주의] Claude Code가 여러 곳에 설치돼 있습니다 ($($claudeFound.Count)곳):" -ForegroundColor Yellow
+  $claudeFound | ForEach-Object { Write-Host "       $_" -ForegroundColor DarkYellow }
+  Write-Host "       PATH 순서가 바뀌면 구버전이 실행될 수 있습니다. winget 것이 있으면 정리하세요:" -ForegroundColor Yellow
+  Write-Host "       winget uninstall Anthropic.ClaudeCode" -ForegroundColor Yellow
+}
+$claudeVer = $null
+try { $claudeVer = (& claude --version 2>$null | Select-Object -First 1) } catch {}
+if ($claudeVer) { Write-Host "[OK] Claude Code $claudeVer" -ForegroundColor Green }
+else { Write-Host "[주의] claude --version 실패 - 터미널을 새로 열고 'claude --version'을 확인하세요." -ForegroundColor Yellow }
 
 # 4.5. 제디 토큰 선입력 — role은 토큰 claim이 SSOT라 role 분기 전에 받는다 (v2.3)
 # @AI:INTENT v1.20 "role의 원천 = 토큰"을 설치 시점까지 확장 — 토큰 있으면 -Role 인자를 덮어써
