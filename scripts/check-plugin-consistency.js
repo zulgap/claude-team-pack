@@ -109,6 +109,18 @@ for (const [name, src] of Object.entries(sources)) {
 // C-3(bare 충돌)은 사용자가 `/이름`을 접두 없이 칠 때 어느 스킬이 잡힐지가
 //   플러그인 경계를 넘어 결정되기 때문에 — 플러그인별 검사만으론 못 잡는다.
 const SKILL_NAME_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+// C-5 팩 접두사 — packaging-spec §4⑦ "권장"을 강제로 승격 (2026-08-02).
+// @AI:INTENT 직원은 `/jedi`·`/zulgap` 까지 쳤을 때 뜨는 **목록에서 스킬을 찾는다**(team-guide.md).
+//   접두사가 없으면 그 목록에 안 떠서, 게이트·CI가 전부 초록인데 **아무도 못 찾는 스킬**이 된다
+//   (루트 `skills/` 사고와 같은 클래스 — 기술적으로 존재하나 실질 도달 0).
+//   실사고: 2026-08-02 팀원 첫 PR #71이 `naver-rank-check` 로 올라왔고 CI는 통과했다.
+//   규칙이 spec에 "권장"으로만 있어 아무도 못 잡았다 → 게이트로 승격.
+// @AI:CONSTRAINT 화이트리스트 방식 — 맵에 **없는 팩은 면제**다. `dev-pack`(`start-dev`·`wrapup-dev`)은
+//   접미사형이 의도이므로 등록하지 않는다. 전 팩 강제로 바꾸면 기존 2개가 즉시 FAIL 난다.
+const PACK_PREFIX = {
+  'jedi-core': 'jedi-',
+  'zulgap-pack': 'zulgap-',
+};
 const pluginDirs = fs.readdirSync(path.join(ROOT, 'plugins'), { withFileTypes: true })
   .filter((d) => d.isDirectory())
   .map((d) => d.name);
@@ -144,6 +156,12 @@ for (const plug of pluginDirs) {
     //   폴더명 기반 ID에서 일어난다 — 한글 폴더는 문자당 '-'로 뭉개져 같은 글자수끼리 충돌, 하나만 생존)
     if (d.name !== name) {
       console.error(`  FAIL [C-4 폴더명불일치] ${where}: 폴더='${d.name}' vs name='${name}' — 폴더명을 name과 동일하게 바꿀 것`);
+      failC = 1;
+    }
+    // C-5 팩 접두사 (맵에 등록된 팩만 — 위 PACK_PREFIX 주석 참조)
+    const wantPrefix = PACK_PREFIX[plug];
+    if (wantPrefix && !name.startsWith(wantPrefix)) {
+      console.error(`  FAIL [C-5 팩접두] ${where}: name='${name}' — '${plug}' 스킬은 '${wantPrefix}*' 로 시작해야 한다. 직원은 '/${wantPrefix.slice(0, -1)}' 까지 쳤을 때 뜨는 목록에서 스킬을 찾으므로, 접두사가 없으면 아무도 못 찾는다. 폴더명도 함께 바꿀 것(C-4)`);
       failC = 1;
     }
     // C-2 플러그인 내 중복 (같은 plugin:name 이 둘)
