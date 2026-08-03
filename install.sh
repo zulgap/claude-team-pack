@@ -137,6 +137,28 @@ try {
   fi
 fi
 
+# ---- 2.6. tenant packs (packaging-spec §5 "tenant-only는 그 회사에만 활성화" 이행, v2.26) ----
+# @AI:INTENT 판정축 = GET /mcp/ext/teampack-config 의 packs 배열(토큰 tenant 기준 — spec §1 처방 통로).
+#   줄갭 카드 = ['core','zulgap','dev']. 'zulgap' 포함일 때만 zulgap-pack 활성.
+# @AI:CONSTRAINT 🔴 confident 원칙 (dev-pack 분기와 동일 클래스) — 확실할 때만 끈다.
+#   토큰 없음·네트워크 실패·404(카드 미등록) = 판정 불가 → 빈값 유지 = 현상 유지(활성).
+#   404를 exclude로 접으면 카드 행이 실수로 지워진 날 전 팀원이 스킬을 잃는다.
+#   hooks/hook-doctor-v2.js tenantPacksWithConfidence()와 동기 필수 (3장부: 이 파일·install.ps1·hook-doctor).
+TENANT_PACKS=""
+if [ -n "$JEDI_TOKEN" ]; then
+  PACKS_RAW="$(curl -fsS --max-time 8 -H "Authorization: Bearer $JEDI_TOKEN" "$JURL/mcp/ext/teampack-config" 2>/dev/null || true)"
+  if [ -n "$PACKS_RAW" ]; then
+    TENANT_PACKS="$(PACKS_RAW="$PACKS_RAW" node -e '
+try {
+  const j = JSON.parse(process.env.PACKS_RAW || "");
+  const p = j && j.success && j.data && Array.isArray(j.data.packs) ? j.data.packs : null;
+  if (p) console.log(p.join(" "));
+} catch (e) {}
+' 2>/dev/null)"
+  fi
+  [ -n "$TENANT_PACKS" ] && ok "tenant packs: $TENANT_PACKS" || warn "[note] tenant packs 판정 불가 — 현상 유지(줄갭 기본)"
+fi
+
 # ---- 3. role file + CLAUDE.md stub (fetched — no local files in curl mode) ----
 CLAUDE_DIR="$HOME/.claude"
 ZULGAP_DIR="$CLAUDE_DIR/zulgap"
@@ -191,7 +213,14 @@ s.extraKnownMarketplaces['zulgap-team-pack'] = { source: { source: 'github', rep
 s.enabledPlugins = s.enabledPlugins || {};
 // v2.0 플러그인 3분리 — 신규 설치는 신 플러그인만 활성 (role 분기 = hook-doctor-v2.js와 동기 필수)
 s.enabledPlugins['jedi-core@zulgap-team-pack'] = true;
-s.enabledPlugins['zulgap-pack@zulgap-team-pack'] = true;
+// v2.26 tenant-only 게이트 — packs 판정이 확실히 '줄갭 아님'일 때만 명시적 false (spec §5).
+//   TEAMPACK_PACKS 빈값 = 판정 불가 = 현상 유지(활성). hook-doctor-v2.js와 동기 필수.
+const tenantPacks = String(process.env.TEAMPACK_PACKS || '').trim();
+if (tenantPacks && tenantPacks.split(/\s+/).indexOf('zulgap') === -1) {
+  s.enabledPlugins['zulgap-pack@zulgap-team-pack'] = false;
+} else {
+  s.enabledPlugins['zulgap-pack@zulgap-team-pack'] = true;
+}
 const role = String(process.env.ZULGAP_ROLE || 'staff');
 // @AI:CONSTRAINT 🔴 dev-pack은 명시적 false를 써야 꺼진다 — 키를 안 쓰면 켜진다(opt-out).
 //   2026-07-29 실측: staff PC에 dev-pack 키가 없는데도 start-dev/wrapup-dev가 로드돼 실행까지 됐다.
@@ -231,7 +260,7 @@ fs.writeFileSync(p, JSON.stringify(s, null, 2) + '\n');
 console.log('settings-merged');
 NODE_SETTINGS_EOF
 
-if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMPT="$HOOK_PROMPT" HOOK_HANDOFF="$HOOK_HANDOFF" HOOK_RESPONSE="$HOOK_RESPONSE" ZULGAP_ROLE="$ROLE" node "$WORK/merge-settings.js"; then
+if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMPT="$HOOK_PROMPT" HOOK_HANDOFF="$HOOK_HANDOFF" HOOK_RESPONSE="$HOOK_RESPONSE" ZULGAP_ROLE="$ROLE" TEAMPACK_PACKS="$TENANT_PACKS" node "$WORK/merge-settings.js"; then
   ok "Zulgap plugin auto-registered (settings.json)"
 
   # ---- 5.8 plugin '실물' 설치 (★ 이게 빠지면 스킬이 안 뜬다) ----
@@ -242,7 +271,12 @@ if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMP
   # @AI:DEPENDS SSH 클론 버그(#47088) 예방은 위 git insteadOf 블록 — 선행 필수.
   CLAUDE_BIN="$(command -v claude || true)"
   [ -z "$CLAUDE_BIN" ] && [ -x "$HOME/.local/bin/claude" ] && CLAUDE_BIN="$HOME/.local/bin/claude"
-  WANT_PLUGINS="jedi-core zulgap-pack"
+  WANT_PLUGINS="jedi-core"
+  # tenant-only 게이트와 동일 판정 — 판정 불가(빈값) 또는 'zulgap' 포함이면 설치, 확실히 아님이면 제외
+  case " $TENANT_PACKS " in
+    "  "|*" zulgap "*) WANT_PLUGINS="$WANT_PLUGINS zulgap-pack" ;;
+    *) warn "[note] zulgap-pack skipped (tenant packs: $TENANT_PACKS)" ;;
+  esac
   if [ "$ROLE" = "dev" ] || [ "$ROLE" = "master" ]; then WANT_PLUGINS="$WANT_PLUGINS dev-pack"; fi
   INSTALL_OK=1
   if [ -z "$CLAUDE_BIN" ]; then
