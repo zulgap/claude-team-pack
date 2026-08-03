@@ -41,7 +41,16 @@
 ## 폰트
 
 - **도현체 (Do Hyeon)** — 기본. `assets/fonts/DoHyeon.ttf`
-- N.NOBLE 로고 — `C:/Windows/Fonts/times.ttf` (세리프, 자간 확장)
+  - 라이선스 **SIL Open Font License 1.1** (Copyright 2018 The Do Hyeon Project Authors).
+    OFL 은 재배포 시 라이선스 사본 동봉을 조건으로 하므로 **`assets/fonts/OFL.txt` 를 폰트와
+    함께 유지할 것.** 이 레포는 public 이라 커밋 자체가 재배포에 해당한다. 폰트만 옮기고
+    OFL.txt 를 빠뜨리지 말 것
+- N.NOBLE 로고 — 시스템 세리프. **Times New Roman 이 기준**이고 OS별로 자동 탐색한다
+  (`make_overlays.py` 의 `SERIF_CANDIDATES`: Windows `times.ttf` → macOS Times/Georgia →
+  Linux Liberation/DejaVu). 재배포 불가 폰트라 레포에 번들하지 않는다.
+  - 대체본이 잡히면 스크립트가 **경고를 출력**한다. 자간 계산이 폭 244px 를 맞춰 주므로
+    레이아웃은 유지되지만 글자 모양이 미세하게 다르니, 경고가 보이면 최종 프레임에서 로고를 확인할 것
+  - 후보가 하나도 없으면 렌더 전에 실패시킨다 (조용히 깨진 로고가 나가지 않게)
 - 조달: GitHub·Google Fonts CDN 차단됨 →
   `npm pack @fontsource/do-hyeon` → `package/files/do-hyeon-korean-400-normal.woff2`
   → `fontTools.ttLib.TTFont(...)`, `flavor=None`, `.save()` 로 ttf 변환

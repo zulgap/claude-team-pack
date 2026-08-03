@@ -27,7 +27,19 @@ if hasattr(sys.stdout, "reconfigure"):
 # ── 경로 ──────────────────────────────────────────────────────────────
 SKILL = Path(__file__).resolve().parent.parent
 FONT_KR = SKILL / "assets" / "fonts" / "DoHyeon.ttf"
-FONT_SERIF = Path("C:/Windows/Fonts/times.ttf")
+
+# @AI:DEPENDS N.NOBLE 로고는 시스템 세리프에 의존한다(레포에 번들할 수 없음 — 재배포 불가 폰트).
+#   폭 244px 는 draw_tracked() 의 자간 계산이 맞춰 주므로 대체 폰트에서도 레이아웃은 유지되지만
+#   글자 모양은 미세하게 달라진다. 그래서 대체본이 쓰이면 조용히 넘기지 않고 경고를 낸다.
+SERIF_CANDIDATES = (
+    Path("C:/Windows/Fonts/times.ttf"),                                    # Windows
+    Path("/System/Library/Fonts/Supplemental/Times New Roman.ttf"),        # macOS
+    Path("/Library/Fonts/Times New Roman.ttf"),                            # macOS (구버전)
+    Path("/System/Library/Fonts/Supplemental/Georgia.ttf"),                # macOS 폴백
+    Path("/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"),  # Linux
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"),              # Linux 폴백
+)
+FONT_SERIF = next((p for p in SERIF_CANDIDATES if p.exists()), None)
 
 # ── 브랜드 규격 (레퍼런스 실측) ────────────────────────────────────────
 W, H = 1080, 1350
@@ -183,6 +195,15 @@ def main():
     if not FONT_KR.exists():
         raise SystemExit(f"[폰트 없음] {FONT_KR}\n"
                          f" → assets/brand_kit.md 의 npm @fontsource/do-hyeon 경로로 재조달할 것.")
+    if FONT_SERIF is None:
+        raise SystemExit("[세리프 폰트 없음] N.NOBLE 로고에 쓸 세리프 폰트를 찾지 못했다.\n"
+                         " → 확인한 경로:\n"
+                         + "".join(f"     {p}\n" for p in SERIF_CANDIDATES)
+                         + " → Times New Roman 계열을 설치하거나 SERIF_CANDIDATES 에 경로를 추가할 것.")
+    if FONT_SERIF != SERIF_CANDIDATES[0]:
+        print(f"[알림] 로고 세리프 대체본 사용: {FONT_SERIF}\n"
+              f"       레퍼런스는 Times New Roman 기준이다. 자간 계산으로 폭 244px 는 유지되지만\n"
+              f"       글자 모양이 미세하게 다를 수 있으니 최종 프레임에서 로고를 확인할 것.")
     for s in slides:
         for k in ("title", "body"):
             if len(s[k]) != 2:

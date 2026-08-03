@@ -9,7 +9,7 @@
       "title": ["자만추 포기,", "이제 이 길로"],
       "body": ["결혼을 원하는 마음은 같은데,", "왜 만나는 방식은 달라질까요?"],
       "video_prompt": "A thoughtful and decisive Korean professional woman in her early 30s with a confident expression, modern Seoul office aesthetic with warm afternoon sunlight streaming through glass windows. Cinematic editorial style motion with sophisticated and empowered mood. Shallow depth of field effect, subject in lower portion of frame. Warm golden lighting, professional atmosphere, elegant transitions. Stylized and artistic interpretation.",
-      "video_url": "https://mtnfymojdahnceusnsjh.supabase.co/storage/v1/object/public/media-videos/a0000000-0000-0000-0000-000000000002/seedance2-t2v-1784210888006.mp4"
+      "video_url": "https://<supabase-project>.supabase.co/storage/v1/object/public/media-videos/<tenant-id>/seedance2-t2v-<생성ID>.mp4"
     },
     {
       "n": 2,
@@ -18,7 +18,7 @@
       "body": ["2024년 혼인 건수 12년 만에 반등.", "그런데 만날 기회는 줄었습니다."],
       "video_prompt": "A Korean man in his late thirties with a plain, average, unremarkable appearance. He waits at a bus stop in the early evening, checking the time, mild fatigue showing on his face. Korean ethnicity, short black hair, simple grey jacket. Handheld documentary footage, flat natural lighting, ordinary everyday scene, subject in lower portion of frame.",
       "_note": "⚠️ 이 프롬프트를 따라 쓰지 말 것 — 고급스러움 기준 미달 사례다. 'Korean man' 이 배우 얼굴 유사성으로 copyright 5연속 거부되자 장면 전체를 plain/average/bus stop/flat lighting 으로 내려 통과시켰다. 거부는 피했지만 브랜드가 깎였다. 올바른 순서는 SKILL.md 5-3 '고급스러움 vs 저작권' 참고: 의상·공간·조명의 고급스러움은 유지하고 얼굴만 탈스타화할 것.",
-      "video_url": "https://mtnfymojdahnceusnsjh.supabase.co/storage/v1/object/public/media-videos/a0000000-0000-0000-0000-000000000002/seedance2-t2v-1784219380621.mp4"
+      "video_url": "https://<supabase-project>.supabase.co/storage/v1/object/public/media-videos/<tenant-id>/seedance2-t2v-<생성ID>.mp4"
     },
     {
       "n": 3,
@@ -27,7 +27,7 @@
       "body": ["막연한 연애가 아니라 검증된 시작.", "4대 서류로 확인된 상대를 만납니다."],
       "video_prompt": "A confident Korean woman in her thirties in professional attire, reviewing certification documents with a focused, intelligent expression. Korean ethnicity, dark hair neatly tied back. Elegant office setting with soft natural light and warm color grading. Editorial portrait photography, determined and trustworthy mood, clean composition, subject in lower portion of frame.",
       "_note": "최초 거부 사유는 오디오였다. generate_audio=false 만으로 충분했고 프롬프트를 완화할 필요가 없었다.",
-      "video_url": "https://mtnfymojdahnceusnsjh.supabase.co/storage/v1/object/public/media-videos/a0000000-0000-0000-0000-000000000002/seedance2-t2v-1784219588485.mp4"
+      "video_url": "https://<supabase-project>.supabase.co/storage/v1/object/public/media-videos/<tenant-id>/seedance2-t2v-<생성ID>.mp4"
     },
     {
       "n": 4,
@@ -36,7 +36,7 @@
       "body": ["SKY 3,672명, 전문직 4,177명.", "신원/재직/혼인/학력 4대 서류 인증."],
       "video_prompt": "A confident Korean woman in her thirties in an elegant beige suit, standing in a modern minimalist office with a warm, competent and trustworthy expression, natural relaxed posture, subtle movement. Korean ethnicity, dark hair neatly tied back. Bright natural light through large windows, blurred city skyline behind her. Completely empty clean environment with no documents, no papers, no screens, no books, no signage and no text or writing anywhere in the frame. Editorial photography, shallow depth of field, subject in lower portion of frame.",
       "_note": "서류를 등장시키지 않는다. '4대 서류 인증'을 말하는 슬라이드지만 서류를 화면에 넣으면 AI가 반드시 가짜 한글을 박는다(3회 시도 전부 실패: '직직직식직전', '딜지릭텬미의지극4색선', '집식릭 실리지'). no letters/no writing 을 강하게 써도 소용없다. 서류는 카피로만 말하고 화면엔 인물만 둔다.",
-      "video_url": "https://mtnfymojdahnceusnsjh.supabase.co/storage/v1/object/public/media-videos/a0000000-0000-0000-0000-000000000002/seedance2-t2v-1784223181813.mp4"
+      "video_url": "https://<supabase-project>.supabase.co/storage/v1/object/public/media-videos/<tenant-id>/seedance2-t2v-<생성ID>.mp4"
     },
     {
       "n": 5,
@@ -44,7 +44,7 @@
       "title": ["사람이 끝까지", "책임집니다"],
       "body": ["커플매니저, 매칭매니저, 서비스팀이", "한 회원을 3:1로 함께 관리합니다."],
       "video_prompt": "A warm Korean woman having a professional consultation conversation with an advisor across a table. Upscale Seoul office interior with natural light and elegant design. Professional yet empathetic mood, trust and partnership clearly conveyed. Cinematic lighting, smooth transitions, genuine connection and communication.",
-      "video_url": "https://mtnfymojdahnceusnsjh.supabase.co/storage/v1/object/public/media-videos/a0000000-0000-0000-0000-000000000002/seedance2-t2v-1784211658661.mp4"
+      "video_url": "https://<supabase-project>.supabase.co/storage/v1/object/public/media-videos/<tenant-id>/seedance2-t2v-<생성ID>.mp4"
     },
     {
       "n": 6,
@@ -52,7 +52,7 @@
       "title": ["더 늦기 전에", "시작하세요"],
       "body": ["기다리기보다 검증된 시작을.", "무료 상담으로 방향을 정해보세요."],
       "video_prompt": "An approachable Korean professional with a warm, welcoming smile and open gesture. Bright optimistic mood throughout. Upscale consultation office setting with natural light streaming through windows. Professional and trustworthy demeanor, cinematic quality, inviting and empowering atmosphere. Genuine warmth and accessibility.",
-      "video_url": "https://mtnfymojdahnceusnsjh.supabase.co/storage/v1/object/public/media-videos/a0000000-0000-0000-0000-000000000002/seedance2-t2v-1784211780742.mp4"
+      "video_url": "https://<supabase-project>.supabase.co/storage/v1/object/public/media-videos/<tenant-id>/seedance2-t2v-<생성ID>.mp4"
     }
   ]
 }
