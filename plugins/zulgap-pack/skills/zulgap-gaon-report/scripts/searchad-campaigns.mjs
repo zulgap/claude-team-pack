@@ -3,9 +3,9 @@ import { createRequire } from 'module';
 import { writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { pathToFileURL } from 'url';
-// playwright 로딩: env PLAYWRIGHT_DIR > 사장님 PC 기본 > 현재 폴더 (직원 PC = 아무 폴더에서 npm i playwright 후 그 폴더에서 실행)
+// playwright 로딩: env PLAYWRIGHT_DIR > 홈폴더 Documents/marketing-report > 현재 폴더 (직원 PC = 아무 폴더에서 npm i playwright 후 그 폴더에서 실행)
 function loadChromium() {
-  const dirs = [process.env.PLAYWRIGHT_DIR, 'C:/Users/admin/Documents/marketing-report', process.cwd()].filter(Boolean);
+  const dirs = [process.env.PLAYWRIGHT_DIR, homedir() + '/Documents/marketing-report', process.cwd()].filter(Boolean);
   for (const d of dirs) {
     try { return createRequire(pathToFileURL(d + '/package.json').href)('playwright').chromium; } catch {}
   }

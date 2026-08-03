@@ -11,6 +11,7 @@
 const fs = require('fs'), path = require('path'), https = require('https');
 const { execFileSync } = require('child_process');
 const FFMPEG = require('ffmpeg-static'); // 스킬 node_modules에서 해소 (scripts/ 상위 탐색)
+const { ensureFontHere } = require(path.join(__dirname, 'resolve-font.js')); // chdir 후 호출되므로 절대경로
 
 function dl(url, dest) {
   return new Promise((res, rej) => {
@@ -32,7 +33,7 @@ function dl(url, dest) {
   const localInputAbs = isUrl ? null : path.resolve(p.input); // @AI:FRAGILE chdir 전에 절대경로 고정
   fs.mkdirSync(outDir, { recursive: true });
   process.chdir(outDir);
-  if (!fs.existsSync('malgunbd.ttf')) fs.copyFileSync('C:/Windows/Fonts/malgunbd.ttf', 'malgunbd.ttf');
+  ensureFontHere();   // OS별 한글 폰트 조달 → 작업 폴더에 malgunbd.ttf (없으면 즉시 실패)
 
   let input;
   if (isUrl) { input = path.join(outDir, '_sub_in.mp4'); await dl(p.input, input); }
