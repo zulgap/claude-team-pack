@@ -18,6 +18,9 @@ const SETTINGS = path.join(os.homedir(), '.claude', 'settings.json');
 const INSTALLED = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
 const FLAG = path.join(ZULGAP_DIR, '.hook-doctor-v2.done');
 const MP = 'zulgap-team-pack';
+const JURL = 'https://judgmentos-unified-agent-production.up.railway.app';
+const PACKS_CACHE = path.join(ZULGAP_DIR, '.teampack-packs.json');
+const PACKS_CACHE_MS = 24 * 60 * 60 * 1000;
 const REFRESH_STAMP = path.join(ZULGAP_DIR, '.plugin-refresh.stamp');
 const REFRESH_EVERY_MS = 24 * 60 * 60 * 1000;
 // @AI:CONSTRAINT 갱신 예산은 아래 워치독(210s)보다 작아야 한다 — marketplace 60s + plugin 40s×3 = 180s.
@@ -94,7 +97,7 @@ function b64urlJson(seg) {
   return JSON.parse(Buffer.from(String(seg).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
 }
 
-function roleFromToken() {
+function rawTokenFromConfigs() {
   const candidates = [path.join(os.homedir(), '.claude.json')];
   if (process.env.APPDATA) candidates.push(path.join(process.env.APPDATA, 'Claude', 'claude_desktop_config.json'));
   candidates.push(path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json'));
@@ -102,15 +105,50 @@ function roleFromToken() {
     try {
       const j = JSON.parse(fs.readFileSync(f, 'utf8'));
       const t = j && j.mcpServers && j.mcpServers.jedi && j.mcpServers.jedi.env && j.mcpServers.jedi.env.JUDGMENTOS_TOKEN;
-      if (!t) continue;
-      const r = String((b64urlJson(String(t).split('.')[1]) || {}).role || '').toLowerCase();
-      if (!r) continue;
-      if (r === 'admin' || r === 'master') return 'master';
-      if (r === 'dev' || r === 'developer' || r === 'engineer') return 'dev';
-      return 'staff';
+      if (t) return String(t);
     } catch (_) { /* 다음 후보 */ }
   }
   return '';
+}
+
+function roleFromToken() {
+  const t = rawTokenFromConfigs();
+  if (!t) return '';
+  try {
+    const r = String((b64urlJson(t.split('.')[1]) || {}).role || '').toLowerCase();
+    if (!r) return '';
+    if (r === 'admin' || r === 'master') return 'master';
+    if (r === 'dev' || r === 'developer' || r === 'engineer') return 'dev';
+    return 'staff';
+  } catch (_) { return ''; }
+}
+
+// @AI:INTENT tenant-only 팩(zulgap-pack)의 활성화 판정 — packaging-spec §5 "그 회사에만 활성화" 이행.
+//   판정축 = GET /mcp/ext/teampack-config 의 packs 배열(토큰 tenant 기준, spec §1이 처방한 통로).
+//   줄갭 카드 = ['core','zulgap','dev'] (Migration 437). 'zulgap' 포함 → zulgap-pack 활성.
+// @AI:CONSTRAINT 🔴 confident 원칙 (dev-pack과 동일 클래스) — 판정이 확실할 때만 끈다.
+//   토큰 없음·네트워크 실패·404(카드 미등록)·curl 부재 = 전부 '판정 불가' → 현상 유지.
+//   404를 exclude로 접으면 줄갭 카드 행이 실수로 지워진 날 전 팀원이 스킬을 잃는다('스킬 0개' 클래스).
+//   고객사는 온보딩(카드 등록 → 토큰 발급) 순서라 토큰이 있으면 카드도 있다 — 그때만 confident.
+// @AI:FRAGILE 24h 캐시 — 매 세션 네트워크 콜을 피한다(직원 세션 시작 지연 방지, maybeRefresh와 같은 설계).
+function tenantPacksWithConfidence() {
+  const token = rawTokenFromConfigs();
+  if (!token) return { packs: null, confident: false };
+  try {
+    const c = JSON.parse(fs.readFileSync(PACKS_CACHE, 'utf8'));
+    if (Date.now() - c.ts < PACKS_CACHE_MS && Array.isArray(c.packs)) return { packs: c.packs, confident: true };
+  } catch (_) { /* 캐시 없음/만료 → 라이브 조회 */ }
+  try {
+    // curl 사용 — Windows 10 1803+/macOS 기본 탑재. 없으면 catch → 판정 불가(현상 유지).
+    const out = execFileSync('curl', ['-fsS', '--max-time', '8',
+      '-H', 'Authorization: Bearer ' + token, JURL + '/mcp/ext/teampack-config'],
+      { encoding: 'utf8', timeout: 12000 });
+    const j = JSON.parse(out);
+    const packs = j && j.success && j.data && Array.isArray(j.data.packs) ? j.data.packs : null;
+    if (!packs) return { packs: null, confident: false };
+    try { fs.mkdirSync(ZULGAP_DIR, { recursive: true }); fs.writeFileSync(PACKS_CACHE, JSON.stringify({ ts: Date.now(), packs })); } catch (_) {}
+    return { packs, confident: true };
+  } catch (_) { return { packs: null, confident: false }; }
 }
 
 // @AI:CONSTRAINT 🔴 'staff로 확인됨'과 '몰라서 staff'를 반드시 구분한다.
@@ -138,9 +176,16 @@ if (!s.enabledPlugins || typeof s.enabledPlugins !== 'object') s.enabledPlugins 
 
 const ep = s.enabledPlugins;
 const { role, confident } = resolveRoleWithConfidence();
-const want = { ['jedi-core@' + MP]: true, ['zulgap-pack@' + MP]: true };
+const want = { ['jedi-core@' + MP]: true };
 const DEV_KEY = 'dev-pack@' + MP;
+const ZP_KEY = 'zulgap-pack@' + MP;
 if (role === 'dev' || role === 'master') want[DEV_KEY] = true;
+// tenant-only 팩: packs 판정이 확실히 '아님'일 때만 제외 — 판정 불가면 현상 유지(활성)
+const { packs, confident: packsConfident } = tenantPacksWithConfidence();
+const shouldDisableZulgap = packsConfident && !packs.includes('zulgap');
+if (!shouldDisableZulgap) want[ZP_KEY] = true;
+let zpFlipped = false;
+if (shouldDisableZulgap && ep[ZP_KEY] !== false) { ep[ZP_KEY] = false; zpFlipped = true; }
 
 // @AI:CONSTRAINT 🔴 dev-pack은 **명시적 false**를 써야 꺼진다 — 키를 안 쓰면 켜진다.
 //   2026-07-29 실측(팀원 PC): enabledPlugins에 dev-pack 키가 **없는데도** start-dev/wrapup-dev가
@@ -160,17 +205,18 @@ if (alreadyNew) {
   // @AI:FRAGILE 이 조기 return 뒤에 갱신 로직을 두면 영구 미도달이다 — isInstalled()는 '키가 있나'만 보고
   //   버전을 안 보므로, 전환이 성공한 순간 alreadyNew가 영구 true가 되어 뒤쪽이 한 번도 실행되지 않는다.
   //   갱신은 반드시 return '앞에' 있어야 한다.
-  // @AI:INTENT dev-pack 비활성은 전환 완료 PC에도 필요하다(전환은 끝났는데 dev-pack만 켜진 상태가 실재).
+  // @AI:INTENT dev-pack/zulgap-pack 비활성은 전환 완료 PC에도 필요하다(전환은 끝났는데 팩만 켜진 상태가 실재).
   //   그래서 이 조기 return 안에서도 저장한다 — 아래 전환 경로의 write에 의존하면 영구 미도달이다.
-  if (devFlipped) {
+  if (devFlipped || zpFlipped) {
     try { fs.copyFileSync(SETTINGS, SETTINGS + '.bak-hookdoctor2'); } catch (_) { /* 백업 실패해도 진행 */ }
     try { fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2)); } catch (e) {
       console.log('[hook-doctor-v2] settings 쓰기 실패 — skip: ' + e.message);
       process.exit(0);
     }
   }
+  const flips = [devFlipped && 'dev-pack 비활성화', zpFlipped && 'zulgap-pack 비활성화(타 테넌트)'].filter(Boolean);
   const refreshed = maybeRefresh(wantKeys);
-  return done('이미 전환됨 — 정상 (변경 ' + (devFlipped ? 'dev-pack 비활성화 — 다음 재시작부터 적용' : '0')
+  return done('이미 전환됨 — 정상 (변경 ' + (flips.length ? flips.join('+') + ' — 다음 재시작부터 적용' : '0')
     + ', role=' + role + (refreshed ? ', 갱신 확인' : '') + ')');
 }
 
@@ -201,7 +247,7 @@ try {
 }
 
 if (installOk) {
-  done('플러그인 전환 완료 (jedi-core/zulgap-pack' + (want['dev-pack@' + MP] ? '/dev-pack' : '') + ', role=' + role + ') — 다음 재시작부터 적용');
+  done('플러그인 전환 완료 (' + wantKeys.map((k) => k.split('@')[0]).join('/') + ', role=' + role + ') — 다음 재시작부터 적용');
 }
 // @AI:INTENT 플래그를 쓰지 않고 종료 -> 다음 세션 재시도. 구 플러그인은 켜진 채라 스킬은 계속 작동(회귀 0).
 console.log('[hook-doctor-v2] 실물 설치 미완 — 구 플러그인 유지(스킬 정상), 다음 세션 재시도');

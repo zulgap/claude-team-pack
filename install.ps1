@@ -158,6 +158,24 @@ if ($jediToken -and $jediToken.Length -gt 0) {
   } catch { Write-Host "[warn] 토큰 role 해석 실패 — -Role 인자($Role) 유지" -ForegroundColor Yellow }
 }
 
+# 4.6. tenant packs (packaging-spec §5 "tenant-only는 그 회사에만 활성화" 이행, v2.26)
+# @AI:INTENT 판정축 = GET /mcp/ext/teampack-config 의 packs 배열(토큰 tenant 기준 — spec §1 처방 통로).
+#   줄갭 카드 = @('core','zulgap','dev'). 'zulgap' 포함일 때만 zulgap-pack 활성.
+# @AI:CONSTRAINT 🔴 confident 원칙 (dev-pack 분기와 동일 클래스) — 확실할 때만 끈다.
+#   토큰 없음·네트워크 실패·404(카드 미등록) = 판정 불가($null) → 현상 유지(활성).
+#   install.sh 2.6 / hooks/hook-doctor-v2.js tenantPacksWithConfidence() 와 3장부 동기 필수.
+$tenantPacks = $null
+if ($jediToken -and $jediToken.Length -gt 0) {
+  try {
+    $jUrlEarly = "https://judgmentos-unified-agent-production.up.railway.app"  # §8 $jUrl과 동일값 (그쪽은 이 블록보다 뒤에 정의됨)
+    $resp = Invoke-RestMethod -Uri "$jUrlEarly/mcp/ext/teampack-config" -Headers @{ Authorization = "Bearer $jediToken" } -TimeoutSec 8 -ErrorAction Stop
+    if ($resp.success -and $resp.data -and $resp.data.packs) {
+      $tenantPacks = @($resp.data.packs)
+      Write-Host "[OK] tenant packs: $($tenantPacks -join ' ')" -ForegroundColor Green
+    }
+  } catch { Write-Host "[note] tenant packs 판정 불가 — 현상 유지(줄갭 기본)" -ForegroundColor Yellow }
+}
+
 # 5. 팀 지침(CLAUDE.md) 배치 + 역할(role) 기록
 $claudeDir = "$env:USERPROFILE\.claude"
 New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
@@ -197,7 +215,13 @@ try {
   # @AI:INTENT v2.0 플러그인 3분리 — 신규 설치는 신 플러그인만 활성 (구 zulgap은 기존 PC 전환기 병존용).
   #   role 분기: dev/master만 dev-pack. hook-doctor-v2와 동일 매핑 (hooks/hook-doctor-v2.js 동기 필수).
   $s.enabledPlugins | Add-Member -NotePropertyName 'jedi-core@zulgap-team-pack' -NotePropertyValue $true -Force
-  $s.enabledPlugins | Add-Member -NotePropertyName 'zulgap-pack@zulgap-team-pack' -NotePropertyValue $true -Force
+  # v2.26 tenant-only 게이트 — packs 판정이 확실히 '줄갭 아님'일 때만 명시적 $false (spec §5).
+  #   $null = 판정 불가 = 현상 유지(활성). install.sh merge-settings / hook-doctor-v2.js 와 동기 필수.
+  if ($null -ne $tenantPacks -and $tenantPacks -notcontains 'zulgap') {
+    $s.enabledPlugins | Add-Member -NotePropertyName 'zulgap-pack@zulgap-team-pack' -NotePropertyValue $false -Force
+  } else {
+    $s.enabledPlugins | Add-Member -NotePropertyName 'zulgap-pack@zulgap-team-pack' -NotePropertyValue $true -Force
+  }
   # @AI:CONSTRAINT 🔴 dev-pack은 명시적 $false를 써야 꺼진다 — 키를 안 쓰면 켜진다(opt-out).
   #   2026-07-29 실측: staff PC에 dev-pack 키가 없는데도 start-dev/wrapup-dev가 로드돼 실행까지 됐다.
   #   마켓플레이스가 3팩을 통째로 설치하므로 실물은 늘 존재한다. else 없이 두면 staff PC에 키가 안 생긴다.
@@ -292,7 +316,10 @@ try {
   #   enabledPlugins에 true를 써도 자동 설치되지 않고, 미설치 플러그인은 '조용히 무시'된다(에러 0).
   #   2026-07-21 사장님 PC 실사고: 3줄 true + 마켓플레이스 clone 최신인데 스킬 12개 전부 미표시.
   # @AI:DEPENDS 설치가 SSH로 붙는 버그(#47088)는 §3.5 git insteadOf가 예방 — 그 블록이 선행돼야 함.
-  $wantPlugins = @('jedi-core', 'zulgap-pack')
+  $wantPlugins = @('jedi-core')
+  # tenant-only 게이트와 동일 판정 — 판정 불가($null) 또는 'zulgap' 포함이면 설치, 확실히 아님이면 제외
+  if ($null -eq $tenantPacks -or $tenantPacks -contains 'zulgap') { $wantPlugins += 'zulgap-pack' }
+  else { Write-Host "[note] zulgap-pack 설치 제외 (tenant packs: $($tenantPacks -join ' '))" -ForegroundColor Yellow }
   if ($Role -eq 'dev' -or $Role -eq 'master') { $wantPlugins += 'dev-pack' }
   $claudeCmd = if (Test-Path $claudeExe) { $claudeExe } else { 'claude' }
   Write-Host "[설치 중] 줄갭 플러그인 실물 (몇 십 초 걸릴 수 있음)..." -ForegroundColor Yellow
