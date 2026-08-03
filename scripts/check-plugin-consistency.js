@@ -292,4 +292,96 @@ if (failE === 0) {
 }
 if (failE) fail = 1;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tier F — 실행 이식성: OS 종속 경로 · 번들 폰트 라이선스 (2026-08-03 신설)
+// @AI:INTENT Tier A~E는 전부 SKILL.md만 본다(skillFiles = SKILL.md 수집). 그런데 팀원 PC에서
+//   실제로 죽는 코드는 scripts/ 안에 있다. 2026-08-03 실측 — 아래 3건이 CI(A~E)·node --check·
+//   문서 리뷰를 **전부 통과한 뒤** e2e 실행에서야 드러났다:
+//     · noblenyang  'C:/Windows/Fonts/malgunbd.ttf' 를 copyFileSync → macOS/Linux 는 그 줄에서 즉사
+//     · cardnews    로고 세리프 'C:/Windows/Fonts/times.ttf' 를 존재확인 없이 open → 동일
+//     · cardnews    폰트 759KB 번들 + OFL 사본 0건 (레포가 public 이라 커밋 자체가 재배포)
+//   §1 4등급표로는 안 잡힌다 — 'A급 개인 PC 절대경로'는 `C:\Users\` 패턴이고, `C:/Windows/` 는
+//   개인 경로가 아니다. 즉 **규정에 없던 실패 클래스**다.
+// @AI:CONSTRAINT 판정은 "Windows 경로를 썼나"가 아니라 **"대안 경로를 갖췄나"** 다.
+//   전자는 정당한 후보 배열(resolve-font.js 의 SERIF/FONT_CANDIDATES)까지 FAIL 시켜 정답이 막힌다.
+//   후자는 구조 판정이라 오탐이 없고, 고치는 방향("후보를 추가하라")이 메시지 자체에 들어 있다.
+// @AI:DEPENDS 따옴표로 시작하는 리터럴만 본다 — 주석 산문에 등장하는 경로 설명까지 잡으면
+//   이 파일의 @AI 주석들이 스스로 FAIL 을 낸다.
+const OS_PATH_FAMILIES = [
+  { os: 'Windows', re: /['"`][A-Za-z]:[\\/](?:Windows|Program Files(?: \(x86\))?)[\\/]/g },
+  { os: 'macOS', re: /['"`]\/(?:System|Library|Applications)\//g },
+  { os: 'Linux', re: /['"`]\/(?:usr|etc|opt)\//g },
+];
+const PORTABLE_EXEMPT = /@AI:ALLOW[ \t]+os-specific-path/;
+const CODE_EXT = /\.(js|mjs|cjs|py|ps1|sh)$/i;
+const FONT_EXT = /\.(ttf|otf|ttc|woff2?)$/i;
+const LICENSE_NAME = /^(ofl|license|licence|copying|notice)(\.(txt|md))?$/i;
+
+function walkFiles(dir, out = []) {
+  for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (d.name === 'node_modules' || d.name === '__pycache__' || d.name.startsWith('.')) continue;
+    const p = path.join(dir, d.name);
+    if (d.isDirectory()) walkFiles(p, out);
+    else out.push(p);
+  }
+  return out;
+}
+
+let failF = 0;
+for (const plug of pluginDirs) {
+  const skillsDir = path.join(ROOT, 'plugins', plug, 'skills');
+  if (!fs.existsSync(skillsDir)) continue;
+  for (const d of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    const skillDir = path.join(skillsDir, d.name);
+    const where = `${plug}/${d.name}`;
+    const files = walkFiles(skillDir);
+
+    // F-1 OS 종속 경로가 단일 계열뿐 = 그 OS 밖에서는 반드시 죽는다
+    for (const f of files.filter((f) => CODE_EXT.test(f))) {
+      const src = fs.readFileSync(f, 'utf8');
+      if (PORTABLE_EXEMPT.test(src)) continue;
+      const found = OS_PATH_FAMILIES.filter(({ re }) => {
+        re.lastIndex = 0;
+        return re.test(src);
+      }).map(({ os }) => os);
+      if (found.length !== 1) continue; // 0 = 무관 / 2+ = 후보 탐색 구조
+      const rel = path.relative(skillDir, f).split(path.sep).join('/');
+      const lines = [];
+      src.split(/\r?\n/).forEach((line, i) => {
+        for (const { re } of OS_PATH_FAMILIES) {
+          re.lastIndex = 0;
+          if (re.test(line)) lines.push(`${i + 1}: ${line.trim().slice(0, 88)}`);
+        }
+      });
+      console.error(`  FAIL [F-1 OS종속경로] ${where}/${rel} — ${found[0]} 경로만 있고 대안이 없다`);
+      lines.slice(0, 3).forEach((l) => console.error(`         ${l}`));
+      console.error(`       다른 OS 에서는 이 줄에서 죽는다. 후보 배열로 바꿔 존재하는 첫 경로를 고르고,`);
+      console.error(`       하나도 없으면 안내와 함께 실패시킬 것 (예: zulgap-noblenyang/scripts/resolve-font.js).`);
+      console.error(`       의도적으로 그 OS 전용이면 주석에 '@AI:ALLOW os-specific-path' 를 남길 것`);
+      failF = 1;
+    }
+
+    // F-2 폰트 번들에는 라이선스 사본이 따라와야 한다 (레포 public = 커밋이 곧 재배포)
+    const fonts = files.filter((f) => FONT_EXT.test(f));
+    for (const f of fonts) {
+      const dir = path.dirname(f);
+      const hasLicense = fs
+        .readdirSync(dir)
+        .some((n) => LICENSE_NAME.test(n));
+      if (hasLicense) continue;
+      const rel = path.relative(skillDir, f).split(path.sep).join('/');
+      console.error(`  FAIL [F-2 폰트라이선스] ${where}/${rel} — 같은 폴더에 라이선스 사본이 없다`);
+      console.error(`       이 레포는 public 이라 커밋이 곧 재배포다. OFL·Apache 등 대부분의 무료 폰트가`);
+      console.error(`       라이선스 사본 동봉을 재배포 조건으로 요구한다. 배포처의 OFL.txt 원문을 같은 폴더에 넣을 것`);
+      console.error(`       (저작권 표기 대조: TTFont(f)['name'].getDebugName(0) / getDebugName(14))`);
+      failF = 1;
+    }
+  }
+}
+if (failF === 0) {
+  console.log(`  PASS [F 이식성] OS 종속 단일경로 0 / 라이선스 없는 번들 폰트 0`);
+}
+if (failF) fail = 1;
+
 process.exit(fail);
