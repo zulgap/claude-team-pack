@@ -164,6 +164,9 @@ python scripts/make_overlays.py <slides.json> <overlays_dir>
 ```
 ratio="3:4", resolution="720p", duration=8, generate_audio=false
 ```
+> **`duration=8` 인데 최종은 6초다 — 오타가 아니라 의도다.** Seedance 로는 8초로 뽑고
+> `build_video.py` 가 앞 6초만 쓴다(`-t`, 규격은 `assets/brand_kit.md` 의 6.0초).
+> **8을 6으로 바꾸지 말 것** — 잘라낼 여유가 없어진다.
 - **[필수·비협상] 인물은 무조건 한국인.** 프롬프트에 `Korean man/woman/professional` 을
   명시하고 `Korean ethnicity`, `dark hair` 같은 보강 표현을 함께 쓴다.
   **안 쓰면 Seedance 는 백인을 뽑는다.**

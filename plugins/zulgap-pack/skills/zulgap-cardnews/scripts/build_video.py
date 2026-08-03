@@ -92,7 +92,12 @@ def main():
     # 3단계: 합본 (전체 페이드)
     print("\n합본 만드는 중...")
     lst = tmp / "concat.txt"
-    lst.write_text("".join(f"file '{s.as_posix()}'\n" for s in segs), encoding="utf-8")
+    # @AI:CONSTRAINT concat 목록의 경로는 반드시 절대경로여야 한다.
+    #   ffmpeg concat demuxer 는 상대경로를 "목록 파일이 있는 위치" 기준으로 푼다.
+    #   여기서 목록은 _tmp/ 안에 있으므로, cwd 기준 상대경로를 그대로 쓰면
+    #   _tmp/ + <out_dir>/_tmp/seg_1.mp4 로 중복 결합돼 "Impossible to open" 으로 죽는다.
+    #   (out_dir 을 절대경로로 넘기면 우연히 통과해 상대경로 실행에서만 재현된다)
+    lst.write_text("".join(f"file '{s.resolve().as_posix()}'\n" for s in segs), encoding="utf-8")
     joined = tmp / "joined.mp4"
     run(["-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(joined)], "concat")
     total = dur * len(segs)
