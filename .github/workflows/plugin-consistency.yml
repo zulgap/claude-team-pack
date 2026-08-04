@@ -48,3 +48,20 @@ jobs:
             echo "  로컬 재현: node scripts/check-plugin-consistency.js"
             exit 1
           fi
+
+      # 2026-08-04 신설. hook-doctor-v2 maybeRefresh()가 '갱신 실패를 실패로 기록하는가'를 잠근다.
+      # 이 파일이 없던 동안 사장님 PC가 12커밋 뒤처진 채 방치됐고, 그 안에 팀원 신규 스킬 2종이 있었다.
+      # 특히 S3(명령은 0 리턴인데 버전 불일치 = 무증상 실패)가 그 사고의 재현 케이스다 — 이게 깨지면 머지 금지.
+      - name: 갱신 실패 가시화 회귀 테스트 (maybeRefresh S1~S8)
+        shell: bash
+        run: |
+          set -o pipefail
+          if node scripts/test-plugin-refresh.js; then
+            echo ""
+            echo "✅ 갱신 실패 가시화 17개 assertion 통과."
+          else
+            echo ""
+            echo "::error::갱신 실패 가시화 회귀. 특히 S3가 깨졌다면 '무증상 실패'를 다시 못 잡는 상태입니다."
+            echo "  로컬 재현: node scripts/test-plugin-refresh.js"
+            exit 1
+          fi

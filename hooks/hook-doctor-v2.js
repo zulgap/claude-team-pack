@@ -21,8 +21,12 @@ const MP = 'zulgap-team-pack';
 const JURL = 'https://judgmentos-unified-agent-production.up.railway.app';
 const PACKS_CACHE = path.join(ZULGAP_DIR, '.teampack-packs.json');
 const PACKS_CACHE_MS = 24 * 60 * 60 * 1000;
+const MARKETPLACES = path.join(os.homedir(), '.claude', 'plugins', 'marketplaces');
 const REFRESH_STAMP = path.join(ZULGAP_DIR, '.plugin-refresh.stamp');
 const REFRESH_EVERY_MS = 24 * 60 * 60 * 1000;
+// @AI:DEPENDS 실패 후 재시도 창. 24h를 그대로 쓰면 '한 번 실패 = 하루 침묵'이 되어 2026-08-04 사고가 재현된다
+//   (실측: 12커밋 뒤처진 채 방치, 그 안에 팀원 신규 스킬 2종 포함). 1h = 세션을 몇 번 더 하면 자연 복구되는 간격.
+const REFRESH_RETRY_MS = 60 * 60 * 1000;
 // @AI:CONSTRAINT 갱신 예산은 아래 워치독(210s)보다 작아야 한다 — marketplace 60s + plugin 40s×3 = 180s.
 //   숫자를 올릴 땐 워치독도 같이 올릴 것(안 올리면 마지막 팩이 조용히 잘린다).
 const REFRESH_MP_TIMEOUT = 60000;
@@ -69,21 +73,112 @@ function installPlugin(key) {
 //   갱신되고 서드파티 3개(zulgap-team-pack 7/19 · superpowers 7/22 · openai-codex 7/22)는 전부 정지.
 //   아무도 update를 안 부르면 팀원 PC는 설치 시점 sha에 영구히 묶인다(사장님 PC가 7/21 f6dca84로 고정돼
 //   스킬 ASCII 리네임 #44가 5일간 미도달 — install/enabled 2장부는 그동안 계속 PASS였다).
-// @AI:CONSTRAINT 버전 비교로 판정하지 않는다 — 원격 sha를 알려면 marketplace update가 선행돼야 하는
-//   닭-달걀이다. 그래서 throttle된 주기로 update를 무조건 때린다. 이미 최신이면 no-op이라 안전.
-// @AI:FRAGILE 스탬프를 update '앞에' 찍는다 — 네트워크 실패 시 매 세션 재시도하면 직원 세션 시작이
-//   매번 최대 180s 느려진다. 실패해도 스킬은 계속 작동하므로 다음 창(24h)에 다시 시도하는 편이 낫다.
-function maybeRefresh(keys) {
+// @AI:INTENT 원격 최신 sha. marketplace update '직후'에 부르면 이 클론이 곧 원격 최신이라 네트워크 콜 0회로
+//   버전 대조가 된다 — 구 주석의 "닭-달걀이라 버전 비교 불가"는 update '전에' 비교하려 할 때만 성립했다.
+function marketHeadSha() {
   try {
-    if (Date.now() - fs.statSync(REFRESH_STAMP).mtimeMs < REFRESH_EVERY_MS) return false;
-  } catch (_) { /* 스탬프 없음 = 첫 실행 → 진행 */ }
-  try { fs.mkdirSync(ZULGAP_DIR, { recursive: true }); fs.writeFileSync(REFRESH_STAMP, new Date().toISOString()); } catch (_) {}
-  ensureGitHttps();
-  // 카탈로그 먼저 — 이게 낡으면 새 sha를 '볼 수조차' 없어서 plugin update가 no-op이 된다.
-  try { execFileSync(claudeBin(), ['plugin', 'marketplace', 'update', MP], { stdio: 'ignore', timeout: REFRESH_MP_TIMEOUT }); } catch (_) {}
-  for (const k of keys) {
-    try { execFileSync(claudeBin(), ['plugin', 'update', k], { stdio: 'ignore', timeout: REFRESH_PLUGIN_TIMEOUT }); } catch (_) {}
+    return execFileSync('git', ['-C', path.join(MARKETPLACES, MP), 'rev-parse', 'HEAD'],
+      { encoding: 'utf8', timeout: 10000 }).trim() || null;
+  } catch (_) { return null; }
+}
+
+// @AI:DEPENDS installed_plugins.json[key]는 배열([{version,...}]) — 2026-08-04 실측 형태.
+//   @AI:CONSTRAINT 판정축은 version이지 gitCommitSha가 아니다(후자는 update 후에도 안 바뀌는 죽은 필드,
+//   그걸로 재면 갱신 성공을 '미반영'으로 오판한다 — memory reference_plugin_ledgers_clean_but_clone_stale).
+function installedVersions(keys) {
+  const out = {};
+  try {
+    const j = JSON.parse(fs.readFileSync(INSTALLED, 'utf8'));
+    const plugins = j.plugins || j;
+    for (const k of keys) {
+      const e = plugins[k];
+      const v = Array.isArray(e) ? e[0] : e;
+      if (v && v.version) out[k] = String(v.version);
+    }
+  } catch (_) { /* 못 읽으면 빈 맵 = 검증 불가로 흘러간다 */ }
+  return out;
+}
+
+function readRefreshState() {
+  try {
+    const raw = fs.readFileSync(REFRESH_STAMP, 'utf8').trim();
+    // @AI:CONSTRAINT 구 포맷(ISO 문자열)은 '성공'으로 읽는다 — 실패로 읽으면 전 직원 PC가 첫 세션에
+    //   일제히 경고를 띄운다(무해한 포맷 전환이 사고처럼 보이는 것을 막는다).
+    if (!raw.startsWith('{')) return { ts: Date.parse(raw) || 0, ok: true, mismatch: [] };
+    const j = JSON.parse(raw);
+    return { ts: Date.parse(j.ts) || 0, ok: j.ok !== false, mismatch: Array.isArray(j.mismatch) ? j.mismatch : [] };
+  } catch (_) { return null; }
+}
+
+function writeRefreshState(st) {
+  try {
+    fs.mkdirSync(ZULGAP_DIR, { recursive: true });
+    fs.writeFileSync(REFRESH_STAMP, JSON.stringify({ ts: new Date().toISOString(), ...st }));
+  } catch (_) {}
+}
+
+// @AI:INTENT 실패는 반드시 사람 눈에 닿아야 한다. 2026-08-04 사고의 본질은 "실패했다는 사실이
+//   어디에도 남지 않아" 사장님·팀원 모두 며칠씩 구버전을 쓴 것이다. 성공 시엔 아무것도 출력하지 않는다
+//   (소음이 게이트를 죽인다 — plugin-update-staleness.js와 같은 규약).
+function warnRefreshFailure(st) {
+  const lines = ['', '=== 🔌 팀팩 갱신 실패 — 구버전으로 동작 중일 수 있습니다 ==='];
+  if (st.mismatch && st.mismatch.length) {
+    lines.push('최신이 아닌 팩: ' + st.mismatch.join(', '));
+    if (st.head) lines.push('최신 ' + st.head.slice(0, 12) + ' / 설치된 것이 이와 다릅니다.');
+  } else if (st.err) {
+    lines.push('갱신 명령 실패: ' + st.err);
+  } else {
+    lines.push('갱신 결과를 확인하지 못했습니다.');
   }
+  lines.push('수동 복구 (순서대로):');
+  lines.push('  claude plugin marketplace update ' + MP);
+  for (const k of (st.keys || [])) lines.push('  claude plugin update ' + k);
+  lines.push('  ※ 복구 후 Claude Code를 재시작해야 반영됩니다.');
+  try { console.log(lines.join('\n')); } catch (_) {}
+}
+
+// @AI:CONSTRAINT throttle은 '직전 결과'로 갈린다 — 성공 24h / 실패 1h. 구현은 성공 전에 스탬프를 찍어
+//   네트워크 실패 시 매 세션 180s 지연을 막던 설계였는데, 그 대가로 실패 사실이 소멸했다.
+//   결과를 스탬프에 담으면 지연 방지와 실패 가시화가 양립한다(둘 중 하나를 포기하지 말 것).
+// @AI:FRAGILE 검증은 update '뒤'에 온다 — 순서를 바꾸면 낡은 카탈로그와 비교해 항상 "최신"으로 오판한다.
+function maybeRefresh(keys) {
+  const prev = readRefreshState();
+  if (prev) {
+    const window = prev.ok ? REFRESH_EVERY_MS : REFRESH_RETRY_MS;
+    if (Date.now() - prev.ts < window) {
+      if (!prev.ok) warnRefreshFailure({ ...prev, keys });  // 창 안이어도 실패는 매 세션 알린다
+      return false;
+    }
+  }
+  // 시도 시각을 먼저 남긴다 — 이 프로세스가 중간에 죽어도 다음 세션이 무한 재시도하지 않게.
+  writeRefreshState({ ok: false, mismatch: [], err: 'interrupted', keys });
+  ensureGitHttps();
+
+  let err = null;
+  // 카탈로그 먼저 — 이게 낡으면 새 sha를 '볼 수조차' 없어서 plugin update가 no-op이 된다.
+  try {
+    execFileSync(claudeBin(), ['plugin', 'marketplace', 'update', MP], { stdio: 'ignore', timeout: REFRESH_MP_TIMEOUT });
+  } catch (e) { err = 'marketplace update: ' + String((e && e.message) || e).slice(0, 120); }
+  for (const k of keys) {
+    try {
+      execFileSync(claudeBin(), ['plugin', 'update', k], { stdio: 'ignore', timeout: REFRESH_PLUGIN_TIMEOUT });
+    } catch (e) { err = err || (k + ': ' + String((e && e.message) || e).slice(0, 120)); }
+  }
+
+  // 결과 검증 — 명령이 0을 리턴해도 실제로 최신이 됐는지는 별개다(2026-08-04 사고의 무증상 실패 지점).
+  const head = marketHeadSha();
+  const inst = installedVersions(keys);
+  let mismatch = [];
+  let verified = false;
+  if (head) {
+    verified = true;
+    mismatch = keys.filter((k) => !inst[k] || !head.startsWith(inst[k]));
+  }
+  const ok = !err && verified && mismatch.length === 0;
+  writeRefreshState({ ok, mismatch, err, head, verified, keys });
+  // @AI:INTENT 검증 자체를 못 했을 때(head 없음)는 실패로 떠들지 않는다 — 판정 불가를 사고로 오인하면
+  //   경고가 상시화되고, 상시 경고는 아무도 안 읽는다. 대신 상태에 verified:false를 남겨 추적은 가능하게.
+  if (!ok && (err || mismatch.length)) warnRefreshFailure({ mismatch, err, head, keys });
   return true;
 }
 
