@@ -1,0 +1,64 @@
+name: skill-ownership-gate
+
+# 목적: "만든 사람이 정본 소유자"(2026-08-04 확정)를 사람의 기억이 아니라 코드가 집행한다.
+#
+# 왜 CODEOWNERS 가 아닌가:
+#   GitHub 이 이 레포에서 CODEOWNERS 를 읽지 않는다 (2026-08-05, 4회 실측 — CHANGELOG v2.28).
+#   리뷰어 자동 지정 0건 + code owner 승인 요구가 머지를 막지 않았다. 원인 미상.
+#   조직(Organization) 으로 옮기면 재시험 대상이지만, 그때까지는 이 게이트가 유일한 집행 수단이다.
+#
+# 무엇을 하나:
+#   PR 이 남의 스킬 본체를 건드렸으면 그 소유자의 **승인**을 요구한다(차단이 아니다).
+#   PR 을 올린 사람이 레포 주인이면 통과한다(정책 ③ 비대칭 — 사장님만 예외).
+#
+# 🔴 fetch-depth: 0 이 필수다.
+#    actions/checkout 기본값은 shallow(depth 1) 라 `git log` 로 최초 작성자를 못 찾는다.
+#    이 한 줄이 없으면 게이트가 전원 통과하거나 전원 실패한다.
+#
+# 🔴 pull_request_review 트리거가 필수다.
+#    PR 을 처음 열 땐 아직 승인이 없어 이 검사가 실패하는 게 정상이다.
+#    소유자가 승인을 눌렀을 때 다시 돌아야 초록불이 된다.
+
+on:
+  pull_request:
+    branches: [main]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ownership:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 최초 작성자 조회에 전체 이력이 필요하다 (위 주석 참조)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 스킬 소유권 게이트
+        shell: bash
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          if node scripts/check-skill-ownership.js; then
+            echo ""
+            echo "✅ 스킬 소유권 확인 완료."
+          else
+            echo ""
+            echo "::error::남의 스킬 본체를 고쳤습니다. 위 안내대로 소유자 승인을 받아 주세요."
+            echo "  막는 것이 아니라 승인이 필요하다는 뜻입니다 — 승인이 등록되면 자동으로 다시 돕니다."
+            exit 1
+          fi
