@@ -21,6 +21,10 @@
  *    GitHub이 이 레포에서 CODEOWNERS를 읽지 않는다(2026-08-05, 4회 실측 — CHANGELOG v2.28).
  *    리뷰어 자동 지정 0건 + code owner 승인 요구가 머지를 막지 않았다.
  *
+ * 🔴 라벨에 Tier 문자를 쓰지 않는다 — `check-plugin-consistency.js` 의 Tier A~G 는 그 파일 전용
+ *    체계이고 이 게이트는 별도 파일·별도 워크플로우다. 한때 여기도 "Tier G" 라 불렀다가
+ *    2026-08-05 PR #111 이 그 파일에 진짜 Tier G(되돌릴수없음)를 신설해 이름이 겹쳤다.
+ *
  * CI 전용이다. 로컬에서는 PR 컨텍스트가 없어 판정이 성립하지 않으므로 안내 후 통과한다.
  * 🔑 그래서 `check-plugin-consistency.js`에 넣지 않고 파일을 분리했다 — 그 파일은
  *    team-guide.md와 zulgap-make-skill이 팀원에게 *"로컬에서 돌려 exit=0이면 통과"*로
@@ -92,13 +96,13 @@ async function main() {
   const token = process.env.GH_TOKEN;
 
   if (!prAuthor || !repoOwner || !baseSha || !headSha || !prNumber || !repo || !token) {
-    console.log('ℹ [G 소유권] CI 전용 게이트입니다 — PR 컨텍스트가 없어 건너뜁니다.');
+    console.log('ℹ [소유권] CI 전용 게이트입니다 — PR 컨텍스트가 없어 건너뜁니다.');
     console.log('  이 검사는 GitHub Actions의 pull_request 이벤트에서만 판정할 수 있습니다.');
     return 0;
   }
 
   if (prAuthor === repoOwner) {
-    console.log(`PASS [G 소유권] PR 작성자가 레포 주인(${repoOwner})입니다 — 전 스킬 수정 허용.`);
+    console.log(`PASS [소유권] PR 작성자가 레포 주인(${repoOwner})입니다 — 전 스킬 수정 허용.`);
     console.log('  단 남의 스킬을 고쳤다면 PROVENANCE.md에 사유 1줄을 남겨 주세요 (정책 ③).');
     return 0;
   }
@@ -118,7 +122,7 @@ async function main() {
   }
 
   if (touched.size === 0) {
-    console.log('PASS [G 소유권] 스킬 본체 변경 없음.');
+    console.log('PASS [소유권] 스킬 본체 변경 없음.');
     return 0;
   }
 
@@ -126,11 +130,11 @@ async function main() {
   for (const [dir, files] of touched) {
     const owner = originalAuthor(dir, baseSha);
     if (!owner) {
-      console.log(`PASS [G 소유권] ${dir} — 이 PR이 새로 만드는 스킬입니다.`);
+      console.log(`PASS [소유권] ${dir} — 이 PR이 새로 만드는 스킬입니다.`);
       continue;
     }
     if (owner === prAuthor) {
-      console.log(`PASS [G 소유권] ${dir} — 본인 스킬입니다.`);
+      console.log(`PASS [소유권] ${dir} — 본인 스킬입니다.`);
       continue;
     }
     foreign.push({ dir, owner, files });
@@ -142,13 +146,13 @@ async function main() {
   const pending = foreign.filter((f) => !approved.has(f.owner));
 
   for (const f of foreign.filter((x) => approved.has(x.owner))) {
-    console.log(`PASS [G 소유권] ${f.dir} — 소유자 @${f.owner} 승인 확인.`);
+    console.log(`PASS [소유권] ${f.dir} — 소유자 @${f.owner} 승인 확인.`);
   }
   if (pending.length === 0) return 0;
 
   console.log('');
   for (const f of pending) {
-    console.log(`FAIL [G 소유권] ${f.dir}`);
+    console.log(`FAIL [소유권] ${f.dir}`);
     console.log(`  이 스킬을 만든 사람: @${f.owner} / 이 PR을 올린 사람: @${prAuthor}`);
     console.log(`  변경된 파일: ${f.files.join(', ')}`);
   }
@@ -174,7 +178,7 @@ main()
   .catch((err) => {
     // @AI:CONSTRAINT 판정 불가를 통과로 처리하지 말 것. 읽기 실패를 조용히 skip 하면
     // fail-open 이 되어 게이트가 있는 채로 아무것도 막지 않는다(2026-08-04 pre-commit 실사고 클래스).
-    console.log(`FAIL [G 소유권] 판정에 실패했습니다: ${err.message}`);
+    console.log(`FAIL [소유권] 판정에 실패했습니다: ${err.message}`);
     console.log('  판정 불가는 통과로 처리하지 않습니다. 위 오류를 해결한 뒤 다시 실행하세요.');
     process.exitCode = 1;
   });

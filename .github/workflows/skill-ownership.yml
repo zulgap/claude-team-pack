@@ -41,7 +41,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 스킬 소유권 게이트 (Tier G)
+      - name: 스킬 소유권 게이트
         shell: bash
         env:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
