@@ -14,12 +14,14 @@
 //   Tier F — 실행 이식성: OS 종속 경로 · 번들 폰트 라이선스
 //   Tier G — 되돌릴 수 없는 외부 행위를 스킬이 직접 호출하지 않는다
 //   Tier H — 설치 stub 신선도: 갱신 안 가는 문서에 낡을 값(주기·간격 숫자) 0
+//   Tier I — 스킬 상속: extends 실재성 · 본문만으로 따르는 선언 0 · 부모 변경 미반영 0 [spec §4⑩]
 // 🔴 개수("검사 N단")를 쓰지 않는다 — F·G 가 추가될 때 이 목록이 함께 갱신되지 않아
 //    "5단"이 오래 거짓이었다(그 규칙을 적어둔 줄 바로 위에서 벌어졌다).
 //    개수·범위 표기는 항목이 늘 때마다 낡으므로 목록만 유지한다.
 // 불일치 = exit 1 (CI/심사 게이트용). usage: node scripts/check-plugin-consistency.js
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..');
 // @AI:CONSTRAINT 전환기 병존 플러그인 — marketplace에만 존재 허용. 제거 릴리스 때 이 목록에서도 삭제할 것
@@ -472,5 +474,92 @@ if (failH === 0) {
   console.log(`  PASS [H stub신선도] ${STUB_FILES.length}개 — 낡을 값(주기·간격 숫자) 0`);
 }
 if (failH) fail = 1;
+
+// ── Tier I: 스킬 상속 선언 ──────────────────────────────────────────────────
+// @AI:INTENT 2026-08-04 실사고: `zulgap-blog`에 이미지 기준(최소5·권장10~14·도식40%)을
+//   넣었는데 그 규칙을 따르는 `zulgap-gaon-blog`가 안 따라왔다. **우연히 발견됐고 게이트가
+//   잡은 게 아니다.** 원인은 상속 관계가 본문 자연어("범용 블로그 스킬의 시각물 단계를
+//   따른다")로만 있어 기계가 관계를 몰랐던 것. frontmatter `extends:`로 구조화해 선언하게
+//   하면 "이 정본을 고치면 누가 영향받나"가 결정론으로 답해진다.
+// @AI:CONSTRAINT I-2 판정식을 넓히지 말 것. 2026-08-05 전수 실측에서 넓은 판정
+//   (`/스킬명` + 따른다|그대로)은 `jedi-skills` L19 *"그 목록 … 그대로 쓰면"* 을 오탐했다.
+//   상속은 **무엇을** 따르는지가 있고(단계·규칙·기준), 일반 서술에는 없다 — 그래서
+//   목적어를 요구한다. 자기참조 제외와 함께 두 조건일 때 23스킬 오탐 0 / 정탐 1(gaon).
+//   🔴 오탐이 1건이라도 실제 보고되면 차단을 경고로 강등하고 판정식을 재산정할 것.
+// @AI:DEPENDS 스킬 이름 = 폴더명이라는 전제는 Tier C-4가 강제한다. C-4가 사라지면
+//   여기 `where.split('/').pop()`도 같이 깨진다.
+// @AI:INTENT I-3의 판정값 — **사람이 지어낼 수 없는 값**이어야 한다. 초안은 `parent-reviewed: 날짜`
+//   였는데 그건 아무 값이나 쓸 수 있어 "확인했다"는 자기 서명일 뿐이고, 게이트는 시간이 지나면
+//   습관적으로 통과된다(이 레포 실측: 규칙을 주석으로만 두면 9곳 중 1곳만 지킨다).
+//   git blob sha 를 쓰면 정확한 값을 넣어야만 통과하고, 그 값은 부모 파일을 봐야 얻는다.
+// @AI:CONSTRAINT LF 정규화가 **필수**다. 워킹트리가 CRLF 로 체크아웃되면 바이트 수가 달라져
+//   git 이 계산한 값과 어긋난다(실측: 19,285 vs 19,003 바이트 → 완전히 다른 sha).
+//   정규화하면 `git hash-object <파일>` 앞 8자와 정확히 일치하므로 사람이 독립 검증할 수 있다.
+const blobSha8 = (text) => {
+  const lf = Buffer.from(String(text).replace(/\r\n/g, '\n'), 'utf8');
+  return crypto.createHash('sha1').update(`blob ${lf.length}\0`).update(lf).digest('hex').slice(0, 8);
+};
+const skillNames = new Set(skillFiles.map(({ where }) => where.split('/').pop()));
+// 상속 선언 문형 — 목적어(무엇을) 필수. 이게 오탐 차단의 핵심이다.
+const INHERIT_RE = /(단계|규칙|기준|규격|절차|방식)를?\s*(그대로\s*)?(따른다|준수)/;
+const SKILL_REF_RE = /\/((?:zulgap|jedi)-[a-z0-9-]+)/g;
+let failI = 0;
+let inheritPairs = 0;
+for (const { where, raw } of skillFiles) {
+  const self = where.split('/').pop();
+  const m = raw.match(/^extends:[ \t]*(.+?)[ \t]*$/m);
+  const parent = m ? m[1] : null;
+
+  if (parent) {
+    inheritPairs += 1;
+    if (parent === self) {
+      console.error(`  FAIL [I-1 상속대상] ${where}: extends='${parent}' — 자기 자신은 부모가 될 수 없다`);
+      failI = 1;
+      continue;
+    }
+    const parentEntry = skillFiles.find(({ where: w }) => w.endsWith(`/${parent}`));
+    if (!parentEntry) {
+      console.error(`  FAIL [I-1 상속대상] ${where}: extends='${parent}' — 그런 스킬이 없다`);
+      console.error(`       오타이거나, 부모가 이름이 바뀌었거나 삭제됐다.`);
+      console.error(`       확인: git log --follow -- plugins/*/skills/${parent}/SKILL.md`);
+      console.error(`       해소 = ①올바른 이름으로 수정 ②extends 제거(독립 선언) ③이 스킬도 삭제`);
+      failI = 1;
+      continue;
+    }
+    // I-3 — 부모가 확인 이후 바뀌었나
+    const want = blobSha8(parentEntry.raw);
+    const got = (raw.match(/^parent-checksum:[ \t]*([0-9a-f]{8})[ \t]*$/m) || [])[1];
+    if (got !== want) {
+      console.error(`  FAIL [I-3 부모변경] ${where}: ${parent}가 마지막 확인 이후 바뀌었다`);
+      console.error(`       기록된 값 ${got || '(없음)'} → 현재 값 ${want}`);
+      console.error(`       ${parent}의 변경이 이 스킬에도 반영돼야 하는지 확인한 뒤,`);
+      console.error(`       frontmatter를 'parent-checksum: ${want}' 로 갱신할 것`);
+      console.error(`       (부모 원문: plugins/${parentEntry.where}/SKILL.md · 대조: git hash-object 그 파일)`);
+      failI = 1;
+    }
+    continue; // 선언이 있으면 I-2는 볼 필요가 없다
+  }
+
+  // I-2 — 본문만으로 따르는 선언 (frontmatter 미선언)
+  for (const line of raw.split(/\r?\n/)) {
+    if (!INHERIT_RE.test(line)) continue;
+    SKILL_REF_RE.lastIndex = 0; // @AI:FRAGILE /g 재사용 시 lastIndex가 남아 첫 매치를 건너뛴다
+    let r;
+    while ((r = SKILL_REF_RE.exec(line)) !== null) {
+      const ref = r[1];
+      if (ref === self) continue;          // 자기 이름을 본문에 쓰는 것은 일반적이다
+      if (!skillNames.has(ref)) continue;  // 실재하는 스킬만 상속 후보
+      console.error(`  FAIL [I-2 선언누락] ${where}: 본문이 '/${ref}'의 규칙을 따른다고 하는데 frontmatter에 extends가 없다`);
+      console.error(`       frontmatter에 'extends: ${ref}' 를 추가할 것 — 그래야 ${ref}를 고칠 때 이 스킬이 함께 검토된다`);
+      console.error(`       줄: ${line.trim().slice(0, 90)}`);
+      failI = 1;
+    }
+  }
+}
+if (failI === 0) {
+  // 쌍 수를 항상 출력한다 — 조용히 0이 되거나 급증하는 것을 사람이 볼 수 있게(dead gate 방지)
+  console.log(`  PASS [I 상속] ${skillFiles.length}개 — 선언 ${inheritPairs}쌍 / 고아 0 / 미선언 0`);
+}
+if (failI) fail = 1;
 
 process.exit(fail);
