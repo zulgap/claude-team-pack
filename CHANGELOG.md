@@ -6,7 +6,44 @@
 ## 파일명 규칙
 - 형식: `claude-team-pack-for-staff_vX.Y.zip` (파일명에 버전 표기 — 옛 zip과 한눈에 구분)
 - 위치: `C:\Users\admin\claude-team-pack-for-staff_vX.Y.zip`
-- 새 버전 배포 시: ① 이 CHANGELOG에 항목 추가 → ② zip 재생성(버전 bump) → ③ 노션 팀원용 페이지 첨부 교체 + 관리자용 빠른 참조 파일명 갱신
+
+## 배포 절차 (①~④, 사람 수동 0 — 2026-08-05 실측)
+
+> 🔑 **전 단계가 자동화돼 있다.** 예전 기록의 *"노션 첨부 교체는 사장님 수동"* 은 **틀렸다** — ④가 MCP로 완결된다는 것을 v2.26 배포에서 실측했다. 수동으로 미루지 말 것.
+
+**① CHANGELOG 항목 추가** — zip에 담기는 파일(`scripts/build-staff-zip.js`의 `ENTRIES` 9개)이 바뀌었으면 제목에 **`zip 재생성`** 이라고 명시한다. 안 바뀌었으면 `zip 변경 없음`.
+
+**② zip 생성** — `node scripts/build-staff-zip.js <버전>`
+- 손으로 압축하지 말 것. 🔴 PowerShell `Compress-Archive`는 엔트리명을 `hooks\...`(백슬래시)로 써서 **맥·리눅스에서 디렉토리로 안 풀린다** — 윈도우 탐색기에서는 정상으로 보여 눈으로는 못 잡는다(v2.26 실사고)
+- 스크립트가 함께 막는 것: 파일 목록 드리프트(fail-closed) · **미커밋 변경 혼입**(같은 클론에서 다른 세션이 편집 중이면 머지 안 된 문구가 전 직원에게 나간다 — v2.26 실사고)
+- 출력 마지막의 **기준 커밋 full sha**를 ③에 그대로 쓴다
+
+**③ GitHub Release** — `gh release create v<버전> "<zip경로>" --target <full sha> --title "..." --notes-file <파일>`
+- ⚠️ `--target`은 **full sha**여야 한다 (short sha는 `HTTP 422 target_commitish is invalid`)
+- 태그는 ①의 CHANGELOG 항목 커밋에 붙인다 (v2.25·v2.26 관행)
+
+**④ 노션 반영 — AI가 MCP로 수행**
+1. `curl -sI -L -o /dev/null -w '%{url_effective}' <release download URL>` 로 **서명된 최종 URL**을 얻는다. Release download URL은 1회 리다이렉트하므로 그대로 넘기면 노션이 거부한다 (서명 URL 유효 1시간)
+2. `notion-create-attachment { source_url: <서명URL>, filename }` → 응답 `content_length`를 zip 크기와 **대조**(무결성 게이트) → `file-upload://<id>`
+3. `notion-update-page { command: update_content }` 로 팀원용 페이지의 기존 `<file src="file://…v<이전>.zip…">` 블록을 `<file src="file-upload://<id>">` 로 치환 → 노션이 `attachment:` 로 확정 저장
+4. 같은 방식으로 팀원용 「🆕 업데이트 이력」 항목 추가 + 관리자용 파일명 표기 **4곳**(§현재 상태 헤더 · "현재 zip =" 문장 · §3.5 정본 줄 · §4 빠른 참조 표)
+- 노션 페이지 id — 팀원용 `388efa2f-2c3b-810a-8f8d-dee8391f75d6` / 관리자용 `388efa2f-2c3b-811f-9e2d-fee689ffe0e6`
+
+> ⚠️ **맥 installer(`zulgap-claude-mac-installer_vX.Y.zip`)는 이 절차와 별개다.** 내용물이 `install.command` 하나뿐이고, `install.sh`는 zip에 들어가지 않고 팀원용 페이지 **방법 A**(`curl` GitHub raw)로 항상 최신이 나간다 → `install.sh`만 바뀌었으면 **맥 zip 재배포 불필요**.
+
+---
+
+## v2.30 (2026-08-05) — 배포 절차가 사람 기억에서 도구로 · zip 변경 없음
+v2.26 배포를 실제로 해보니 **문서에 없는 함정이 3개** 나왔고, 그중 둘은 눈으로 못 잡는 종류였다. 절차를 위 §배포 절차로 옮기고, 손이 실수할 수 있는 단계는 스크립트로 고정한다.
+
+- **`scripts/build-staff-zip.js` 신설** — 의존성 0(Node 표준 `zlib`만으로 zip 포맷 직접 작성). 막는 것 3가지
+  - **엔트리명 슬래시 보장** — 🔴 `Compress-Archive`가 만든 `hooks\prompt-capture.js`는 맥·리눅스에서 디렉토리로 안 풀린다. 윈도우에서는 정상으로 보이므로 **사람 검수로는 절대 안 걸린다**
+  - **미커밋 변경 fail-closed** — 🔴 v2.26 빌드 중 같은 클론에서 **다른 세션이 `team-CLAUDE.md`를 편집 중**이었다. 워킹트리를 그대로 압축하면 머지되지 않은 문구가 전 직원 PC로 나간다
+  - **파일 목록 드리프트** — `ENTRIES`에 있는데 파일이 없으면 실패. "9개 중 8개만 든 zip"이 조용히 나가는 것을 막는다
+- 🔑 **`git show <ref>:<path>`로 읽지 않는다** — 그게 더 안전해 보이지만 **틀린다.** `.gitattributes`가 `*.bat text eol=crlf`를 강제하는데(v1.4 재발방지: cmd.exe의 UTF-8 chcp 파서가 LF일 때 첫 바이트를 먹는다) blob은 정규화 전 LF라서, git에서 직접 읽으면 그 방어가 통째로 무효가 된다. **워킹트리에서 읽되 오염되지 않았음을 검사**하는 쪽이 맞다
+- **고정 타임스탬프(1980-01-01)** — 같은 커밋에서 빌드하면 바이트 동일한 zip이 나온다(재현 가능 = 해시로 출처 확인 가능). 기존 맥 installer zip과 같은 규약
+- **검증** — 빌드 후 9개 엔트리를 추출해 원본과 **sha256 9/9 대조** · 엔트리명 전부 `/` · v2.25 zip과 구조 동일. 🔴 **실제로 돌려보고 잡은 버그 1건**: 외부 속성 `0o100644 << 16`이 32비트 signed 오버플로로 음수가 되어 `RangeError`로 죽었다(코드 리뷰로는 안 보였다 — v2.29의 "종료 코드 127"과 같은 클래스)
+- **§배포 절차 신설** — ①~④ 전 단계와 함정(`--target` full sha 요구 · Release URL 리다이렉트 · 노션 4곳 표기)을 적었다. 특히 **"노션 첨부 교체 = 사장님 수동"이라는 옛 전제가 틀렸음**을 명시 — 그 오해 하나로 v2.26 zip이 하루 이월됐다
 
 ---
 
