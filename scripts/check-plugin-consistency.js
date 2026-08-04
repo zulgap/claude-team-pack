@@ -30,6 +30,21 @@ const DEPRECATED = ['zulgap'];
 const LEGACY_OK = /=\s*\$?false|!==?\s*true|hasOwnProperty|-contains|PSObject/;
 
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+// @AI:FRAGILE frontmatter 값은 **맨 앞 `---` 블록 안에서만** 읽는다. `/^tier:/m` 처럼 파일 전체를
+//   훑으면 **본문 코드블록의 예시가 실제 선언으로 잡힌다.** 2026-08-05 실측 2건:
+//   ① extends — zulgap-make-skill 이 작성법 예시를 실었더니 그 스킬 자신이 FAIL 났다(오탐)
+//   ② tier    — 같은 파일에서 frontmatter 의 tier 를 지워도 **D-1 이 못 잡았다**(미탐).
+//               본문 예시 `tier: tenant-only` 가 대신 읽혔다 = §4⑧ 심사가 우회된다
+//   그동안 무증상이었던 건 frontmatter 가 항상 파일 앞이라 **첫 매치가 우연히 진짜 값**이었기
+//   때문이다. 그 필드가 frontmatter 에서 빠지는 순간 우연이 깨진다.
+// @AI:CONSTRAINT YAML 인라인 주석을 반드시 벗긴다 — `extends: zulgap-blog  # 설명` 의 값은
+//   `zulgap-blog` 다. 안 벗기면 주석까지 값으로 대조한다.
+const fmValue = (raw, key) => {
+  const block = (raw.match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1];
+  if (!block) return null;
+  const m = block.match(new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, 'm'));
+  return m ? m[1].replace(/\s+#.*$/, '').trim() : null;
+};
 // @AI:INTENT regex 1개 또는 배열 — 같은 파일이 활성화를 2가지 표현으로 쓸 수 있다(아래 hook-doctor-v2 주석)
 const extract = (text, regexes) => {
   const out = new Set();
@@ -149,8 +164,7 @@ for (const plug of pluginDirs) {
     if (!fs.existsSync(md)) continue;
     // frontmatter name (없으면 디렉토리명이 명령이 된다 — 그 경우도 규격 대상)
     const raw = fs.readFileSync(md, 'utf8');
-    const m = raw.match(/^name:[ \t]*(.+?)[ \t]*$/m);
-    const name = m ? m[1] : d.name;
+    const name = fmValue(raw, 'name') || d.name;
     const where = `${plug}/${d.name}`;
     skillCount += 1;
     skillFiles.push({ where, raw });
@@ -214,7 +228,8 @@ const A_GRADE = [
 let failD = 0;
 let tenantOnlyHits = 0;
 for (const { where, raw } of skillFiles) {
-  const tm = raw.match(/^tier:[ \t]*(\S+)[ \t]*$/m);
+  const tierVal = fmValue(raw, 'tier');
+  const tm = tierVal ? [null, tierVal] : null;
   // D-1 tier 선언 필수 — 미선언은 "전용이라 면제"인지 "공용인데 미준수"인지 구분 불가(§0 판정 불능)
   if (!tm) {
     console.error(`  FAIL [D-1 tier미선언] ${where}: frontmatter에 'tier: shared' 또는 'tier: tenant-only' 한 줄 추가. 미선언 = shared 간주(fail-closed)`);
@@ -507,8 +522,7 @@ let failI = 0;
 let inheritPairs = 0;
 for (const { where, raw } of skillFiles) {
   const self = where.split('/').pop();
-  const m = raw.match(/^extends:[ \t]*(.+?)[ \t]*$/m);
-  const parent = m ? m[1] : null;
+  const parent = fmValue(raw, 'extends');
 
   if (parent) {
     inheritPairs += 1;
@@ -528,7 +542,8 @@ for (const { where, raw } of skillFiles) {
     }
     // I-3 — 부모가 확인 이후 바뀌었나
     const want = blobSha8(parentEntry.raw);
-    const got = (raw.match(/^parent-checksum:[ \t]*([0-9a-f]{8})[ \t]*$/m) || [])[1];
+    const gotRaw = fmValue(raw, 'parent-checksum');
+    const got = /^[0-9a-f]{8}$/.test(gotRaw || '') ? gotRaw : undefined;
     if (got !== want) {
       console.error(`  FAIL [I-3 부모변경] ${where}: ${parent}가 마지막 확인 이후 바뀌었다`);
       console.error(`       기록된 값 ${got || '(없음)'} → 현재 값 ${want}`);
