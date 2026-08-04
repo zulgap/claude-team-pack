@@ -384,4 +384,56 @@ if (failF === 0) {
 }
 if (failF) fail = 1;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tier G — 되돌릴 수 없는 외부 행위는 스킬이 직접 호출하지 않는다 (2026-08-05 신설)
+// @AI:INTENT 국세청에 도달한 세금계산서는 팝빌이 아니라 **국세청 제도상** 취소가 없다
+//   (수정세금계산서 마이너스 상계만 가능하고 거래처에도 이력이 보인다). 그래서 그 4종은
+//   백엔드에서 MCP 표면·파사드·비대화 경로를 전부 봉인하고 **텔레그램 인라인버튼(사람 클릭)**
+//   하나만 남겼다. 스킬이 그 도구를 부르라고 적으면 봉인을 문서로 우회하는 셈이 된다.
+// @AI:CONSTRAINT 🔴 게이트 문형을 "zulgap-tax-invoice 가 부르지 마"(이번 병만)가 아니라
+//   **"어떤 팀팩 스킬도 되돌릴 수 없는 도구를 호출 지시하지 않는다"**(다음 병까지)로 둔다.
+//   비용은 같고 수명이 다르다 — 미래에 다른 스킬이 같은 실수를 해도 여기서 걸린다.
+// @AI:DEPENDS 판정은 **호출 형태**만 본다(`도구명(` 또는 `도구명({`). 산문 언급까지 잡으면
+//   "이 스킬은 발행하지 않는다"고 설명하는 정직한 문서가 스스로 FAIL 한다(Tier F 가 같은
+//   이유로 따옴표 리터럴만 보는 것과 동형). 옳은 문서를 신고하는 게이트는 다음 사람이 우회한다.
+const IRREVERSIBLE_TOOLS = [
+  'issue_tax_invoice',
+  'send_tax_invoice_to_nts',
+  'cancel_tax_invoice',
+  'issue_modified_tax_invoice',
+];
+// 경계를 명시해야 하는 스킬 — 값은 "그 스킬이 반드시 담아야 할 리터럴"
+const BOUNDARY_REQUIRED = {
+  'zulgap-tax-invoice': '발행하지 않는다',
+};
+
+let failG = 0;
+for (const { where, raw } of skillFiles) {
+  for (const tool of IRREVERSIBLE_TOOLS) {
+    // 호출 형태: `foo(` / `foo({` / `mcp__jedi__foo(` — 공백 허용
+    const callRe = new RegExp(`(?:mcp__[a-z_]+__)?${tool}\\s*\\(`, 'g');
+    const hits = raw.match(callRe);
+    if (!hits) continue;
+    console.error(`  FAIL [G-1 되돌릴수없음] ${where} — '${tool}' 호출 지시 ${hits.length}건`);
+    console.error(`       국세청 도달은 되돌릴 수 없어 **텔레그램 인라인버튼(사람 클릭)** 전용이다.`);
+    console.error(`       스킬은 발행 직전까지만 준비하고 멈춘다. 산문으로 언급하는 것은 허용되나`);
+    console.error(`       호출 형태(도구명 + 괄호)로 적으면 봉인을 문서가 우회하는 셈이 된다.`);
+    failG = 1;
+  }
+}
+// G-2 경계를 다루는 스킬은 그 경계를 문서에 명시해야 한다 — 다음 사람이 지우면 여기서 걸린다
+for (const [skillName, literal] of Object.entries(BOUNDARY_REQUIRED)) {
+  const hit = skillFiles.find(({ where }) => where.endsWith(`/${skillName}`));
+  if (!hit) continue; // 스킬이 없으면 검사 대상 아님(삭제는 정당할 수 있다)
+  if (hit.raw.includes(literal)) continue;
+  console.error(`  FAIL [G-2 경계명시] ${hit.where} — '${literal}' 문구가 없다`);
+  console.error(`       이 스킬의 존재 이유가 "준비까지만 하고 발행하지 않는다"는 경계다.`);
+  console.error(`       문구가 사라지면 다음 사람이 경계를 모른 채 발행 절차를 덧붙인다.`);
+  failG = 1;
+}
+if (failG === 0) {
+  console.log(`  PASS [G 되돌릴수없음] ${skillFiles.length}개 — 호출 지시 0 / 경계 명시 ${Object.keys(BOUNDARY_REQUIRED).length}건 충족`);
+}
+if (failG) fail = 1;
+
 process.exit(fail);
