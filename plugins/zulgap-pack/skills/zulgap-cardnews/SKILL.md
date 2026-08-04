@@ -304,3 +304,4 @@ python scripts/build_video.py <slides.json> <out_dir> <overlays_dir>
 
 - **엔노블 PARENTS SECRET 편** (2026-07-09): 최초 파이프라인 구축 — 기획안 → Seedance 6장 생성 → 오버레이 합성 → 개별 6개 + 합본 1개 영상 산출 완료.
 - **엔노블 자만추 편** (2026-07-17): 전체 파이프라인 재검증. 저작권 거부(`Korean man` 5연속 반복)와 가짜 한글(서류 슬라이드 3회 시도 전부 실패) 두 가지 사고를 실제로 겪으며 위 "고급스러움 vs 저작권"·"서류 화면 금지" 대응 규칙을 확정. 최종 6장 영상 + 합본 정상 산출, `korean_guard()`/`glyph_guard()` 자동 검증 통과 확인.
+

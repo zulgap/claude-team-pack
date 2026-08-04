@@ -249,3 +249,4 @@ Do NOT translate them into English.
 - 마스터 가이드 정본의 주소·예약 링크도 같은 값으로 갱신
 
 세션 기록: 팀 세션 저널 2026-08-03
+
