@@ -82,6 +82,19 @@ command -v git  >/dev/null 2>&1 && ok "git"  || { fail "[ERROR] git unavailable"
 command -v node >/dev/null 2>&1 && ok "node" || { fail "[ERROR] node unavailable"; exit 1; }
 command -v uvx  >/dev/null 2>&1 && ok "uv"   || warn "[warn] uv missing — PPT/HWP tools may not work (brew install uv)"
 
+# GitHub CLI — 팀팩에 스킬을 올릴 때 쓰는 PR 제출 통로 (gh pr create).
+# 위 MISSING 목록에 넣지 않는 이유: 그러면 gh 하나 없다고 brew 미설치 PC가 exit 1로 죽는다(필수 아닌 것이 필수가 됨).
+# gh auth login은 브라우저 로그인이라 자동화 불가 — 설치까지만 하고 로그인은 안내로 넘긴다.
+if command -v gh >/dev/null 2>&1; then
+  ok "gh"
+elif [ -n "$BREW" ]; then
+  warn "[installing] gh (GitHub CLI, for team-pack PRs) ..."
+  "$BREW" install gh || warn "[warn] brew install gh failed — install manually: https://cli.github.com/"
+  command -v gh >/dev/null 2>&1 && ok "gh" || warn "[warn] gh missing — skill PRs will need manual setup"
+else
+  warn "[warn] gh missing and no Homebrew — install manually if you plan to submit skills: https://cli.github.com/"
+fi
+
 # ---- 1. git → GitHub over HTTPS (plugin SSH clone bug #47088, same as install.ps1) ----
 git config --global --unset-all 'url.https://github.com/.insteadOf' 2>/dev/null || true
 git config --global --add 'url.https://github.com/.insteadOf' 'git@github.com:'

@@ -33,31 +33,66 @@ function Update-Path {
   $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
 }
 $winget = Resolve-Winget
+# @AI:INTENT winget이 없다고 설치를 통째로 포기하지 않는다 — winget은 '도구를 까는 수단'일 뿐이고,
+#   필수 도구(git·node)가 이미 있으면 나머지 단계는 전부 정상 동작한다.
+#   2026-08-04 실측 배경: 팀원 2번째 PC(회사 관리 PC·구형 Win10 등 Store 차단 환경)에서 이 exit 1에 걸리면
+#   Git·Node·uv·Claude가 **하나도** 안 깔린 채 종료돼, 스킬 갱신 자체가 영영 불가능해진다.
+# @AI:CONSTRAINT git·node가 없으면 그때는 진짜로 진행 불가 — 수동 설치 링크를 주고 멈춘다(조용한 반쪽 설치 금지).
 if (-not $winget) {
   Write-Host "[중요] winget(App Installer)을 찾을 수 없습니다." -ForegroundColor Red
-  Write-Host "  Microsoft Store에서 'App Installer'를 설치/업데이트한 뒤 install.bat을 다시 실행하세요." -ForegroundColor Yellow
+  Write-Host "  Microsoft Store에서 'App Installer'를 설치하면 자동 설치가 가능해집니다." -ForegroundColor Yellow
   Write-Host "  Store: ms-windows-store://pdp/?productid=9NBLGGH4NNS1"
-  Read-Host "엔터를 누르면 종료"
-  exit 1
+  $haveGit  = [bool](Get-Command git  -ErrorAction SilentlyContinue)
+  $haveNode = [bool](Get-Command node -ErrorAction SilentlyContinue)
+  if (-not ($haveGit -and $haveNode)) {
+    Write-Host ""
+    Write-Host "[중단] git·node가 없어 계속할 수 없습니다. 아래를 수동 설치한 뒤 install.bat을 다시 실행하세요:" -ForegroundColor Red
+    if (-not $haveGit)  { Write-Host "  Git  : https://git-scm.com/download/win" -ForegroundColor Yellow }
+    if (-not $haveNode) { Write-Host "  Node : https://nodejs.org/en/download" -ForegroundColor Yellow }
+    Read-Host "엔터를 누르면 종료"
+    exit 1
+  }
+  Write-Host "[계속] git·node가 이미 있어 설치 단계만 건너뛰고 진행합니다." -ForegroundColor Yellow
+}
+
+# @AI:INTENT winget 부재를 각 설치 지점이 알아서 처리하게 하는 단일 통로. `& $null install ...`은
+#   PowerShell에서 예외라, 가드 없이 호출하면 winget 없는 PC가 여기서 죽는다.
+function Install-ViaWinget {
+  param([string]$Id, [string]$Label, [string]$ManualUrl)
+  if (-not $winget) {
+    Write-Host "[건너뜀] $Label — winget이 없어 자동 설치 불가. 수동: $ManualUrl" -ForegroundColor Yellow
+    return
+  }
+  & $winget install -e --id $Id --accept-source-agreements --accept-package-agreements
 }
 
 # 1. Git for Windows
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
   Write-Host "[설치 중] Git for Windows..." -ForegroundColor Yellow
-  & $winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements
+  Install-ViaWinget 'Git.Git' 'Git for Windows' 'https://git-scm.com/download/win'
 } else { Write-Host "[OK] Git 확인됨" -ForegroundColor Green }
 
 # 2. Node.js (MCP 도구 실행용)
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Write-Host "[설치 중] Node.js LTS..." -ForegroundColor Yellow
-  & $winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+  Install-ViaWinget 'OpenJS.NodeJS.LTS' 'Node.js LTS' 'https://nodejs.org/en/download'
 } else { Write-Host "[OK] Node.js 확인됨" -ForegroundColor Green }
 
 # 3. uv (pptx / hwp MCP 실행용)
 if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) {
   Write-Host "[설치 중] uv..." -ForegroundColor Yellow
-  & $winget install -e --id astral-sh.uv --accept-source-agreements --accept-package-agreements
+  Install-ViaWinget 'astral-sh.uv' 'uv' 'https://docs.astral.sh/uv/getting-started/installation/'
 } else { Write-Host "[OK] uv 확인됨" -ForegroundColor Green }
+
+# 3.5. GitHub CLI (팀팩에 스킬을 올릴 때 쓰는 PR 제출 통로)
+# @AI:INTENT 팀원이 /zulgap-make-skill 로 만든 스킬은 `gh pr create`로 올라간다. gh가 없으면 그 마지막 한 걸음이
+#   막히는데, 지금까지 설치 목록에 없어 각자 알아서 깔아야 했다(실측: 팀원 PR 제출 경로가 사람마다 갈림).
+# @AI:CONSTRAINT `gh auth login`은 브라우저 로그인이라 자동화 불가 — 설치까지만 하고 로그인은 안내로 넘긴다.
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+  Write-Host "[설치 중] GitHub CLI (팀팩 PR 제출용)..." -ForegroundColor Yellow
+  Install-ViaWinget 'GitHub.cli' 'GitHub CLI' 'https://cli.github.com/'
+  Write-Host "  ※ 팀팩에 스킬을 올릴 때 최초 1회 'gh auth login'이 필요합니다(브라우저 로그인)." -ForegroundColor DarkYellow
+} else { Write-Host "[OK] GitHub CLI 확인됨" -ForegroundColor Green }
 
 # winget 설치분이 현재 세션 PATH에 잡히도록 갱신 (node/npm/claude 후속 사용 대비)
 Update-Path
