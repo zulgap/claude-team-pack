@@ -134,8 +134,15 @@ You can get a prepaid SIM with only your passport...
 🔴 **`outline`을 반드시 함께 넘긴다.** 빼면 **시각물 검사(이미지 개수·소싱·블라인딩)가 통째로 실행되지 않는데**, 반환은 `violations: []`로 와서 **"통과"처럼 보인다**. STEP 2에서 확정한 개요 객체를 그대로 넘기면 된다:
 
 ```js
-outline: { visuals: [ { type: '도식', sourcing: 'AI생성' }, ... ] }
+// 🔴 STEP 2의 14칸을 **통째로** 넘긴다. visuals만 넣으면 나머지 13칸이 missing으로
+//    위반 11건이 뜬다(실측 2026-08-04).
+outline: {
+  doc_type, author_identity, target_reader, surface_topic, real_topic, keyword_title,
+  hook, intro, body, conclusion, faq, visual_facts, references,
+  visuals: [ { type: '도식', sourcing: 'AI생성' } ],
+}
 // type: 표 | 도식 | 사진   ·   sourcing: 동료사실사진 | 제디작성 | 공공캡쳐 | AI생성
+// ⚠️ conclusion enum은 「허들낮추기형」처럼 **'형'이 붙는다** (사회적증거·희소성·통념깨기는 안 붙음)
 ```
 
 반환된 `checks`·`violations`를 **그대로 보여준다**. 위반이 있으면 고쳐서 다시 호출한다. 통과할 때까지 반복하되, **내가 직접 세서 "통과했습니다"라고 말하지 않는다.**
