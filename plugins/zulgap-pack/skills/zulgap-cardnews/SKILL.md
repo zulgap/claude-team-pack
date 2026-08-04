@@ -1,7 +1,7 @@
 ---
 name: zulgap-cardnews
 description: 블로그 본문(약 1,200~2,000자)을 넣으면 인스타그램용 6장 카드뉴스(썸네일 포함)를 기획하고 **발행 가능한 영상 완성본까지** 만들어 주는 스킬. 6장 기획안(소제목·본문 카피라이팅 + 한국인 인물 중심 비주얼 프롬프트) → Seedance 로 장면 영상 생성 → 카피·N.NOBLE 로고 오버레이 합성 → 4:5·6초·무음 영상(개별 6개 + 합본 1개) + 인스타 본문 + 해시태그 20개를 산출한다. 사용자가 "카드뉴스", "카드뉴스 만들어", "인스타 카드뉴스", "카드뉴스 기획", "블로그를 카드뉴스로", "인스타 캐러셀", "썸네일 후킹", "카드뉴스 대본", "카드뉴스 영상화", "영상에 카피 넣어줘" 등을 언급하거나, 블로그/글 본문을 붙여넣고 인스타·SNS 콘텐츠로 바꿔 달라고 하면 반드시 이 스킬을 사용할 것. 명시적으로 "카드뉴스"라는 단어가 없어도 블로그 글을 SNS 슬라이드/영상 콘텐츠로 재구성하려는 의도가 보이면 사용한다.
-version: 1.0.0
+version: 1.1.0
 origin: teampack
 tier: tenant-only
 ---
@@ -153,8 +153,10 @@ tier: tenant-only
 
 ### 5-2. 오버레이 생성 = 사전 검증 (영상 생성 **전에** 할 것)
 ```bash
-pip install imageio-ffmpeg fonttools brotli pillow
-python scripts/make_overlays.py <slides.json> <overlays_dir>
+# 이 PC 엔 Python/pip 이 없다 — uv 로 venv 를 만든다 (assets/brand_kit.md 함정 6)
+uv venv <venv> --python 3.14
+uv pip install --python <venv>/Scripts/python.exe imageio-ffmpeg fonttools brotli pillow
+<venv>/Scripts/python.exe scripts/make_overlays.py <slides.json> <overlays_dir>
 ```
 오버레이는 영상과 무관하므로 먼저 돌린다. **이 단계가 검증을 겸한다** —
 한국인 미지정·글리프 누락·카피 줄수 오류를 여기서 잡아야 **유료 영상을 태우기 전에** 걸린다.
@@ -162,8 +164,11 @@ python scripts/make_overlays.py <slides.json> <overlays_dir>
 ### 5-3. 장면 영상 생성 (Seedance 2.0)
 `mcp__jedi__ext_text_to_video_seedance` 로 6장 생성 → `video_url` 을 slides.json 에 채운다.
 ```
-ratio="3:4", resolution="720p", duration=8, generate_audio=false
+tenant_id=<줄갭 테넌트>, ratio="3:4", resolution="720p", duration=8, generate_audio=false
 ```
+> **`tenant_id` 는 이 도구의 필수 인자다** (다른 제디 WRITE 도구와 달리 토큰으로 강제되지 않는다).
+> `~/.claude/zulgap/teampack-config.cache.json` 의 `data.tenant_id` 를 읽어 쓴다.
+> 값을 대화에 노출하거나 다른 곳에 옮겨 적지 말 것.
 > **`duration=8` 인데 최종은 6초다 — 오타가 아니라 의도다.** Seedance 로는 8초로 뽑고
 > `build_video.py` 가 앞 6초만 쓴다(`-t`, 규격은 `assets/brand_kit.md` 의 6.0초).
 > **8을 6으로 바꾸지 말 것** — 잘라낼 여유가 없어진다.
@@ -243,20 +248,31 @@ python scripts/build_video.py <slides.json> <out_dir> <overlays_dir>
 ### 5-5. 눈으로 확인 (생략 금지)
 
 `korean_guard()` 는 **프롬프트만 볼 뿐 픽셀을 못 본다.** 프롬프트가 맞아도 결과가 어긋날 수 있다.
-합성 후 6장 전부 프레임을 뽑아(여러 시점 — 한 프레임만 보면 오판한다) 세 가지를 확인한다:
+합성 후 6장 전부 프레임을 뽑아(여러 시점 — 한 프레임만 보면 오판한다) 네 가지를 확인한다:
 
 1. **인물이 실제로 한국인인가**
 2. **전문적·고급스러운가** — 생활감·피로감이 묻어나면 재생성
 3. **깨진 한글이 없는가** — 서류·간판이 보이면 **확대해서** 확인
+4. **실제 배우와 닮지 않았는가** — 거부되지 않아도 닮게 나온다. 아래 참고
 
 2026-07-17 에 3.5초 프레임 하나만 보고 "3번은 손만 나온다"고 오판했다. 여러 시점을 볼 것.
+
+**4번(배우 유사성)이 왜 따로 있나 — 저작권 필터 통과 ≠ 초상 유사성 없음.**
+2026-08-04 크리스찬 4번은 고급스러운 `Korean man` 프롬프트가 **거부 없이 1회에 통과**했는데도
+결과 인물이 실제 한국 배우와 상당히 닮았다. Seedance 필터도 `korean_guard()` 도 못 걸렀다.
+하이엔드 브랜드 발행물에서는 실제 리스크이므로 **눈으로 확인하고 사장님께 보고한다.**
+닮았다면 의상·공간·조명의 고급스러움은 그대로 두고
+`not a celebrity, not a model, ordinary facial features` 를 넣어 재생성한다.
+단, **발행 여부는 사장님 판단이므로 임의로 재생성하지 말고 선택지를 드릴 것.**
 
 ### 치명적 함정 (매번 반복됨)
 - **ffmpeg `drawtext` 금지.** PowerShell 인자 이스케이프가 깨지고(`x=(w-text_w)/2` 가
   경로로 오인됨) 한글 폰트도 안 잡힌다. 반드시 **PIL 로 투명 PNG → `overlay` 필터 합성**.
-- **이 PC 엔 ffmpeg 이 없다.** `pip install imageio-ffmpeg` 로 조달
-  (CapCut 번들 ffmpeg 은 libx264 가 없어 못 씀). ffmpeg stderr 를 버리지 말 것 —
-  버리면 전부 조용히 실패하고 성공한 줄 안다.
+- **이 PC 엔 Python 도 ffmpeg 도 없다.** `python` 은 Microsoft Store 스텁(exit 49)이고
+  `pip` 은 PATH 에 없다 — **`pip install` 로 시작하면 첫 줄부터 막힌다.**
+  `uv venv` 로 venv 를 만들고 `uv pip install imageio-ffmpeg ...` 로 조달할 것
+  (ffmpeg 은 이 패키지가 번들해 온다. CapCut 번들 ffmpeg 은 libx264 가 없어 못 씀).
+  ffmpeg stderr 를 버리지 말 것 — 버리면 전부 조용히 실패하고 성공한 줄 안다.
 - **도현체에 `·`·`→` 글리프 없음** → `·` 는 `/` 로. `glyph_guard()` 가 자동 검사해 실패시킨다.
 - ffmpeg 다수 인코딩은 `-preset veryfast` + 단계 분할 (medium 일괄은 타임아웃).
 
@@ -288,6 +304,7 @@ python scripts/build_video.py <slides.json> <out_dir> <overlays_dir>
 - **6장 프레임을 뽑아 인물이 실제로 한국인인지 눈으로 봤는가?** (Step 5-5, 생략 금지)
 - **인물이 전문적·고급스러워 보이는가?** 생활감·피로감이 묻어나면 브랜드가 깎인다
 - **화면에 깨진 한글이 남아 있지 않은가?** 서류·간판이 나오면 확대해서 확인할 것
+- **실제 배우와 닮은 인물이 없는가?** 거부 없이 통과해도 닮게 나온다 — 닮았으면 재생성하지 말고 **사장님께 선택지를 드릴 것**
 - 개별 6개 + 합본 1개가 1080×1350 · 6초 · 무음으로 나왔는가?
 
 ## 막혔을 때
@@ -297,10 +314,13 @@ python scripts/build_video.py <slides.json> <out_dir> <overlays_dir>
 | `scripts/`·`assets/` 폴더가 안 보임 | 개인 PC 세션 리셋 등으로 스킬 자산이 사라진 이력이 있다(2026-07-09). 팀팩(이 스킬)에서 재설치하면 복구된다 — 로컬에서 지워졌다면 이 팀팩 폴더를 기준으로 복원할 것 |
 | Seedance 가 계속 `copyright restrictions` 로 거부 | `Korean` 을 빼지 말 것 — Step 5-3 "고급스러움 vs 저작권" 순서(얼굴만 탈스타화)를 따를 것 |
 | 오버레이에 □(글리프 깨짐) | `·`→`/` 치환, `→`는 PIL 로 직접 그리기. `glyph_guard()` 가 자동 검사해 막아준다 |
-| ffmpeg 관련 에러 | 이 PC엔 기본 ffmpeg 이 없다 — `pip install imageio-ffmpeg` 로 조달 (CapCut 번들 ffmpeg 은 libx264 없어 못 씀) |
+| `pip` 이 없다는 에러 / `python` 이 exit 49 로 죽음 | 이 PC 엔 시스템 Python 이 없다(Store 스텁). `uv venv <venv> --python 3.14` → `uv pip install --python <venv>/Scripts/python.exe ...` 로 조달하고 스크립트는 그 `python.exe` 로 직접 호출 |
+| ffmpeg 관련 에러 | 이 PC엔 기본 ffmpeg 이 없다 — `imageio-ffmpeg` 패키지가 번들해 온다 (CapCut 번들 ffmpeg 은 libx264 없어 못 씀) |
+| Seedance 가 `tenant_id` 를 요구 | `~/.claude/zulgap/teampack-config.cache.json` 의 `data.tenant_id` 를 읽어 넘긴다 (이 도구만 필수 인자) |
 | 폰트(DoHyeon.ttf)가 없다는 에러 | `assets/brand_kit.md` 의 npm `@fontsource/do-hyeon` 경로로 재조달 |
 
 ## 실제로 돌려본 결과 (검증)
 
 - **엔노블 PARENTS SECRET 편** (2026-07-09): 최초 파이프라인 구축 — 기획안 → Seedance 6장 생성 → 오버레이 합성 → 개별 6개 + 합본 1개 영상 산출 완료.
 - **엔노블 자만추 편** (2026-07-17): 전체 파이프라인 재검증. 저작권 거부(`Korean man` 5연속 반복)와 가짜 한글(서류 슬라이드 3회 시도 전부 실패) 두 가지 사고를 실제로 겪으며 위 "고급스러움 vs 저작권"·"서류 화면 금지" 대응 규칙을 확정. 최종 6장 영상 + 합본 정상 산출, `korean_guard()`/`glyph_guard()` 자동 검증 통과 확인.
+- **엔노블 크리스찬 편** (2026-08-04): 위 규칙들이 실제로 먹히는지 확인 — **Seedance 6/6 거부 0건**. 자만추에서 5연속 거부됐던 `Korean man` 도 "고급스럽게 먼저"(테일러드 차콜 수트/고급 로비/자연광) 순서를 지키자 **1회에 통과**했고, 폴백(얼굴 탈스타화)을 쓸 일이 없었다. 서류·성경책을 처음부터 화면에서 빼 **가짜 한글 0건**(로비 유리문·복도 천장 확대 검사). 새로 드러난 두 가지: (1) 이 PC 엔 **Python 자체가 없어** `pip install` 로 시작하면 첫 줄부터 막힌다 → uv (함정 6), (2) **거부되지 않아도 배우를 닮는다** — 4번이 실제 배우와 상당히 닮게 나왔고 필터도 가드도 못 걸렀다 → 5-5 눈검사 4번 항목 신설.
