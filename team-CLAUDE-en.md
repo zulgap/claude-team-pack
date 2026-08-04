@@ -22,9 +22,9 @@ work that has a fixed sequence — it is not a fence that limits what you can do
 - **If a skill feels restrictive**, say "stop the procedure and just do it" — it drops out immediately
 - **If the assistant says a tool doesn't exist**, it probably does. Tools load their descriptions lazily
   (deferred), so the assistant sometimes reports them as missing. Say "search for the tool again"
-- **Updates are automatic** — never run `/plugin update` by hand (it runs every 24h, for your role's packs only)
-  - But **if an update fails you'll see a notice at session start.** Run the commands it prints, then **restart**
-    (failures retry after 1 hour). No notice means you're up to date — silence is normal here
+- **Updates are automatic** — never run `/plugin update` by hand (only your role's packs are enabled)
+  - But **if an update fails you'll see a notice at session start.** Run the commands it prints, then **restart**.
+    No notice means you're up to date — silence is normal here
 
 > A remote-updated, more detailed version of this guide is injected at the start of every session.
 
