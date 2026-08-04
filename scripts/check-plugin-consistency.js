@@ -499,6 +499,19 @@ const blobSha8 = (text) => {
   const lf = Buffer.from(String(text).replace(/\r\n/g, '\n'), 'utf8');
   return crypto.createHash('sha1').update(`blob ${lf.length}\0`).update(lf).digest('hex').slice(0, 8);
 };
+// @AI:FRAGILE frontmatter 값은 **맨 앞 `---` 블록 안에서만** 읽는다. `/^extends:/m` 으로 파일
+//   전체를 훑으면 **본문 코드블록의 예시가 실제 선언으로 잡힌다** — 2026-08-05 실측으로 발견했다
+//   (zulgap-make-skill 이 작성법을 설명하려고 예시를 실었더니 그 스킬이 FAIL 됐다).
+//   기존 Tier C 의 `name` 파싱이 무사한 건 frontmatter 가 항상 파일 앞에 있어 **첫 매치가 우연히
+//   진짜 값**이기 때문이다. 옵션 필드는 그 우연이 성립하지 않는다.
+// @AI:CONSTRAINT YAML 인라인 주석을 반드시 벗긴다 — `extends: zulgap-blog  # 설명` 의 값은
+//   `zulgap-blog` 다. 안 벗기면 주석까지 이름으로 대조해 "그런 스킬이 없다"가 된다.
+const fmValue = (raw, key) => {
+  const block = (raw.match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1];
+  if (!block) return null;
+  const m = block.match(new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, 'm'));
+  return m ? m[1].replace(/\s+#.*$/, '').trim() : null;
+};
 const skillNames = new Set(skillFiles.map(({ where }) => where.split('/').pop()));
 // 상속 선언 문형 — 목적어(무엇을) 필수. 이게 오탐 차단의 핵심이다.
 const INHERIT_RE = /(단계|규칙|기준|규격|절차|방식)를?\s*(그대로\s*)?(따른다|준수)/;
@@ -507,8 +520,7 @@ let failI = 0;
 let inheritPairs = 0;
 for (const { where, raw } of skillFiles) {
   const self = where.split('/').pop();
-  const m = raw.match(/^extends:[ \t]*(.+?)[ \t]*$/m);
-  const parent = m ? m[1] : null;
+  const parent = fmValue(raw, 'extends');
 
   if (parent) {
     inheritPairs += 1;
@@ -528,7 +540,8 @@ for (const { where, raw } of skillFiles) {
     }
     // I-3 — 부모가 확인 이후 바뀌었나
     const want = blobSha8(parentEntry.raw);
-    const got = (raw.match(/^parent-checksum:[ \t]*([0-9a-f]{8})[ \t]*$/m) || [])[1];
+    const gotRaw = fmValue(raw, 'parent-checksum');
+    const got = /^[0-9a-f]{8}$/.test(gotRaw || '') ? gotRaw : undefined;
     if (got !== want) {
       console.error(`  FAIL [I-3 부모변경] ${where}: ${parent}가 마지막 확인 이후 바뀌었다`);
       console.error(`       기록된 값 ${got || '(없음)'} → 현재 값 ${want}`);
