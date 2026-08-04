@@ -10,6 +10,18 @@
 
 ---
 
+## v2.27 (2026-08-04) — 🔴 스킬 소유권을 문서가 아니라 GitHub이 집행 · zip 변경 없음
+*"만든 사람이 정본 소유자"*(2026-08-04 사장님 확정)를 사람의 기억이 아니라 **GitHub 기본 기능**으로 강제한다. 5인검증 2라운드가 확인한 준수율 격차(**결정론 게이트 100% vs 사람 눈 8%**)가 근거 — 규칙만 문서에 쓰면 이미 8%인 영역을 영구 8%로 고정하는 선택이 된다.
+- **`.github/CODEOWNERS` 신설** — 스킬 21개 경로 전부를 덮는다. 기본 `*` = @zulgap, 팀원 소유 5개가 이를 덮어쓴다(마지막 매칭 우선)
+  - 2026-08-04 git 실측: **@zulgap 16 / @jy8250-sketch 4**(cardnews·ennoble-thumbnail·rank-check·scheduling) **/ @naraeng2 1**(gaon-blog)
+  - 🔴 **정본 메모리의 "jy8250-sketch 2"는 오기였다** — `zulgap-cardnews`·`zulgap-scheduling` 2개가 빠져 있었다. `--follow` 유무 두 방식 모두 같은 결과이며, 이 2개는 *"사장님이 팀원 스킬을 고친 것"*으로 이미 별도 기록돼 있던 바로 그 2건이다
+  - 판정 근거는 이 파일이 아니라 **git**(`git log --follow --diff-filter=A --format='%an'`). frontmatter `author` 필드를 만들지 않은 것과 같은 이유 — 손으로 쓰는 장부는 두 번째 장부가 되어 드리프트한다
+- **함께 켠 브랜치 보호** (레포 설정 — PR 산출물 아님): `require_code_owner_reviews: false → true`, `enforce_admins: true → false`
+  - 🔑 **관리자 면제가 "전원 면제"가 아닌 이유** — 2026-08-04 실측 `role_name`: zulgap=**admin** / naraeng2=**write** / jy8250-sketch=**write**. admin은 사장님 한 분뿐이라 면제도 한 분뿐이고, 팀원 2명에게는 소유자 승인이 실제로 강제된다
+  - `enforce_admins`를 켜둔 채로는 **사장님이 본인 스킬도 못 고친다** — GitHub은 PR 작성자가 자기 PR을 승인할 수 없어, 소유자가 본인뿐인 16개는 승인해 줄 사람이 없어진다(데드락)
+- ⚠️ **CODEOWNERS는 문법이 틀려도 조용히 무시된다** — 게이트는 "파일을 넣었다"가 아니라 **테스트 PR에서 리뷰어 자동 지정이 실제로 뜨는 것**. GitHub은 base 브랜치의 CODEOWNERS를 읽으므로 **이 PR 자체에는 안 뜨는 게 정상**이고, 머지 후 별도 PR로 확인해야 한다
+- 아직 만들지 않은 것: **소유권 CI 게이트(Tier G)** — 선행조건 3개 미충족으로 보류 확정. ①`git author`가 자유 텍스트라 위조 가능하고 같은 사람이 `zulgap`/`zuglap`/`ZULGAP` 3개 이름으로 커밋한다 ②CI `actions/checkout@v4` 기본이 shallow라 `git log` 판정 자체가 불가(`fetch-depth: 0` 선행 필요) ③켜면 오늘 HEAD 기준 **이미 FAIL 2건**(cardnews·scheduling). 그래서 이번엔 코드 0줄로 GitHub 기본 기능만 쓴다
+
 ## v2.26 (2026-08-04) — 갱신 실패가 어디에도 안 남던 것 + winget 없는 PC 설치 무산 · **zip 재생성** (#91, #92)
 사장님 PC 팀팩이 **12커밋 뒤처진 채 방치**됐다(`f064a5a` #78 vs `f69d5436` #90). 그 안에 팀원 PR #83·#84(카드뉴스·스케줄링 스킬)가 들어 있어 **머지는 됐는데 어느 PC에도 안 뜨는** 상태였다.
 - **`hooks/hook-doctor-v2.js` (#91, 플러그인 파일 → autoUpdate 도달, zip 무관)** — `maybeRefresh()`가 update 결과를 **검증·기록**하고, 실패 시 다음 세션에 경고 + **1시간 재시도**(성공은 기존대로 24h)
