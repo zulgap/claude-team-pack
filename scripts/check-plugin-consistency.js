@@ -30,6 +30,21 @@ const DEPRECATED = ['zulgap'];
 const LEGACY_OK = /=\s*\$?false|!==?\s*true|hasOwnProperty|-contains|PSObject/;
 
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+// @AI:FRAGILE frontmatter 값은 **맨 앞 `---` 블록 안에서만** 읽는다. `/^tier:/m` 처럼 파일 전체를
+//   훑으면 **본문 코드블록의 예시가 실제 선언으로 잡힌다.** 2026-08-05 실측 2건:
+//   ① extends — zulgap-make-skill 이 작성법 예시를 실었더니 그 스킬 자신이 FAIL 났다(오탐)
+//   ② tier    — 같은 파일에서 frontmatter 의 tier 를 지워도 **D-1 이 못 잡았다**(미탐).
+//               본문 예시 `tier: tenant-only` 가 대신 읽혔다 = §4⑧ 심사가 우회된다
+//   그동안 무증상이었던 건 frontmatter 가 항상 파일 앞이라 **첫 매치가 우연히 진짜 값**이었기
+//   때문이다. 그 필드가 frontmatter 에서 빠지는 순간 우연이 깨진다.
+// @AI:CONSTRAINT YAML 인라인 주석을 반드시 벗긴다 — `extends: zulgap-blog  # 설명` 의 값은
+//   `zulgap-blog` 다. 안 벗기면 주석까지 값으로 대조한다.
+const fmValue = (raw, key) => {
+  const block = (raw.match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1];
+  if (!block) return null;
+  const m = block.match(new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, 'm'));
+  return m ? m[1].replace(/\s+#.*$/, '').trim() : null;
+};
 // @AI:INTENT regex 1개 또는 배열 — 같은 파일이 활성화를 2가지 표현으로 쓸 수 있다(아래 hook-doctor-v2 주석)
 const extract = (text, regexes) => {
   const out = new Set();
@@ -149,8 +164,7 @@ for (const plug of pluginDirs) {
     if (!fs.existsSync(md)) continue;
     // frontmatter name (없으면 디렉토리명이 명령이 된다 — 그 경우도 규격 대상)
     const raw = fs.readFileSync(md, 'utf8');
-    const m = raw.match(/^name:[ \t]*(.+?)[ \t]*$/m);
-    const name = m ? m[1] : d.name;
+    const name = fmValue(raw, 'name') || d.name;
     const where = `${plug}/${d.name}`;
     skillCount += 1;
     skillFiles.push({ where, raw });
@@ -214,7 +228,8 @@ const A_GRADE = [
 let failD = 0;
 let tenantOnlyHits = 0;
 for (const { where, raw } of skillFiles) {
-  const tm = raw.match(/^tier:[ \t]*(\S+)[ \t]*$/m);
+  const tierVal = fmValue(raw, 'tier');
+  const tm = tierVal ? [null, tierVal] : null;
   // D-1 tier 선언 필수 — 미선언은 "전용이라 면제"인지 "공용인데 미준수"인지 구분 불가(§0 판정 불능)
   if (!tm) {
     console.error(`  FAIL [D-1 tier미선언] ${where}: frontmatter에 'tier: shared' 또는 'tier: tenant-only' 한 줄 추가. 미선언 = shared 간주(fail-closed)`);
@@ -498,19 +513,6 @@ if (failH) fail = 1;
 const blobSha8 = (text) => {
   const lf = Buffer.from(String(text).replace(/\r\n/g, '\n'), 'utf8');
   return crypto.createHash('sha1').update(`blob ${lf.length}\0`).update(lf).digest('hex').slice(0, 8);
-};
-// @AI:FRAGILE frontmatter 값은 **맨 앞 `---` 블록 안에서만** 읽는다. `/^extends:/m` 으로 파일
-//   전체를 훑으면 **본문 코드블록의 예시가 실제 선언으로 잡힌다** — 2026-08-05 실측으로 발견했다
-//   (zulgap-make-skill 이 작성법을 설명하려고 예시를 실었더니 그 스킬이 FAIL 됐다).
-//   기존 Tier C 의 `name` 파싱이 무사한 건 frontmatter 가 항상 파일 앞에 있어 **첫 매치가 우연히
-//   진짜 값**이기 때문이다. 옵션 필드는 그 우연이 성립하지 않는다.
-// @AI:CONSTRAINT YAML 인라인 주석을 반드시 벗긴다 — `extends: zulgap-blog  # 설명` 의 값은
-//   `zulgap-blog` 다. 안 벗기면 주석까지 이름으로 대조해 "그런 스킬이 없다"가 된다.
-const fmValue = (raw, key) => {
-  const block = (raw.match(/^---\r?\n([\s\S]*?)\r?\n---/) || [])[1];
-  if (!block) return null;
-  const m = block.match(new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, 'm'));
-  return m ? m[1].replace(/\s+#.*$/, '').trim() : null;
 };
 const skillNames = new Set(skillFiles.map(({ where }) => where.split('/').pop()));
 // 상속 선언 문형 — 목적어(무엇을) 필수. 이게 오탐 차단의 핵심이다.
