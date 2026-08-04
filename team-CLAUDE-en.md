@@ -43,7 +43,8 @@ It gets written up and sent to the boss. Once approved, it becomes automatic.
 - **Your own channel settings: go ahead and make them.** Say `"set this up for the <name> channel"`
   and it will ask you what it needs and save it to `~/.claude/zulgap/channels/` on your machine —
   that location **survives auto-updates.**
-- **The skill body (the shared method) goes through the boss** — say `"this part should work like X"`.
-  Editing the body directly means it **gets overwritten on the next update.**
+- **Changed a skill body (the shared method)? Open a PR** — say `"open a PR for this skill on the team pack"`
+  and it will handle the whole thing. Editing only your local copy means it **gets overwritten on the next update.**
+  If the skill was created by someone else, that person's approval is required — a check tells you what to do.
 - Saying it costs nothing and helps most. Nothing has to change today —
   the record accumulates and the boss decides.
