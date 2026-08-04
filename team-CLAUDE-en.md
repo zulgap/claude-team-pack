@@ -22,9 +22,9 @@ work that has a fixed sequence — it is not a fence that limits what you can do
 - **If a skill feels restrictive**, say "stop the procedure and just do it" — it drops out immediately
 - **If the assistant says a tool doesn't exist**, it probably does. Tools load their descriptions lazily
   (deferred), so the assistant sometimes reports them as missing. Say "search for the tool again"
-- **Updates are automatic** — never run `/plugin update` by hand (it runs every 24h, for your role's packs only)
-  - But **if an update fails you'll see a notice at session start.** Run the commands it prints, then **restart**
-    (failures retry after 1 hour). No notice means you're up to date — silence is normal here
+- **Updates are automatic** — never run `/plugin update` by hand (only your role's packs are enabled)
+  - But **if an update fails you'll see a notice at session start.** Run the commands it prints, then **restart**.
+    No notice means you're up to date — silence is normal here
 
 > A remote-updated, more detailed version of this guide is injected at the start of every session.
 
@@ -43,7 +43,8 @@ It gets written up and sent to the boss. Once approved, it becomes automatic.
 - **Your own channel settings: go ahead and make them.** Say `"set this up for the <name> channel"`
   and it will ask you what it needs and save it to `~/.claude/zulgap/channels/` on your machine —
   that location **survives auto-updates.**
-- **The skill body (the shared method) goes through the boss** — say `"this part should work like X"`.
-  Editing the body directly means it **gets overwritten on the next update.**
+- **Changed a skill body (the shared method)? Open a PR** — say `"open a PR for this skill on the team pack"`
+  and it will handle the whole thing. Editing only your local copy means it **gets overwritten on the next update.**
+  If the skill was created by someone else, that person's approval is required — a check tells you what to do.
 - Saying it costs nothing and helps most. Nothing has to change today —
   the record accumulates and the boss decides.
