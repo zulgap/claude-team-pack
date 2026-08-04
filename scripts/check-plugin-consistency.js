@@ -4,13 +4,19 @@
 //   ① .claude-plugin/marketplace.json (정의 원본)
 //   ② install.ps1 (윈도우 설치기)     ③ install.sh (맥/리눅스 설치기)
 //   ④ hooks/hook-doctor-v2.js (기존 PC 자가치유 — install과 동일 매핑 필수)
-// 검사 5단 (신설 시 이 목록 + .github/workflows/plugin-consistency.yml + spec §4를 함께 갱신):
+// 검사 목록 (신설 시 이 목록 + .github/workflows/plugin-consistency.yml + spec §4를 함께 갱신):
 //   Tier A — 활성화 집합: ②③④가 활성화(true)하는 이름 집합 == (① − DEPRECATED)   [spec §4⑥]
 //   Tier B — 레거시 잔존: DEPRECATED 이름 언급 라인은 비활성화/전환 패턴만 허용     [spec §4⑥]
 //            (안내 문구·설치 명령에 구 이름이 남는 드리프트 차단 — install.ps1:297 실사례)
 //   Tier C — 스킬 이름 규격(kebab-case·중복·bare 충돌·폴더명 일치)                 [spec §4⑦]
 //   Tier D — tier 선언 + shared 스킬 A급 리터럴 0                                  [spec §4⑧]
 //   Tier E — 형제 스킬 폴더명 하드코딩 0                                            [spec §4⑨]
+//   Tier F — 실행 이식성: OS 종속 경로 · 번들 폰트 라이선스
+//   Tier G — 되돌릴 수 없는 외부 행위를 스킬이 직접 호출하지 않는다
+//   Tier H — 설치 stub 신선도: 갱신 안 가는 문서에 낡을 값(주기·간격 숫자) 0
+// 🔴 개수("검사 N단")를 쓰지 않는다 — F·G 가 추가될 때 이 목록이 함께 갱신되지 않아
+//    "5단"이 오래 거짓이었다(그 규칙을 적어둔 줄 바로 위에서 벌어졌다).
+//    개수·범위 표기는 항목이 늘 때마다 낡으므로 목록만 유지한다.
 // 불일치 = exit 1 (CI/심사 게이트용). usage: node scripts/check-plugin-consistency.js
 const fs = require('fs');
 const path = require('path');
@@ -435,5 +441,36 @@ if (failG === 0) {
   console.log(`  PASS [G 되돌릴수없음] ${skillFiles.length}개 — 호출 지시 0 / 경계 명시 ${Object.keys(BOUNDARY_REQUIRED).length}건 충족`);
 }
 if (failG) fail = 1;
+
+// ── Tier H: 설치 stub 신선도 ────────────────────────────────────────────────
+// @AI:INTENT team-CLAUDE*.md 는 설치 때 팀원 PC 로 한 번 복사되고 **그 뒤로 갱신되지 않는다**
+//   (원격 fetch 대상은 team-guide.md 뿐이고, stub 은 신규 설치자만 새로 받는다).
+//   그래서 여기에 "24시간마다 자동" 같은 구현 세부 숫자를 쓰면, 그 주기가 바뀌는 순간
+//   기존 직원 PC 에 **고칠 방법이 없는 거짓말**로 영구히 남는다.
+//   실제로 갱신 판정축을 시계(24h) → 원격 SHA 비교로 바꾸는 작업이 예정돼 있었다.
+// @AI:CONSTRAINT 정확한 주기·간격이 필요하면 team-guide.md(매 세션 원격 최신본)에 쓸 것.
+//   stub 에는 "자동입니다" 처럼 값이 바뀌어도 안 낡는 표현만 남긴다.
+const STUB_FILES = ['team-CLAUDE.md', 'team-CLAUDE-en.md'];
+// 날짜(2026-08-05)·버전(v2.29)·개수(3개)는 잡지 않는다 — "N단위 마다/뒤/후" 주기 표현만 본다
+const STALE_VALUE_RE = /[0-9]+\s*(?:시간|분|초|일|주)\s*(?:마다|뒤|후|간격)|every\s+[0-9]+\s*(?:h\b|hours?|min\b|minutes?|days?)|after\s+[0-9]+\s*(?:hours?|minutes?|days?)/i;
+let failH = 0;
+for (const f of STUB_FILES) {
+  const p = path.join(ROOT, f);
+  if (!fs.existsSync(p)) continue;
+  const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/);
+  lines.forEach((line, i) => {
+    const m = line.match(STALE_VALUE_RE);
+    if (!m) return;
+    console.error(`  FAIL [H stub신선도] ${f}:${i + 1} — '${m[0].trim()}' 는 언젠가 바뀔 값이다`);
+    console.error(`       이 파일은 설치 후 갱신되지 않아, 값이 바뀌면 기존 직원 PC 에 거짓말로 남는다.`);
+    console.error(`       주기·간격은 team-guide.md(매 세션 원격 최신본)에 쓰고, 여기엔 "자동입니다" 처럼 안 낡는 표현만 남길 것`);
+    console.error(`       줄: ${line.trim().slice(0, 90)}`);
+    failH = 1;
+  });
+}
+if (failH === 0) {
+  console.log(`  PASS [H stub신선도] ${STUB_FILES.length}개 — 낡을 값(주기·간격 숫자) 0`);
+}
+if (failH) fail = 1;
 
 process.exit(fail);
