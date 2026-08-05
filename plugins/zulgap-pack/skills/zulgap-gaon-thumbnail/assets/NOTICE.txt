@@ -1,0 +1,9 @@
+NotoSansCJK-Black.ttc — Noto Sans CJK (Black)
+
+  저작권 표기(폰트 name table ID 0): (c) 2014-2021 Adobe (http://www.adobe.com/)
+  라이선스: SIL Open Font License, Version 1.1  (name table ID 14: http://scripts.sil.org/OFL)
+  라이선스 원문: 같은 폴더의 OFL.txt
+  배포처 원문 출처: https://github.com/notofonts/noto-cjk  (Sans/LICENSE)
+
+이 폰트는 썸네일 텍스트의 굵기·그라데이션을 환경과 무관하게 동일하게 재현하기 위해 번들한다.
+OFL 1.1 은 폰트 파일 재배포 시 라이선스 사본 동봉을 요구하므로 OFL.txt 를 함께 둔다.
