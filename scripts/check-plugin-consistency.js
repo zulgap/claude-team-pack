@@ -15,6 +15,7 @@
 //   Tier G — 되돌릴 수 없는 외부 행위를 스킬이 직접 호출하지 않는다
 //   Tier H — 설치 stub 신선도: 갱신 안 가는 문서에 낡을 값(주기·간격 숫자) 0
 //   Tier I — 스킬 상속: extends 실재성 · 본문만으로 따르는 선언 0 · 부모 변경 미반영 0 [spec §4⑩]
+//   Tier J — 게이트↔문서 커버리지: 이 목록이 문서 3벌에 실렸나 (아래 «함께 갱신» 을 코드가 강제) [spec §4⑪]
 // 🔴 개수("검사 N단")를 쓰지 않는다 — F·G 가 추가될 때 이 목록이 함께 갱신되지 않아
 //    "5단"이 오래 거짓이었다(그 규칙을 적어둔 줄 바로 위에서 벌어졌다).
 //    개수·범위 표기는 항목이 늘 때마다 낡으므로 목록만 유지한다.
@@ -576,5 +577,110 @@ if (failI === 0) {
   console.log(`  PASS [I 상속] ${skillFiles.length}개 — 선언 ${inheritPairs}쌍 / 고아 0 / 미선언 0`);
 }
 if (failI) fail = 1;
+
+// ── Tier J: 게이트↔문서 커버리지 ────────────────────────────────────────────
+// @AI:INTENT 2026-08-05 실사고: Tier F(08-03)·G·H·I(08-05)가 신설됐는데 그것을 **설명하는
+//   문서 3벌**이 따라오지 않았다. 실측 — 정본은 B·G·H 누락, 만드는 쪽은 A·B·F·G·H 누락,
+//   검토하는 쪽은 F·G·H·I 누락. 셋이 서로 다르게 빠져 있었다.
+//   이 파일 상단 주석이 *"신설 시 이 목록 + workflow + spec §4를 함께 갱신"* 이라고 **이미
+//   적어 뒀는데도** 벌어졌다. 규칙을 글로만 두면 이 레포 실측으로 8%만 지켜진다(spec §4).
+//   그래서 «검사가 늘면 안내도 함께 는다»를 사람 기억이 아니라 여기서 강제한다.
+// @AI:CONSTRAINT TIERS 가 Tier 목록의 SSOT다. 새 Tier 를 구현하면 **여기 먼저** 추가한다.
+//   J-0 이 이 표를 ①실제 출력 라벨 ②파일 상단 주석 목록 과 3자 대조하므로 어느 하나만
+//   고치면 그 자리에서 걸린다. 손으로 유지하는 두 번째 장부가 되지 않는 이유가 이 대조다.
+// @AI:CONSTRAINT 🔴 판정에 `\b` 를 쓰지 말 것. 문서가 한국어라 `Tier C·D·E`(중점)·`Tier H가`
+//   (조사) 처럼 **멀티바이트가 뒤에 붙는다**. 2026-08-05 실측에서 `grep -E "Tier C\b"` 가
+//   그 둘을 통째로 미탐했다. 그래서 「영숫자가 아닌 것」으로 경계를 잡는다.
+// @AI:INTENT 이 검사가 재는 것은 **«완전 누락»뿐이고 설명 품질이 아니다.** 한 번만 적고
+//   부실하게 쓴 것은 사람이 리뷰에서 본다. 기계가 품질까지 재려 들면 판정식이 복잡해지고
+//   오탐이 늘어 다음 사람이 게이트를 우회한다(Tier E·F·G 가 전부 구조 판정으로 수렴한 이유).
+const TIERS = {
+  A: '활성화집합', B: '레거시잔존', C: '스킬이름', D: 'tier·A급', E: '형제폴더명',
+  F: '이식성', G: '되돌릴수없음', H: 'stub신선도', I: '상속', J: '문서커버리지',
+};
+// 이 게이트를 «설명하는» 문서. 늘어나면 여기 1줄 추가한다(부재 = FAIL 이라 조용히 빠지지 않는다).
+const TIER_DOCS = [
+  { path: 'docs/skill-packaging-spec.md', role: '심사 정본', group: 'canon' },
+  { path: 'plugins/zulgap-pack/skills/zulgap-make-skill/SKILL.md', role: '만드는 쪽', group: 'delivery' },
+  { path: 'plugins/zulgap-pack/skills/zulgap-pr-review/SKILL.md', role: '검토하는 쪽', group: 'delivery' },
+];
+const mentionsTier = (text, t) =>
+  new RegExp(`Tier ${t}(?![A-Za-z0-9])`).test(text) ||
+  new RegExp(`(?<![A-Za-z0-9])${t}-[0-9]`).test(text);
+
+let failJ = 0;
+const tierKeys = Object.keys(TIERS);
+const selfSrc = fs.readFileSync(__filename, 'utf8');
+
+// J-0 — SSOT 무결성: TIERS == 실제 출력 라벨 == 상단 주석 목록
+{
+  const uniq = (re) => [...new Set([...selfSrc.matchAll(re)].map((m) => m[1]))].sort();
+  const fromLabels = uniq(/(?:PASS|FAIL) \[([A-Z])[ -]/g);
+  const fromComment = uniq(/^\/\/ {3}Tier ([A-Z]) — /gm);
+  const eq = (a, b) => a.join('') === b.join('');
+  if (fromLabels.length === 0 || fromComment.length === 0) {
+    // fail-closed — 추출이 0이면 «깨끗함»이 아니라 «판정 불가»다
+    console.error(`  FAIL [J-0 목록무결성] Tier 추출 0건 (라벨 ${fromLabels.length} / 주석 ${fromComment.length})`);
+    console.error(`       출력 라벨이나 상단 주석의 형식이 바뀌었다. 이 검사가 조용히 통과하지 않도록 FAIL 한다`);
+    failJ = 1;
+  } else if (!eq(tierKeys, fromLabels) || !eq(tierKeys, fromComment)) {
+    console.error(`  FAIL [J-0 목록무결성] TIERS 와 실제가 어긋난다`);
+    console.error(`       TIERS  : ${tierKeys.join(' ')}`);
+    console.error(`       출력라벨: ${fromLabels.join(' ')}`);
+    console.error(`       상단주석: ${fromComment.join(' ')}`);
+    console.error(`       Tier 를 구현했으면 TIERS·라벨·주석 목록 셋을 모두 맞출 것`);
+    failJ = 1;
+  }
+}
+
+// J-1 / J-2 — 문서가 각 Tier 를 «언급이라도» 하는가
+if (failJ === 0) {
+  const read = (p) => {
+    const abs = path.join(ROOT, p);
+    return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
+  };
+  const missingIn = (texts) => tierKeys.filter((t) => !texts.some((x) => mentionsTier(x, t)));
+
+  for (const doc of TIER_DOCS.filter((d) => d.group === 'canon')) {
+    const body = read(doc.path);
+    if (body === null) {
+      console.error(`  FAIL [J-1 정본커버리지] ${doc.path} 가 없다 — 파일 부재는 통과가 아니다`);
+      failJ = 1;
+      continue;
+    }
+    const miss = missingIn([body]);
+    if (miss.length) {
+      console.error(`  FAIL [J-1 정본커버리지] ${doc.path}(${doc.role}) — 누락: ${miss.join(' ')}`);
+      console.error(`       심사 정본은 게이트가 검사하는 Tier 를 **전부** 실어야 한다.`);
+      console.error(`       각 Tier 를 'Tier X' 또는 'X-1' 형태로 §4 표에 추가할 것`);
+      failJ = 1;
+    }
+  }
+
+  const delivery = TIER_DOCS.filter((d) => d.group === 'delivery');
+  const bodies = delivery.map((d) => ({ ...d, body: read(d.path) }));
+  const gone = bodies.filter((d) => d.body === null);
+  if (gone.length) {
+    console.error(`  FAIL [J-2 전달커버리지] 파일 없음: ${gone.map((d) => d.path).join(', ')}`);
+    console.error(`       스킬이 팀팩 밖으로 나가면 게이트 갱신이 그 문서에 도달할 길이 사라진다`);
+    failJ = 1;
+  } else {
+    const miss = missingIn(bodies.map((d) => d.body));
+    if (miss.length) {
+      console.error(`  FAIL [J-2 전달커버리지] 만드는 쪽·검토하는 쪽 어디에도 없음 — 누락: ${miss.join(' ')}`);
+      bodies.forEach((d) => {
+        const own = tierKeys.filter((t) => mentionsTier(d.body, t));
+        console.error(`         ${d.role}(${d.path.split('/').pop()}): ${own.join(' ') || '(없음)'}`);
+      });
+      console.error(`       검사가 늘었는데 안내가 안 늘면, 팀원은 CI 가 왜 막는지 알 수 없다.`);
+      console.error(`       두 문서 중 알맞은 쪽에 그 Tier 설명을 1줄 추가할 것`);
+      failJ = 1;
+    }
+  }
+}
+if (failJ === 0) {
+  console.log(`  PASS [J 문서커버리지] Tier ${tierKeys.length}종 — 목록 3자 일치 / 정본·전달 누락 0`);
+}
+if (failJ) fail = 1;
 
 process.exit(fail);

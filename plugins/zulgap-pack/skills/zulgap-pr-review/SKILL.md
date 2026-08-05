@@ -469,7 +469,7 @@ gh pr list --state open --json number,files --jq '.[] | "\(.number): \(.files[].
 ## 관련
 
 - 팀팩 정본: `claude-team-pack/docs/skill-packaging-spec.md` (§1 4등급 · §4 심사 · §5 tier)
-- 게이트 ①: `scripts/check-plugin-consistency.js` — **Tier A~I**
+- 게이트 ①: `scripts/check-plugin-consistency.js` — **Tier A~J**
 
   | | 무엇을 보나 | 신설 |
   |---|---|---|
@@ -482,6 +482,11 @@ gh pr list --state open --json number,files --jq '.[] | "\(.number): \(.files[].
   | `Tier G` | 되돌릴 수 없는 외부 행위를 스킬이 호출 지시하지 않음 | 2026-08-05 |
   | `Tier H` | 설치 stub 신선도 (갱신 안 가는 문서에 낡을 값 0) | 2026-08-05 |
   | `Tier I` | 스킬 상속 (`extends` 실재·본문만 선언 0·부모 변경 반영) | 2026-08-05 |
+  | `Tier J` | **게이트↔문서 커버리지** — 이 표가 실제 게이트와 일치하나 | 2026-08-05 |
+
+  🔑 **`Tier J`가 바로 이 표를 검사한다.** 게이트에 새 Tier가 생겼는데 여기 안 실리면 **CI가 막는다.**
+  즉 이 표가 낡아 있을 가능성은 구조적으로 차단돼 있다 — 초록이면 **게이트 전량이 여기 있다는 뜻**이다.
+  (신설 사유: F·G·H·I가 생겼는데 이 문서가 `Tier A~E`에 멈춰 3일간 몰랐다)
 - 게이트 ②: `scripts/check-skill-ownership.js` — **소유권**. CI 전용(로컬 판정 불가). Tier 문자를 쓰지 않는 별도 체계다
 - 이 체크리스트의 근거: `~/.claude/specs/2026-07-30-handoff-thumbnail-skill-audit.md`
 - 메모리: `reference_teampack_root_skills_is_dead_path` · `project_skill_fork_model_design`
