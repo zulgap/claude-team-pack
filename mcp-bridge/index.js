@@ -55,15 +55,42 @@ function callJudgmentOS(path, body) {
         ...authHeaders(),
         'Content-Length': Buffer.byteLength(data),
       },
-      timeout: 60000,
+      // @AI:CONSTRAINT 소켓 무통신 허용치 — 서버 영상 폴링 상한(모델별 5~10분)보다 길어야 한다.
+      //   60초였을 때 Seedance 호출이 폴링 도중 끊겼고, 서버는 클라 절단을 감지하지 않아 생성을 끝까지
+      //   진행했다. 그래서 재호출 = 같은 영상 2회 생성 = 2회 과금이 됐다(이슈 #132, 실측 초과 5건).
+      timeout: 720000,
     }, (res) => {
+      // @AI:CONSTRAINT 청크 경계 한글 손상 차단. 이 줄이 없으면 Buffer 가 청크마다 따로 디코드돼
+      //   3바이트 한글이 경계에 걸릴 때 깨진다 → JSON.parse 실패 → 아래 catch → 「빈 응답」.
+      //   응답이 클수록(base64 동봉 시 약 1.9MB) 청크가 늘어 확률이 올라갔다. judgmentos 레포는
+      //   34194321c 에서 전역 수리됐으나 이 사본에 전파되지 않아 두 달간 남아 있었다.
+      res.setEncoding('utf8');
       let result = '';
       res.on('data', chunk => result += chunk);
       res.on('end', () => {
-        try { resolve(JSON.parse(result)); } catch { resolve(result); }
+        // @AI:INTENT 실패를 삼키지 않는다 — 구버전은 상태코드를 읽지 않고, 파싱 실패 시 원문을 그대로
+        //   resolve 했다. 그러면 MCP 클라이언트에 content 없는 응답이 가서 「성공했는데 빈 응답」으로
+        //   보이고, 호출자는 실패인지 알 수 없어 재호출한다. 여기서 확실히 던져야 재시도를 판단할 수 있다.
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`JudgmentOS HTTP ${res.statusCode}: ${String(result).slice(0, 300)}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(result));
+        } catch {
+          reject(new Error(
+            `JudgmentOS 응답 파싱 실패 (${Buffer.byteLength(result)}바이트): ${String(result).slice(0, 300)}`
+          ));
+        }
       });
     });
     req.on('error', reject);
+    // @AI:INTENT timeout 옵션만 두면 소켓이 조용히 닫히기만 하고 아무도 알려주지 않는다.
+    //   핸들러를 붙여야 destroy + reject 로 이어진다(같은 패턴: unified-agent video-tools-v2.js).
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('JudgmentOS 요청 타임아웃 (720초 무응답)'));
+    });
     req.write(data);
     req.end();
   });
