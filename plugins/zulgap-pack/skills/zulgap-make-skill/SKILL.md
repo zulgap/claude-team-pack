@@ -1,7 +1,7 @@
 ---
 name: zulgap-make-skill
 description: 내가 반복해서 하는 작업을 팀 스킬로 만들어 전 직원이 쓰게 한다. 어느 팩에 넣을지·이름·tier를 정해주고, 자동검사를 통과할 때까지 고친 뒤 PR까지 올린다. "스킬 만들어줘", "이거 스킬로 만들자", "매번 이렇게 하는데 자동으로 안 되나", "팀팩에 올리고 싶어", "이 작업 스킬화", "PR로 올려줘" 라고 하면 이 스킬을 쓸 것. 머지(최종 반영)는 하지 않는다.
-version: 1.0.0
+version: 1.1.0
 origin: teampack
 tier: tenant-only
 ---
@@ -173,12 +173,33 @@ cd ~/claude-team-pack && node scripts/check-plugin-consistency.js; echo "exit=$?
 | `C-5 팩접두` | 접두사가 없다 (`zulgap-` / `jedi-`) |
 | `D-1 tier미선언` | `tier:` 한 줄이 없다 |
 | `D-2 A급리터럴` | `shared` 인데 회사 고유값이 있다 → `tenant-only` 로 바꾸거나 값을 뺀다 |
+| `F-1 OS종속경로` | `scripts/` 코드에 한 OS 경로만 있고 대안이 없다 → 다른 OS에서 그 줄에서 죽는다. 후보 배열로 바꿀 것 |
+| `F-2 폰트라이선스` | `assets/` 에 폰트를 넣었는데 같은 폴더에 라이선스 사본이 없다 → 배포처의 `OFL.txt` 원문을 함께 넣을 것 |
+| `G-1 되돌릴수없음` | 국세청 발행처럼 **되돌릴 수 없는 도구**를 호출하라고 적었다. 스킬은 준비까지만 하고 멈춘다(사람이 버튼을 누른다) |
+| `H-1 stub신선도` | `team-CLAUDE*.md` 에 「N시간마다」 같은 **낡을 값**을 적었다 → 그 파일은 설치 후 갱신되지 않아 영영 거짓이 된다. 주기·간격은 `team-guide.md` 에 |
 | `I-1 상속대상` | `extends:` 가 없는 스킬을 가리킨다. 오타이거나 그 스킬이 개명·삭제됐다 |
 | `I-2 선언누락` | 본문이 *"…의 단계를 따른다"* 고 하는데 `extends:` 가 없다 → Phase 2-B2 |
 | `I-3 부모변경` | 정본이 바뀌었다. 반영이 필요한지 보고 `parent-checksum` 을 메시지가 알려준 값으로 갱신 |
 
-🔴 **자동검사는 `SKILL.md` 만 읽는다.** `scripts/` 안의 `.py`·`.mjs` 는 검사 대상이 아니다 —
-거기 들어간 내 PC 경로·노션 ID는 **사람이 눈으로 봐야 한다.** Phase 2-D를 스크립트 파일에도 한 번 더 적용할 것.
+> 게이트 전체는 **`Tier A`~`Tier I` 9종**이다. 위 표는 스킬을 만들 때 실제로 걸리는 것만 추렸다 —
+> `Tier A`(활성화 집합)·`Tier B`(레거시 잔존)는 설치기·marketplace 쪽이라 스킬 추가로는 잘 안 걸린다.
+
+🔴 **자동검사가 보는 범위는 `SKILL.md` 하나가 아니다** (2026-08-03 `Tier F` 신설로 넓어졌다):
+
+| 대상 | 보나 | 무엇을 |
+|---|---|---|
+| `SKILL.md` 본문 | ✅ | `Tier C·D·E·G·I` |
+| **`scripts/` 안의 `.js`·`.mjs`·`.cjs`·`.py`·`.ps1`·`.sh`** | ✅ | **`Tier F-1`** — OS 종속 경로(`C:/Windows/…`·`/usr/…`)가 **한 계열뿐**이면 FAIL |
+| **`assets/` 안의 폰트**(`.ttf`·`.otf`·`.ttc`·`.woff`) | ✅ | **`Tier F-2`** — 같은 폴더에 라이선스 사본(`OFL`/`LICENSE`/`NOTICE`) 없으면 FAIL |
+| `channels/*.md` · `templates/*` | ❌ | **사람이 눈으로** — 내 PC 경로·노션 ID는 여기서 안 걸린다 |
+
+⚠️ **`Tier F-1`의 판정축은 "윈도우 경로를 썼나"가 아니라 "대안이 있나"다.** 여러 OS 후보를 배열로 두고
+존재하는 첫 경로를 고르면 통과한다. 그 OS 전용이 의도라면 코드 주석에 `@AI:ALLOW os-specific-path` 를 남긴다.
+
+🔴 **`assets/`에 폰트를 넣을 거면 배포처의 라이선스 원문을 같은 폴더에 함께 넣을 것** — 이 레포는 public이라
+**커밋이 곧 재배포**이고, OFL·Apache 등 대부분의 무료 폰트가 라이선스 사본 동봉을 재배포 조건으로 요구한다.
+
+여전히 **사람이 봐야 하는 것**: `channels/`·`templates/` 안의 A급(PC 경로·노션 ID)과, 어느 파일이든 **B급**(회사·브랜드·담당자 실명) — 게이트에 B급 정규식은 0개다. Phase 2-D를 그 파일들에도 한 번 더 적용할 것.
 
 ---
 
@@ -225,8 +246,12 @@ git push -u origin feat/<스킬이름>
 
 ```bash
 gh pr create -R zulgap/claude-team-pack --base main --title "<제목>" --body-file /tmp/pr.txt
-gh pr checks <번호> -R zulgap/claude-team-pack     # consistency·guard 둘 다 pass 확인
+gh pr checks <번호> -R zulgap/claude-team-pack     # consistency·guard·ownership 3종 다 pass 확인
 ```
+
+⚠️ **`ownership` 이 빨강이어도 당황하지 말 것** — 남의 스킬 본체를 고쳤을 때 **그 소유자의 승인**을 요구하는 검사다.
+**코드에 결함이 있다는 뜻이 아니다.** CI 로그가 소유자를 알려주니 그분께 리뷰를 요청하면 되고,
+승인이 등록되면 검사가 **자동으로 다시 돌아** 초록이 된다. (내가 만든 스킬을 내가 고칠 때는 안 걸린다)
 
 **PR 번호와 주소를 사용자에게 알려주고 끝낸다.**
 PR이 올라가면 사내 개발 소통방에 자동으로 알림이 간다 — 따로 알릴 필요 없다.
