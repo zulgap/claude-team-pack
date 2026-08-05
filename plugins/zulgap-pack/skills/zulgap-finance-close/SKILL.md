@@ -139,7 +139,22 @@ mcp__jedi__ingest_finance_ledger({
 mcp__jedi__get_finance_ledger_status({ period: "2026-06" })
 ```
 
-`close_state`로 갈린다.
+🔴 **판정축은 `ready_to_close`다 — `close_state`가 아니다.**
+
+`close_state`는 **`missing`을 보지 않는다.** 자료가 0건이면 "검산 실패가 없으니" `final`이 된다. 백엔드 코드가 이 함정을 주석으로 명시해 두었다(`finance-tools.js`: *"🔴 판정축은 `ready_to_close`다 — `close_allowed`가 아니다"*).
+
+**실측 (2026-08-05)**: 2026-07은 자료 4종이 전부 미업로드인데 `close_state: "final"` · `close_allowed: true` · `ready_to_close: false` 였다.
+
+🔴 **이 스킬은 `final`이면 5단계(마감 집계)로 진행하므로, 이 순서를 지키지 않으면 자료가 하나도 없는 달에 마감을 걸어버린다.**
+
+### ① 먼저 `ready_to_close`를 본다
+
+| `ready_to_close` | 사람에게 할 말 | 다음 |
+|---|---|---|
+| **false** | `missing`을 그대로 읽어주고 "아직 N종이 안 올라왔습니다" | **3단계로 돌아가 그것만 안내** (마감 걸지 않는다) |
+| **true** | — | 아래 ②로 |
+
+### ② `ready_to_close`가 true일 때만 `close_state`를 본다
 
 | 상태 | 사람에게 할 말 | 다음 |
 |---|---|---|
