@@ -92,7 +92,17 @@ def load_font(size):
 def wrap(title, max_lines=MAX_LINES):
     """| 가 있으면 그대로 쓰고, 없으면 어절 단위로 균등 분할한다."""
     if "|" in title:
-        return [s.strip() for s in title.split("|") if s.strip()][:max_lines]
+        parts = [s.strip() for s in title.split("|") if s.strip()]
+        # @AI:INTENT 넘치는 줄을 잘라내지 않고 중단한다. 예전엔 [:max_lines] 로 잘랐는데,
+        #   그러면 4번째 줄이 사라진 채 [OK] 로 끝나 호출자가 성공으로 받는다.
+        #   제목 일부가 빠진 썸네일은 발행돼도 아무도 모른다 — 조용한 손실이 가장 나쁘다.
+        if len(parts) > max_lines:
+            raise SystemExit(
+                "[TOO-MANY-LINES] got %d lines, max is %d. (file not written)\n"
+                "  줄이 %d개입니다. 이 썸네일은 %d줄까지입니다 — 잘라내면 제목 일부가\n"
+                "  조용히 사라지므로 만들지 않았습니다. | 를 %d개 이하로 쓰세요."
+                % (len(parts), max_lines, len(parts), max_lines, max_lines - 1))
+        return parts
     words = title.split()
     if len(words) <= 1:
         return [title]
@@ -112,6 +122,12 @@ def fit_size(lines, draw, box_w, box_h):
 
 
 def build(title, out_path):
+    # 빈 제목이면 글자 없는 배경만 나온다. 그것도 «성공»으로 끝나면 배경뿐인
+    # 썸네일이 카드에 붙는다. 에셋을 내려받기 전에 먼저 막는다.
+    if not title.strip():
+        raise SystemExit(
+            "[EMPTY-TITLE] title is empty. (file not written)\n"
+            "  제목이 비어 있습니다. --title 에 문구를 넣어 주세요.")
     ensure_assets()
     bg = Image.open(BG_FILE).convert("RGB").resize((CANVAS, CANVAS), Image.LANCZOS)
     lines = wrap(title)
@@ -132,6 +148,15 @@ def build(title, out_path):
 
     inner = (box[0] + CARD_PAD_X, box[1] + CARD_PAD_Y, box[2] - CARD_PAD_X, box[3] - CARD_PAD_Y)
     size, font = fit_size(lines, draw, inner[2] - inner[0], inner[3] - inner[1])
+
+    # @AI:CONSTRAINT 하한 미달이면 «그리지도 저장하지도 않는다».
+    #   예전엔 저장을 끝낸 뒤에 exit 2 를 냈다. 이 스크립트를 부르는 쪽은 사람이 아니라
+    #   Claude 라, 종료코드보다 «파일이 생겼나»를 먼저 본다 — 그러면 v1 사고
+    #   (검색결과에서 글자 7px)가 «경고는 떴는데 그 파일이 그대로 쓰인» 경로로 재발한다.
+    #   실패는 산출물을 남기지 않는다.
+    if size < MIN_READABLE:
+        return None, size, lines
+
     line_h = size * LINE_SPACING
     cx = (inner[0] + inner[2]) / 2
     y = inner[1] + ((inner[3] - inner[1]) - len(lines) * line_h) / 2
@@ -153,12 +178,13 @@ if __name__ == "__main__":
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     p, s, ls = build(a.title, a.out)
-    tag = "OK" if s >= MIN_READABLE else "TOO-SMALL"
-    print("[%s] saved: %s" % (tag, p))
-    print("[%s] font size: %d (%.1f%% of canvas) | lines: %d" % (tag, s, s / CANVAS * 100, len(ls)))
-    if s < MIN_READABLE:
-        # 이 줄은 순수 ASCII 로 유지할 것. em-dash 같은 문자는 Windows cp949 콘솔에서
-        # UnicodeEncodeError 로 죽어, 경고를 보여주려던 자리에서 스택트레이스가 뜬다(실측).
-        print("[TOO-SMALL] copy is too long - cut to 3 lines x 6 chars.")
-        print("[TOO-SMALL] 카피가 깁니다. 3줄 x 줄당 6자 이내로 줄이세요.")
+    if p is None:
+        # 아래 영문 줄은 순수 ASCII 로 유지할 것. em-dash 같은 문자는 Windows cp949
+        # 콘솔에서 UnicodeEncodeError 로 죽어, 경고를 보여주려던 자리에서
+        # 스택트레이스가 뜬다(실측).
+        print("[TOO-SMALL] font size: %d (min %d) | lines: %d" % (s, MIN_READABLE, len(ls)))
+        print("[TOO-SMALL] copy is too long - cut to 3 lines x 6 chars. (file not written)")
+        print("[TOO-SMALL] 카피가 깁니다. 3줄 x 줄당 6자 이내로 줄이세요. (파일을 만들지 않았습니다)")
         sys.exit(2)
+    print("[OK] saved: %s" % p)
+    print("[OK] font size: %d (%.1f%% of canvas) | lines: %d" % (s, s / CANVAS * 100, len(ls)))
