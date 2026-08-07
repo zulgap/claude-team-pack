@@ -22,13 +22,26 @@ name: pr-telegram-notify
 #    알림에 필요한 것은 이벤트 페이로드뿐이다. 체크아웃하면 PR 브랜치의 코드가
 #    secret 을 쥔 러너에서 돌 여지가 생긴다. 이 job 은 저장소 내용을 보지 않는다.
 #
-# 알림이 안 오는 경우가 셋이고 성격이 다르다:
+# 알림이 안 오는 경우는 둘이고 성격이 다르다:
 #    ① draft 로 연 PR      → 정상. ready_for_review 때 알린다 (job skip = 회색)
-#    ② fork PR            → secret 이 없어 실패. 현재 외부 기여가 없어 수용 (빨간불)
-#    ③ 토큰 미등록·API 실패 → 장애 (빨간불). ②와 구분되게 실패 메시지에 사유를 적는다
+#    ② 토큰 미등록·API 실패 → 장애 (빨간불). 실패 메시지에 사유를 적는다
+#
+#    ⚠️ fork PR 은 여기 해당하지 않는다 — 아래 pull_request_target 이라 secret 이
+#       전달되어 정상 발송된다. (트리거를 pull_request 로 되돌리면 이 항목이 부활한다)
 
+# 🔴 pull_request 가 아니라 pull_request_target 이다.
+#    pull_request 는 **PR 브랜치의** 워크플로우를 실행한다 → 팀원이 이 파일을 고친 PR 을
+#    열면 그 수정본이 러너에서 돌고, 그 러너는 봇 토큰 secret 을 쥔다(레포가 public 이라
+#    write 권한자 누구나 가능). pull_request_target 은 **base(main) 의** 워크플로우를
+#    실행하므로 PR 이 이 파일을 어떻게 고쳐도 여기 적힌 내용만 돈다.
+#
+#    이 트리거는 보통 위험하다고 알려져 있는데 그건 **PR 코드를 체크아웃해 실행할 때**다.
+#    이 job 은 actions/checkout 이 없고 이벤트 페이로드만 쓴다 — 그래서 안전한 쪽에 속한다.
+#    (위 「actions/checkout 을 추가하지 말 것」 주석이 이제 보안 요건이 됐다.)
+#
+#    ⚠️ 대신 fork PR 에도 secret 이 전달되어 알림이 간다. 외부 기여가 0 이라 수용한다.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, reopened, ready_for_review, closed]
     branches: [main]
 
@@ -55,7 +68,7 @@ jobs:
           set -euo pipefail
 
           if [ -z "${TOKEN:-}" ]; then
-            echo "::error::TELEGRAM_BOT_TOKEN secret 이 없습니다(또는 fork PR 이라 secret 이 전달되지 않았습니다)."
+            echo "::error::TELEGRAM_BOT_TOKEN secret 이 없습니다."
             echo "::error::등록 위치 — Settings > Secrets and variables > Actions > New repository secret"
             exit 1
           fi

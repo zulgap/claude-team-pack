@@ -311,7 +311,7 @@ try {
 
   # 6.6b 응답 캡처 훅 (standalone Stop) — 어시스턴트 응답을 prompt_log turn_uuid 짝으로 전송 (지시-응답 학습쌍)
   # @AI:CONSTRAINT prompt-capture와 동일 fail-open — 토큰 없으면 조용히 skip, 턴 종료 절대 차단 X.
-  $rcSrc = Join-Path $PSScriptRoot "hooksesponse-capture.js"
+  $rcSrc = Join-Path $PSScriptRoot "hooks\response-capture.js"
   $rcDst = Join-Path $zulgapDir "response-capture.js"
   if (Test-Path $rcSrc) { Copy-Item $rcSrc $rcDst -Force }
   $rcCmd = "node `"$rcDst`""
