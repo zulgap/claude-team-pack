@@ -1,0 +1,97 @@
+name: pr-telegram-notify
+
+# 목적: PR 이 올라오거나 처리되면 팀챗(줄갭-클로드 내부개발소통)에 알린다.
+#
+# 왜 만들었나 (2026-08-08):
+#   zulgap-make-skill/SKILL.md 가 직원에게 *"PR 이 올라가면 자동으로 알림이 간다 —
+#   따로 알릴 필요 없다"* 고 안내해 왔는데 **그 경로가 존재한 적이 없었다.**
+#   실측 — 이 레포 워크플로우 3개·팀팩 스킬·백엔드 webhook 전부 0건, 팀챗 8월 봇 발신 0건.
+#   손으로 알린 PR(#71·#82·#83·#84)만 제때 처리됐고 #103·#127 은 아무도 모른 채 지나갔다.
+#   문서가 "알릴 필요 없다"고 지시했기 때문에 **침묵이 능동적으로 만들어졌다.**
+#
+# 🔴 continue-on-error 를 붙이지 말 것.
+#    발송 실패가 조용하면 이 배선은 «있는데 안 도는» 상태로 또 두 달을 간다.
+#    실패는 PR 화면의 빨간불로 보여야 한다 — 그게 이 워크플로우의 관측 설계 전부다.
+#
+# 🔴 PR 제목·작성자를 run: 본문에 ${{ }} 로 직접 넣지 말 것.
+#    이 레포는 public 이라 아무나 PR 을 열 수 있고, 제목에 $(...) 나 백틱을 넣으면
+#    러너에서 그대로 실행된다. 그 러너는 봇 토큰 secret 을 쥐고 있다.
+#    → 전부 env: 로 넘기고 "$VAR" 로만 쓴다. 전송은 --data-urlencode 로 셸 보간 없이.
+#
+# 🔴 actions/checkout 을 추가하지 말 것 (설계 조건).
+#    알림에 필요한 것은 이벤트 페이로드뿐이다. 체크아웃하면 PR 브랜치의 코드가
+#    secret 을 쥔 러너에서 돌 여지가 생긴다. 이 job 은 저장소 내용을 보지 않는다.
+#
+# 알림이 안 오는 경우가 셋이고 성격이 다르다:
+#    ① draft 로 연 PR      → 정상. ready_for_review 때 알린다 (job skip = 회색)
+#    ② fork PR            → secret 이 없어 실패. 현재 외부 기여가 없어 수용 (빨간불)
+#    ③ 토큰 미등록·API 실패 → 장애 (빨간불). ②와 구분되게 실패 메시지에 사유를 적는다
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    # draft 는 ready_for_review 때 알린다. 단 closed 는 draft 였어도 결과를 알린다.
+    if: github.event.pull_request.draft == false || github.event.action == 'closed'
+    steps:
+      - name: 팀챗 발송
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: '-5453618406'          # 줄갭-클로드(내부개발소통)
+          PR_NUM: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_USER: ${{ github.event.pull_request.user.login }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          ACTION: ${{ github.event.action }}
+          MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::error::TELEGRAM_BOT_TOKEN secret 이 없습니다(또는 fork PR 이라 secret 이 전달되지 않았습니다)."
+            echo "::error::등록 위치 — Settings > Secrets and variables > Actions > New repository secret"
+            exit 1
+          fi
+
+          if [ "$ACTION" = "closed" ]; then
+            if [ "$MERGED" = "true" ]; then
+              HEAD="✅ PR #${PR_NUM} 머지됐습니다"
+            else
+              HEAD="🚫 PR #${PR_NUM} 닫혔습니다 (머지 안 됨)"
+            fi
+          else
+            HEAD="🆕 PR #${PR_NUM} 올라왔습니다"
+          fi
+
+          # printf 로 조립한다 — heredoc/들여쓰기는 본문에 공백을 섞는다.
+          # parse_mode 는 쓰지 않는다: PR 제목에 _ * ( 가 흔해 Markdown 파싱 오류로 발송이 죽는다.
+          #
+          # 🔴 본문을 파일에 쓰고 text@파일 로 보낸다 — 명령줄 인자로 넘기지 않는다.
+          #    2026-08-08 실측: 개발 PC(Git Bash)에서 같은 문자열을 인자로 넘기면 텔레그램이
+          #    `Bad Request: strings must be encoded in UTF-8` 로 거부했다. 이모지는 통과하는데
+          #    **한글만** 깨졌다(CP949 로 변환되기 때문. 이모지는 CP949 에 없어 UTF-8 로 살아남는다).
+          #    파일은 바이트 그대로 실려 같은 문자열이 성공했다. 러너는 UTF-8 이라 인자로도
+          #    될 가능성이 높지만, **깨지는 것을 실제로 본 이상 추정에 기대지 않는다.**
+          MSG="${RUNNER_TEMP:-/tmp}/pr-notify-msg.txt"
+          printf '%s\n%s\n%s\n%s' "$HEAD" "$PR_USER" "$PR_TITLE" "$PR_URL" > "$MSG"
+
+          RESP=$(curl -sS -m 15 -X POST \
+            "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text@${MSG}")
+
+          # 텔레그램은 HTTP 200 으로도 실패를 돌려준다 — 상태코드가 아니라 본문으로 판정한다.
+          if ! printf '%s' "$RESP" | grep -q '"ok":true'; then
+            echo "::error::텔레그램 발송 실패 — 방에 알림이 가지 않았습니다. 직접 알려주세요."
+            printf '%s' "$RESP" | head -c 500
+            exit 1
+          fi
+
+          echo "발송 성공 — PR #${PR_NUM} (${ACTION})"
