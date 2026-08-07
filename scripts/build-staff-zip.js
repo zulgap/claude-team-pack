@@ -24,6 +24,10 @@ const { execFileSync } = require('child_process');
 //   파일을 추가·삭제할 땐 이 배열만 고치면 된다.
 const ENTRIES = [
   'hooks/prompt-capture.js',
+  // @AI:CONSTRAINT install.ps1/install.sh 가 hooks/ 에서 복사하는 파일은 **전부 여기 있어야 한다.**
+  //   2026-08-08 실측: response-capture.js 가 빠져 있어 install 이 복사할 원본이 아예 없었다
+  //   (install.ps1 의 경로 오타와 겹쳐 두 겹으로 막혀 있었다). 훅을 새로 추가하면 이 목록도 볼 것.
+  'hooks/response-capture.js',
   'hooks/team-guide-fetch.js',
   'mcp-bridge/index.js',
   'mcp-bridge/package.json',
