@@ -250,7 +250,7 @@ git push -u origin feat/<스킬이름>
 
 ```bash
 gh pr create -R zulgap/claude-team-pack --base main --title "<제목>" --body-file /tmp/pr.txt
-gh pr checks <번호> -R zulgap/claude-team-pack     # consistency·guard·ownership 3종 다 pass 확인
+gh pr checks <번호> -R zulgap/claude-team-pack     # CI 검사가 전부 pass 인지 확인
 ```
 
 ⚠️ **`ownership` 이 빨강이어도 당황하지 말 것** — 남의 스킬 본체를 고쳤을 때 **그 소유자의 승인**을 요구하는 검사다.
@@ -258,7 +258,10 @@ gh pr checks <번호> -R zulgap/claude-team-pack     # consistency·guard·owner
 승인이 등록되면 검사가 **자동으로 다시 돌아** 초록이 된다. (내가 만든 스킬을 내가 고칠 때는 안 걸린다)
 
 **PR 번호와 주소를 사용자에게 알려주고 끝낸다.**
-PR이 올라가면 사내 개발 소통방에 자동으로 알림이 간다 — 따로 알릴 필요 없다.
+
+초안(draft)이 아니면 사내 개발 소통방에 알림이 자동으로 간다(`pr-telegram-notify`).
+다만 **발송이 실패하면 그 검사가 빨간불이 되고 방에는 아무것도 안 간다** — 그때는 직접 알릴 것.
+초안으로 열었다면 "Ready for review" 를 누르는 시점에 알림이 간다.
 
 ---
 
