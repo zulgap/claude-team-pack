@@ -24,6 +24,114 @@ import hwpx_lib as H
 # 한컴 (변환에만 필요 — Windows + 한컴오피스)
 # ────────────────────────────────────────────────────────────
 
+def _ensure_security_module():
+    """한글 자동화 보안 팝업을 없앤다. 등록된 모듈 이름을 돌려준다.
+
+    🔴 이걸 안 하면 파일 하나 여는 데 **42.5초**가 걸린다(실측). 보안 승인창이
+    떠서 기다리는 시간이고, 등록 후에는 **0.1초**다.
+
+    한컴 설치본에 검사 모듈 DLL 은 이미 들어 있는데 레지스트리에 등록돼 있지
+    않은 경우가 많다. 등록은 HKCU 라 **관리자 권한이 필요 없다**.
+    되돌리려면 그 값을 지우면 된다:
+      HKCU\\Software\\HNC\\HwpAutomation\\Modules
+    """
+    import winreg
+    KEY = r'Software\HNC\HwpAutomation\Modules'
+    NAME = 'FilePathCheckerModuleExample'
+
+    # 이미 등록돼 있으면 그대로 쓴다
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, KEY) as k:
+            path, _ = winreg.QueryValueEx(k, NAME)
+            if os.path.exists(path):
+                return NAME
+    except OSError:
+        pass
+
+    # DLL 을 찾는다 (설치 위치가 PC마다 다르므로 후보를 훑는다)
+    cands = []
+    for root in (os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)'),
+                 os.environ.get('ProgramFiles', r'C:\Program Files')):
+        cands.append(os.path.join(root, 'Hnc', 'ExCtrl', 'Bin',
+                                  'FilePathCheckerModuleExample.dll'))
+    dll = next((c for c in cands if os.path.exists(c)), None)
+    if not dll:
+        print('  (참고) 보안 검사 모듈 DLL 을 못 찾았습니다. 파일 여는 데 시간이 걸리고\n'
+              '         한글 보안 창이 뜰 수 있습니다. 뜨면 «허용»을 눌러주세요.')
+        return None
+
+    try:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, KEY) as k:
+            winreg.SetValueEx(k, NAME, 0, winreg.REG_SZ, dll)
+        print('  보안 모듈을 등록했습니다 (한 번만 하면 됩니다). 이제 팝업 없이 열립니다.')
+        return NAME
+    except Exception as e:
+        print('  (참고) 보안 모듈 등록 실패 — 팝업이 뜰 수 있습니다: %s' % e)
+        return None
+
+
+_dismiss_stop = None
+
+
+def _start_dialog_dismisser():
+    """뜨는 확인창을 자동으로 눌러준다 (백그라운드).
+
+    🔴 `SetMessageBoxMode` 로 안 막히는 창이 있다. 대표적인 것이
+    «상위 버전에서 작성한 문서입니다» — 설치된 한글보다 최신 버전으로 만든 문서를
+    열 때 뜬다(실측: 한글 11.0 에서 최근 지원사업 양식들). 한글을 올리지 않는 한
+    계속 뜨므로, 뜨면 눌러주는 감시를 둔다. 여러 파일을 잇달아 처리할 때 특히 필요하다.
+    """
+    global _dismiss_stop
+    if _dismiss_stop is not None:
+        return
+    try:
+        import win32gui
+        import win32con
+    except ImportError:
+        return
+    import threading
+    _dismiss_stop = threading.Event()
+
+    def loop():
+        while not _dismiss_stop.is_set():
+            wins = []
+
+            def collect(h, _):
+                try:
+                    if win32gui.IsWindowVisible(h) and win32gui.GetClassName(h) == '#32770':
+                        wins.append(h)
+                except Exception:
+                    pass
+                return True
+            try:
+                win32gui.EnumWindows(collect, None)
+            except Exception:
+                pass
+            for hwnd in wins:
+                btn = []
+
+                def findbtn(h, _):
+                    try:
+                        if win32gui.GetClassName(h) == 'Button':
+                            t = win32gui.GetWindowText(h)
+                            if '확인' in t or '예' in t or t.upper().startswith('OK'):
+                                btn.append(h)
+                    except Exception:
+                        pass
+                    return True
+                try:
+                    win32gui.EnumChildWindows(hwnd, findbtn, None)
+                    if btn:
+                        win32gui.SendMessage(btn[0], win32con.BM_CLICK, 0, 0)
+                    else:
+                        win32gui.PostMessage(hwnd, win32con.WM_COMMAND, win32con.IDOK, 0)
+                except Exception:
+                    pass
+            time.sleep(0.1)
+
+    threading.Thread(target=loop, daemon=True).start()
+
+
 def _hwp():
     if sys.platform != 'win32':
         sys.exit('이 명령은 한컴오피스가 깔린 Windows 에서만 됩니다.\n'
@@ -33,6 +141,9 @@ def _hwp():
         import win32com.client as w
     except ImportError:
         sys.exit('pywin32 가 필요합니다:  pip install pywin32')
+
+    mod = _ensure_security_module()
+    _start_dialog_dismisser()
     subprocess.run('taskkill /F /IM Hwp.exe /T', shell=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.2)
@@ -41,7 +152,15 @@ def _hwp():
     except Exception as e:
         sys.exit('한글을 띄우지 못했습니다. 한컴오피스가 설치돼 있는지 확인해주세요.\n  %s' % e)
     h.SetMessageBoxMode(0xFFFFFF)
-    h.RegisterModule('FilePathCheckDLL', 'FilePathChecker')
+    if mod:
+        # 🔴 두 번째 인자는 **레지스트리에 등록한 이름과 같아야** 한다.
+        #    안 맞으면 RegisterModule 이 False 를 주고 팝업 대기로 되돌아간다(실측).
+        h.RegisterModule('FilePathCheckDLL', mod)
+    try:
+        # 창을 숨긴다 — 여러 파일을 잇달아 처리할 때 화면이 깜빡이지 않는다
+        h.XHwpWindows.Item(0).Visible = False
+    except Exception:
+        pass
     return h
 
 
