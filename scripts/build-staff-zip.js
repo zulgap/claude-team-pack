@@ -28,6 +28,11 @@ const ENTRIES = [
   //   2026-08-08 실측: response-capture.js 가 빠져 있어 install 이 복사할 원본이 아예 없었다
   //   (install.ps1 의 경로 오타와 겹쳐 두 겹으로 막혀 있었다). 훅을 새로 추가하면 이 목록도 볼 것.
   'hooks/response-capture.js',
+  // @AI:CONSTRAINT 같은 사고 두 번째 — install.ps1 §6.7 이 이 파일을 복사하는데 목록에 없었다.
+  //   경로 문자열은 멀쩡했으나(`\p` 는 이스케이프 안 됨) **원본이 zip 에 없어** Test-Path 가 false 였고,
+  //   복사는 건너뛴 채 등록만 진행돼(§6.7 은 Test-Path 와 무관하게 등록) 「파일 없는 훅」이 박혔다.
+  //   PreCompact 는 압축 때만 도는 훅이라 실패가 눈에 띄지 않는다 — 위 response-capture 와 동일 클래스.
+  'hooks/precompact-handoff.js',
   'hooks/team-guide-fetch.js',
   'mcp-bridge/index.js',
   'mcp-bridge/package.json',

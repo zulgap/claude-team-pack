@@ -19,6 +19,12 @@
 //   가 돼 있었다(`\r` 이 CR 로 변환). Test-Path 가 항상 false 라 **복사가 안 되는데 등록만 됐고**,
 //   도입(#39, 2026-07-23)부터 16일간 무증상이었다. 경로는 고쳤지만 그것만으로는 **이미 설치를 마친
 //   PC 가 낫지 않는다** — install.ps1 은 설치 때 한 번 도는 파일이기 때문이다. 그래서 여기에 넣는다.
+//
+// 2026-08-08 추가 — precompact-handoff 도 같은 클래스였다(겹은 하나):
+//   경로 오타는 없었으나 build-staff-zip.js ENTRIES 에 빠져 **zip 에 원본이 없었다.** install.ps1
+//   §6.7 은 Test-Path 실패 시 복사만 건너뛰고 등록은 그대로 해서, 윈도우 zip 설치자는 settings.json
+//   에 PreCompact 훅이 있는데 실행할 파일이 없다. 맥(install.sh)은 RAW 직접 fetch 라 무사.
+//   ENTRIES 를 고쳐도 이미 설치한 PC 는 낫지 않으므로 위와 같은 이유로 TARGETS 에도 넣는다.
 
 const fs = require('fs');
 const path = require('path');
@@ -34,11 +40,13 @@ const RAW = 'https://raw.githubusercontent.com/zulgap/claude-team-pack/main/hook
 const TARGETS = [
   { file: 'prompt-capture.js', event: 'UserPromptSubmit', timeout: 8 },
   { file: 'response-capture.js', event: 'Stop', timeout: 8 },
+  { file: 'precompact-handoff.js', event: 'PreCompact', timeout: 15 },
 ];
 
-// @AI:CONSTRAINT 워치독은 TARGETS 개수 × 다운로드 timeout 보다 커야 한다. 지금 2 × 4s = 8s < 12s.
+// @AI:CONSTRAINT 워치독은 TARGETS 개수 × 다운로드 timeout 보다 커야 한다. 지금 3 × 4s = 12s < 16s.
 //   상위(team-guide-fetch items)가 이 스크립트에 준 실행 timeout 30s 보다는 작아야 한다.
-setTimeout(() => { try { console.log('[hook-doctor] timeout — skip'); } catch (_) {} process.exit(0); }, 12000);
+//   🔴 TARGETS 를 늘리면 이 값도 같이 올릴 것 — 안 올리면 마지막 훅이 워치독에 잘려 조용히 누락된다.
+setTimeout(() => { try { console.log('[hook-doctor] timeout — skip'); } catch (_) {} process.exit(0); }, 16000);
 
 function done(msg) {
   try { fs.mkdirSync(ZULGAP_DIR, { recursive: true }); fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
