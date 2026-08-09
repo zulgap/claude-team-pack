@@ -336,6 +336,50 @@ def pic_node(img_id, w, h, orig_w, orig_h, treat_as_char, vert_rel, horz_rel,
            w, h, treat_as_char, vert_rel, horz_rel, vert_off, horz_off, name))
 
 
+def pic_table(items, tbl_id, z=3, border_fill='2', char_pr='9', para_pr='0'):
+    """그림을 담은 **1행 N열 표**를 만든다. items = [(pic_xml, w, h)] (HWPUNIT).
+
+    🔴 문단에 직접 붙인 그림은 **이미지의 픽셀 수**가 크기를 정한다 — `<hp:sz>`,
+    `<hp:orgSz>`, 이미지 DPI 메타데이터가 **셋 다 무시**된다(실측). 그래서 크기를
+    맞추려면 픽셀을 줄여야 하고 결과가 96dpi 라 인쇄하면 거칠다.
+    **표 셀 안에서는 셀 크기가 표시 크기를 정한다** — 원본 1025px 을 그대로 넣어도
+    110mm 로 잡혔다(96 → 237dpi). 그림은 되도록 이 함수로 감싸 넣을 것.
+
+    🔴 옛 그림 노드를 지우는 순서에 주의 — 표를 먼저 끼우면 표 **안**의 그림이 같은
+    binaryItemIDRef 라, 뒤이은 삭제가 방금 넣은 것을 지운다. 옛 노드를 먼저 걷어낼 것.
+
+    예외: 도장처럼 글자 **옆**에 놓아야 하는 그림은 표로 감싸면 나란히 못 놓는다.
+    """
+    if not items:
+        raise ValueError('items 가 비었다')
+    tw = sum(w for _, w, _ in items)
+    th = max(h for _, _, h in items)
+    tcs = []
+    for k, (pic, w, _h) in enumerate(items):
+        tcs.append(
+            '<hp:tc name="" header="0" hasMargin="0" protect="0" editable="0" dirty="0" '
+            'borderFillIDRef="%s"><hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" '
+            'vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" '
+            'textHeight="0" hasTextRef="0" hasNumRef="0">'
+            '<hp:p id="0" paraPrIDRef="%s" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">'
+            '<hp:run charPrIDRef="%s">%s</hp:run><hp:linesegarray/></hp:p></hp:subList>'
+            '<hp:cellAddr colAddr="%d" rowAddr="0"/><hp:cellSpan colSpan="1" rowSpan="1"/>'
+            '<hp:cellSz width="%d" height="%d"/>'
+            '<hp:cellMargin left="0" right="0" top="0" bottom="0"/></hp:tc>'
+            % (border_fill, para_pr, char_pr, pic, k, w, th))
+    return ('<hp:tbl id="%d" zOrder="%d" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" '
+            'textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="0" '
+            'rowCnt="1" colCnt="%d" cellSpacing="0" borderFillIDRef="%s" noAdjust="0">'
+            '<hp:sz width="%d" widthRelTo="ABSOLUTE" height="%d" heightRelTo="ABSOLUTE" protect="0"/>'
+            '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" '
+            'holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="COLUMN" vertAlign="TOP" '
+            'horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
+            '<hp:outMargin left="0" right="0" top="0" bottom="0"/>'
+            '<hp:inMargin left="0" right="0" top="0" bottom="0"/>'
+            '<hp:tr>%s</hp:tr></hp:tbl>'
+            % (tbl_id, z, len(items), border_fill, tw, th, ''.join(tcs)))
+
+
 def anchor_pic_first_para(xml, pic_xml, char_pr='0'):
     """그림을 **문서 첫 문단**에 매단다.
 
