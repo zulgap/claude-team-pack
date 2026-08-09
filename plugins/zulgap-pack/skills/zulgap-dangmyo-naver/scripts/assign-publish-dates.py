@@ -13,6 +13,9 @@
 정원 (주 21건 = 홈페이지 주간 생산량):
     월 4 · 화 4 · 수 4 · 목 4 · 금 5 · 토·일 0
 
+🔴 공휴일은 보지 않는다(2026-08-09 확정). 홈페이지가 공휴일에도 발행하므로 네이버만 쉬면
+   그만큼 적체가 쌓일 뿐이다. 댕묘 네이버는 공휴일과 무관하게 월~금으로 돈다.
+
 사용:
     python assign-publish-dates.py < plan.json
     python assign-publish-dates.py --selftest
@@ -20,7 +23,6 @@
 stdin JSON:
     {
       "today": "2026-08-09",                     # 선택. 있으면 그 다음날부터만 배치
-      "holidays": ["2026-08-17"],                # 선택. 매번 조회해서 넘길 것 — 코드에 박지 않는다
       "occupied": {"2026-08-10": 3},             # 선택. 이미 그 날짜에 잡힌 기존 카드 수
       "items": [{"title": "...", "homepage_pub": "2026-08-07"}]
     }
@@ -50,14 +52,13 @@ def d(s):
     return date(y, m, dd)
 
 
-def is_open(day, holidays):
-    return CAPACITY[day.weekday()] > 0 and day not in holidays
+def is_open(day):
+    return CAPACITY[day.weekday()] > 0
 
 
-def assign(items, occupied=None, holidays=None, today=None):
+def assign(items, occupied=None, today=None):
     """(배치결과, 경고목록) 을 돌려준다. items 는 [{title, homepage_pub}]."""
     occ = dict(occupied or {})
-    hol = set(holidays or [])
     warns = []
 
     ordered = sorted(enumerate(items), key=lambda p: (d(p[1]["homepage_pub"]), p[0]))
@@ -75,7 +76,7 @@ def assign(items, occupied=None, holidays=None, today=None):
             start = cursor
 
         day = start
-        while not (is_open(day, hol) and occ.get(day, 0) < CAPACITY[day.weekday()]):
+        while not (is_open(day) and occ.get(day, 0) < CAPACITY[day.weekday()]):
             day += timedelta(days=1)
 
         occ[day] = occ.get(day, 0) + 1
@@ -147,10 +148,9 @@ def selftest():
     rows, _ = assign([{"title": "d", "homepage_pub": "2026-08-15"}])
     eq("주말은 건너뛴다", rows[0]["naver_due"], "2026-08-17")
 
-    # 5) 공휴일은 넘긴다.
-    rows, _ = assign([{"title": "e", "homepage_pub": "2026-08-16"}],
-                     holidays=[date(2026, 8, 17)])
-    eq("공휴일 제외", rows[0]["naver_due"], "2026-08-18")
+    # 5) 공휴일이어도 넘기지 않는다 — 8/17은 광복절 대체공휴일이지만 평일 정원으로 쓴다.
+    rows, _ = assign([{"title": "e", "homepage_pub": "2026-08-16"}])
+    eq("공휴일 무시", rows[0]["naver_due"], "2026-08-17")
 
     # 6) 홈페이지 발행 순서를 뒤집지 않는다.
     items = [{"title": "old", "homepage_pub": "2026-08-03"},
@@ -185,7 +185,6 @@ def main():
     rows, warns = assign(
         cfg["items"],
         occupied={d(k): v for k, v in (cfg.get("occupied") or {}).items()},
-        holidays=[d(x) for x in (cfg.get("holidays") or [])],
         today=d(cfg["today"]) if cfg.get("today") else None,
     )
     render(rows, warns)
