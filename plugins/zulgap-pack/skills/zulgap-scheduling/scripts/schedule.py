@@ -49,6 +49,25 @@ KR_HOLIDAYS = {
     # 조사 시점에 미확정). 추측값을 넣으면 배치가 조용히 하루씩 어긋난다. 관보 확정본으로 채울 것.
 }
 
+# ── 자동 발행 채널 (v1.7, 2026-08-11) ────────────────────────────────────────
+# 🔴 판정 SSOT는 발행 크론의 필터다 — judgmentos
+#   `unified-agent/plugins/marketing/tools/publish-tools.js` `_buildCardQuery`:
+#     { property: '콘텐츠 구분', select: { equals: '홈페이지 블로그' } }
+#   즉 **홈페이지 블로그만 서버가 발행하고, 네이버는 사람이 손으로 올린다**(사장님 확정 2026-08-11).
+# ⚠️ 부분일치('홈페이지' 포함)로 넓히지 말 것 — '홈페이지 배너' 같은 다른 구분에 시각이 붙으면
+#   서버는 아무것도 안 하는데 칸에는 시각이 찍혀 「자동으로 나갔겠지」 오해를 만든다(발행 0 사고).
+#   크론이 정확 일치로 거르므로 여기도 정확 집합으로 둔다. 표기 흔들림(공백 유무)만 흡수.
+AUTO_PUBLISH_CHANNELS = {"홈페이지 블로그", "홈페이지블로그"}
+# 자동 발행 채널의 기본 시각(KST). 날짜만 넣으면 크론이 그날 00:00로 읽어 **새벽 0시 4분**에
+# 나간다(`publish-core.dueAtMs` ① 경로 + 크론 4,19,34,49분). 그래서 시각을 명시한다.
+DEFAULT_PUBLISH_TIME = "07:00"
+
+
+def _is_auto_publish(channel):
+    """서버(크론)가 발행하는 채널인가. 아니면 사람이 손으로 올린다."""
+    return str(channel or "").replace(" ", "") in {c.replace(" ", "") for c in AUTO_PUBLISH_CHANNELS}
+
+
 # 네이버블로그 채널만 월요일 제외 (v1.4 규칙, 2026-08-02) — 채널명에 이 문자열이 들어가면 적용
 NAVER_CHANNEL_MARKER = "네이버"
 # 우선순위 단계 (v1.5 규칙) — 공백·마침표를 걷어낸 뒤 이 문자열을 포함하면 최우선 배치
@@ -172,6 +191,10 @@ def compute(cfg):
         if gap < 2 or gap > 7:
             warnings.append(f"{main_ch} 간격 {gap}일 ({_s(a)}→{_s(b)}) — 표준 2~7일 벗어남")
 
+    publish_time = str(cfg.get("publish_time") or DEFAULT_PUBLISH_TIME)
+    if not re.fullmatch(r"\d{2}:\d{2}", publish_time):
+        raise SystemExit(f"[입력 오류] publish_time 은 HH:mm 형식이어야 함 (받은 값: {publish_time!r})")
+
     result = []
     for it, d0 in zip(items, main_dates):
         row = {"title": it.get("title"), "stage": it.get("stage"),
@@ -188,12 +211,25 @@ def compute(cfg):
                 if nb > end:  # +1 영업일 규칙상 정당하지만, 대상 월을 벗어나면 사람이 알아야 한다
                     warnings.append(f"'{it.get('title')}' {ch} {_s(nb)} — 대상 월({month}) 경계 초과")
                 prev = nb
+        # @AI:INTENT v1.7 — 「서버에 주는 명령」과 「사람에게 주는 안내」를 칸에서 가른다.
+        #   자동 채널만 시각을 담고(그 시각에 실제로 나간다), 수동 채널은 None(날짜만 기입).
+        #   수동 칸에 시각을 찍으면 「자동으로 나갔겠지」 오해로 아무도 안 올려 그날 발행이 0이 된다.
+        row["publish_at"] = {
+            ch: (f"{d} {publish_time}" if (d and _is_auto_publish(ch)) else None)
+            for ch, d in row["dates"].items()
+        }
         result.append(row)
+
+    # 채널을 「서버가 발행하는 곳」과 「사람이 올리는 곳」으로 가른다 (v1.7).
+    auto = [c for c in channels if _is_auto_publish(c)]
+    manual = [c for c in channels if not _is_auto_publish(c)]
 
     return {
         "month": month, "start": _s(start), "end": _s(end), "start_rule": start_rule,
         "channels": channels, "items": result,
         "available_days": {main_ch: [_s(d) for d in main_days]},
+        "publish_time": publish_time,
+        "auto_channels": auto, "manual_channels": manual,
         "holiday_data_missing": bool(missing_years), "warnings": warnings,
     }
 
