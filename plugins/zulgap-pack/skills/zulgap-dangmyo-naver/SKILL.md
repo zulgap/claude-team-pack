@@ -240,6 +240,7 @@ v2는 배경 위에 흰 카드를 얹어 166px을 확보한다. 카피가 길면
 (2026-08-09 실측: 카드 19장에서 대조가 막혀 전량을 손으로 되짚었다).
 
 **카드를 만들기 전에 도구로 판정한다. FAIL이면 `create_blog_card` 를 호출하지 않는다.**
+🔴 **`tenant_id`를 넣지 말 것** (2026-08-11 신설) — 자동 주입된다. 자칭 `tenant_id`가 내 토큰의 회사와 다르면 그 자리에서 `tenant_mismatch`로 끊긴다(관문 순서 ③ → ④). `create_blog_card`는 `write_tenant_id`를 받지 않는다.
 
 ```bash
 python scripts/check-card-title.py --title "<조립한 제목>" --homepage-pub <YYYY-MM-DD>

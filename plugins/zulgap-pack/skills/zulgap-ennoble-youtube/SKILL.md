@@ -335,6 +335,7 @@ python -c "import io;t=io.open('draft.txt',encoding='utf-8').read();n=len(t.repl
 > 「규격 충족」으로 통과했다. 1,750자는 330자/분에서 5분 18초다. **상한 자체가 틀려 있었다.**
 
 말투 검사는 제디 도구 `validate_ai_voice` 를 쓴다(profile 은 미지정 또는 `cardnews`).
+🔴 **`tenant_id`를 넣지 말 것** (2026-08-11 신설) — 자동 주입된다. 자칭 `tenant_id`가 내 토큰의 회사와 다르면 그 자리에서 `tenant_mismatch`로 끊긴다(관문 순서 ③ → ④). 이 도구는 `read_tenant_id`를 받지 않는다.
 **AI가 눈으로 세지 말 것** — 셀프체크는 틀린다.
 
 ---
