@@ -1,7 +1,7 @@
 ---
 name: zulgap-blog
 description: 블로그 글 1편을 조사 → 개요 확정 → 초안 → 도구 검수 → 시각물 → 노션 카드까지 만든다. 발행은 사람이 확정할 때만. "/zulgap-blog", "블로그 써줘", "OO 주제로 글 써줘", "블로그 글 만들어줘", "홈페이지에 글 올려줘" 에 호출. (제디 토큰 필요)
-version: 2.8.0
+version: 2.9.0
 origin: teampack
 tier: tenant-only
 ---
@@ -241,6 +241,23 @@ grep -oE 'https://[a-z0-9.-]+/storage/v1/object/public/[^"]{10,200}\.(png|jpg|jp
 2. `attach_blog_card_images({ notion_page_id, images: [{ marker, url, caption }] })` → 마커 자리에 이미지 삽입 + 마커 제거
 
 **마커가 하나라도 남으면 발행이 차단된다.** 첨부 후 `markers_removed`가 이미지 수와 같은지 확인한다.
+
+### 🔴 파일 첨부(xlsx·pdf 등)는 노션에 붙여도 블로그에 안 나간다
+
+**발행 배관은 이미지 블록만 처리하고 노션 파일 블록은 통째로 버린다.** 실측(2026-08-06 · RPG ②편):
+서비스된 HTML에서 `xlsx` · `attachment` · `file-upload` · `download` 가 **전부 0건**, 같은 글의 이미지 11장은 정상 노출.
+
+- 🔴 **노션 카드에 파일이 붙어 있는 것은 「올라갔다」의 증명이 아니다.** 카드에서는 열리고 사이트에서만 사라지므로 **라이브 HTML을 보기 전에는 알 수 없다**
+- ✅ **양식·자료를 배포하려면 공개 URL을 본문 링크로 건다** — 노션 파일 블록이 아니라 마크다운 링크로. 공개 주소가 없으면 **본문에 「아래에서 내려받으실 수 있습니다」류 문장을 쓰지 않는다**
+- ⚠️ 위 실사고는 문구가 먼저 나가고 파일이 못 따라가, 방문자에게 **받을 것 없는 안내 문장이 그대로 노출된 채**로 남았다
+
+```powershell
+# 발행 후 첨부가 실제로 나갔는지 — 서비스된 HTML을 직접 센다
+$h = (Invoke-WebRequest -UseBasicParsing -Uri '<발행 URL>').Content
+foreach ($k in @('xlsx','attachment','download')) { "$k = $(([regex]::Matches($h,$k,'IgnoreCase')).Count)" }
+```
+
+> `WebFetch`로는 판정할 수 없다 — 마크다운으로 변환하기 때문에 「링크가 없다」와 「변환에서 떨어졌다」가 구분되지 않는다.
 
 🔴 **`english_slug`는 홈페이지 블로그면 반드시 넘긴다** — STEP 2의 15번 칸 값이다. 안 넘기면 노션 칸이 비고, **한국어 제목은 크론 발행이 그 자리에서 멈춘다**(`need_english_slug`). 잘못된 값은 카드를 만들기 전에 거부되므로(`invalid_english_slug` / `english_slug_has_number`) 반환값을 보고 고쳐 다시 부른다. 반환의 `english_slug`가 **실제 저장된 값**이다(정규화됨).
 
@@ -483,6 +500,7 @@ python scripts/check-naver-repurpose.py <홈페이지원문.md> <네이버원고
 | **네이버에 원고를 그대로 복사** | 중복 콘텐츠 — **자체 도메인이 원본성에서 손해**를 본다. STEP 8 재가공 필수 |
 | **`create_blog_card`로 네이버 카드 생성** | `unknown_content_type` (등록값은 홈페이지 블로그/유튜브 미드폼뿐) — 노션 MCP로 직접 |
 | **홈페이지 키워드를 네이버에 그대로 사용** | 채널이 다르면 판정이 뒤집힌다 — 구글 LOW가 네이버 포화. `locale='ko'`로 재측정 |
+| **노션 카드에 xlsx·pdf 를 붙여 배포** | 배관이 파일 블록을 버려 **사이트에서만 사라진다**(라이브 HTML 0건). 공개 URL을 본문 링크로 |
 
 > 위 함정 중 **다수가 2026-07-29 첫 실전에서 나왔다.** 배선 검증(단위 테스트)으로는 하나도 안 잡혔다.
 
