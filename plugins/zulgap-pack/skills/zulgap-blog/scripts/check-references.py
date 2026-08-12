@@ -2,19 +2,29 @@
 # -*- coding: utf-8 -*-
 """네이버 원고에 홈페이지 원문의 참고 자료가 옮겨졌는지 코드가 판정한다.
 
-왜: 댕묘는 공적 출처(법령·정부 고시·수의 가이드라인) 위에 서 있는 채널이라
-    출처가 빠지면 글의 근거가 통째로 사라진다. 그런데 재가공 절차에 이 단계가
-    없었다 — 2026-08-09 e2e 로 만든 카드 3장이 전부 참고 자료 없이 나갔고
-    (고양이 화장실 · 고양이 습식 사료 · 강아지 스케일링), 부모 검사기는
-    FAIL 0 을 찍었다. 부모 검사기는 「원문을 베꼈나」를 보지 「빠뜨렸나」를
-    보지 않기 때문이다.
+왜: 공적 출처(법령·정부 고시·학회 가이드라인) 위에 선 글은 출처가 빠지면
+    근거가 통째로 사라진다. 그런데 STEP 8 재가공 절차에 이 단계가 없었다 —
+    2026-08-09 e2e 로 만든 카드 3장이 전부 참고 자료 없이 나갔고
+    (고양이 화장실 · 고양이 습식 사료 · 강아지 스케일링), 옆 검사기
+    (check-naver-repurpose.py)는 FAIL 0 을 찍었다. 그쪽은 「원문을 베꼈나」를
+    보지 「빠뜨렸나」를 보지 않기 때문이다. 이틀 뒤 붙여넣던 사람이 눈으로 발견했다.
 
-    같은 이유로 이 검사는 **부모 검사기와 따로, 참고 자료를 넣은 뒤에** 돌려야 한다.
-    사람은 부모 검사기가 PASS 하면 다 됐다고 여기고 손을 뗀다.
+    같은 이유로 이 검사는 **재사용 검사기와 따로, 참고 자료를 넣은 뒤에** 돌려야 한다.
+    사람은 앞 검사기가 PASS 하면 다 됐다고 여기고 손을 뗀다.
+
+    2026-08-12 부모(zulgap-blog)로 승격 — 홈페이지·네이버 두 채널을 함께 쓰는
+    동료사가 실측 6곳이라(댕묘 외 5곳) 한 채널에만 두면 나머지가 무방비다.
+    채널마다 다른 값(자기 사이트 도메인)은 인자로 뺐다.
 
 사용:
     python check-references.py <홈페이지원문.md> <네이버원고.md>
+    python check-references.py <원문> <원고> --internal-domain dangmyo.com --internal-name 댕묘
     python check-references.py --selftest
+
+    --internal-domain / --internal-name 은 **자기 사이트 글**을 가리키는 값이다.
+    자기 글 링크는 「본문 말미 홈페이지 안내 한 줄」로 합치는 것이 허용돼 있어
+    FAIL 이 아니라 [NOTE] 로만 알린다. 안 주면 그 완화가 꺼져 원문의 모든 항목을
+    외부 출처로 세므로 **판정이 더 엄격해진다**(빠뜨림을 놓치는 쪽으로는 안 틀린다).
 
 종료코드 0 = PASS. 그 외는 FAIL이며, **FAIL이면 카드를 만들지 않는다.**
 """
@@ -48,10 +58,21 @@ URL_RE = re.compile(
     r"\.(?:com|net|org|kr|io|edu|gov|info)(?![A-Za-z])"
 )
 
-# 댕묘 자기 글은 「본문 말미 홈페이지 안내 한 줄」로 합치는 처리가 허용돼 있다
+# 자기 사이트 글은 「본문 말미 홈페이지 안내 한 줄」로 합치는 처리가 허용돼 있다
 # (실제로 그렇게 처리한 카드가 있고, 재가공 내역에 근거가 적혀 있다).
 # 그래서 이것만 빠진 경우는 FAIL 이 아니라 알림이다.
-INTERNAL_RE = re.compile(r"dangmyo\.com|^댕묘\s")
+#
+# @AI:DEPENDS 채널마다 도메인·브랜드명이 다르다. 하드코딩하면 그 채널에서만 맞고
+#   나머지 채널에서는 자기 글이 외부 출처로 세어져 [MISSING-REFS] 오탐이 난다.
+#   그래서 값은 인자로 받고, 안 주면 완화를 끄는 쪽(= 더 엄격)으로 둔다.
+def build_internal_re(domain=None, name=None):
+    """자기 사이트 글을 알아보는 패턴. 둘 다 없으면 None(완화 없음)."""
+    parts = []
+    if domain:
+        parts.append(re.escape(domain.strip()))
+    if name:
+        parts.append(r"^" + re.escape(name.strip()) + r"\s")
+    return re.compile("|".join(parts)) if parts else None
 
 NEAR_RATIO = 0.90   # 부모 검사기 ① 과 같은 부분일치 임계
 MIN_LEN = 12        # 이보다 짧은 조각은 상투구라 비교 제외
@@ -100,18 +121,24 @@ def parse_refs(text):
     return None
 
 
-def check(orig_text, nav_text):
+def check(orig_text, nav_text, internal_re=None):
     """(ok, [메시지]) 를 돌려준다. 메시지는 사람이 그대로 읽을 수 있게 쓴다."""
     orig = parse_refs(orig_text)
     nav = parse_refs(nav_text)
 
     if not orig:
         # 원문에 출처가 없으면 옮길 것이 없다. 없는 것을 지어내면 안 되므로 여기서 끝낸다.
+        # ⚠️ 출처를 「맨 아래 참고 자료 섹션」이 아니라 본문 곳곳에 인용구로 다는 글은
+        #    여기로 빠진다. 그 형식을 쓰는 채널은 재가공 전에 원문 형식을 맞출 것.
         return True, ["[NO-SOURCE-REFS] 홈페이지 원문에 참고 자료가 없습니다 — 옮길 것이 없어 통과합니다.",
-                      "  출처가 필요한 글인데 원문에도 없다면, 네이버판에 지어 넣지 말고 원문부터 고치세요."]
+                      "  출처가 필요한 글인데 원문에도 없다면, 네이버판에 지어 넣지 말고 원문부터 고치세요.",
+                      "  원문이 출처를 본문 안에 인용구로 달고 있다면 이 검사가 못 봅니다 — 맨 아래 「참고 자료」로 모으세요."]
 
-    external = [x for x in orig if not INTERNAL_RE.search(x)]
-    internal = [x for x in orig if INTERNAL_RE.search(x)]
+    if internal_re is None:
+        external, internal = list(orig), []
+    else:
+        external = [x for x in orig if not internal_re.search(x)]
+        internal = [x for x in orig if internal_re.search(x)]
 
     if nav is None:
         msgs = ["[NO-REFS] 네이버 원고에 참고 자료 섹션이 없습니다. "
@@ -221,18 +248,33 @@ CASES = [
      "**참고한 자료**\n- 수의사법 제20조와 시행규칙 제18조의3 — 국가법령정보센터에서 조회\n"
      "- 전국 동물병원 진료비 현황조사 결과 — 농림축산식품부 자료실\n\n#가 #나\n", True),
     ("원문에 참고 자료가 없으면 면제", "## 본문\n내용만 있음\n", "## 본문\n내용\n\n#가 #나\n", True),
+    # 완전 일치가 아니라 「거의 같은」 복사 — NEAR_RATIO 부분일치 경로를 잠근다.
+    # 이 케이스가 없으면 그 임계를 무력화해도 셀프테스트가 통과한다(2026-08-12 mutation 실측).
+    ("원문 줄에 한 마디만 붙인 복사", _ORIG,
+     "### 참고 자료\n- 수의사법 시행규칙 제18조의3 진료비용의 게시 대상 및 방법입니다\n"
+     "- 전국 동물병원 진료비 현황조사 결과 — 농림축산식품부 자료실\n\n#가 #나\n", False),
 ]
+
+# 자기 사이트 완화를 **끄면** 자기 글도 외부 출처로 세어져 개수가 모자라게 된다.
+# 「인자를 안 주면 더 엄격해진다」는 docstring 약속을 코드로 잠근다.
+EXTRA_CASES = [
+    ("내부 완화 없음 — 자기 글까지 외부로 세어 개수 부족", _ORIG, _GOOD, False),
+]
+
+_SELF_INTERNAL = build_internal_re("dangmyo.com", "댕묘")
 
 
 def selftest():
     bad = 0
-    for i, (name, orig, nav, want) in enumerate(CASES, 1):
-        ok, msgs = check(orig, nav)
+    total = len(CASES) + len(EXTRA_CASES)
+    rows = [(c, _SELF_INTERNAL) for c in CASES] + [(c, None) for c in EXTRA_CASES]
+    for i, ((name, orig, nav, want), internal) in enumerate(rows, 1):
+        ok, msgs = check(orig, nav, internal)
         if ok != want:
             bad += 1
         print("  %s #%-2d expected=%-5s got=%-5s | %s | %s"
               % ("ok " if ok == want else "BAD", i, want, ok, name, msgs[0]))
-    print("selftest: %d/%d" % (len(CASES) - bad, len(CASES)))
+    print("selftest: %d/%d" % (total - bad, total))
     return 0 if bad == 0 else 1
 
 
@@ -241,6 +283,11 @@ def main():
         description="네이버 원고에 홈페이지 원문의 참고 자료가 옮겨졌는지 판정한다.")
     ap.add_argument("orig", nargs="?", help="홈페이지 원문 .md")
     ap.add_argument("nav", nargs="?", help="네이버 원고 .md")
+    ap.add_argument("--internal-domain", default=None,
+                    help="자기 사이트 도메인 (예: dangmyo.com). 자기 글 링크를 본문 말미 안내로 "
+                         "합친 경우 FAIL 대신 [NOTE] 로 알린다. 안 주면 완화 없음(더 엄격)")
+    ap.add_argument("--internal-name", default=None,
+                    help="자기 브랜드명 (예: 댕묘). 항목이 이 이름으로 시작하면 자기 글로 본다")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
 
@@ -254,7 +301,7 @@ def main():
     with open(a.nav, encoding="utf-8") as f:
         nav = f.read()
 
-    ok, msgs = check(orig, nav)
+    ok, msgs = check(orig, nav, build_internal_re(a.internal_domain, a.internal_name))
     for m in msgs:
         print(m)
     if not ok:

@@ -1,11 +1,11 @@
 ---
 name: zulgap-dangmyo-naver
 description: 댕묘 홈페이지(dangmyo.com)에 이미 발행된 블로그 글을 네이버 블로그용으로 재가공해, 노션 콘텐츠마스터에 네이버블로그 카드를 새로 만드는 스킬. 「11. 발행완료」된 홈페이지 글을 스스로 찾아 여러 편을 한 번에 처리하고, 본문 재작성·표 축약·홈페이지 이미지 이식·참고 자료 이식·해시태그 10개·1080 썸네일·예상 발행일까지 카드 하나에 채워 넣는다. 사용자가 "댕묘 네이버", "댕묘 네이버로 재가공", "홈페이지 글 네이버에도 올리게 해줘", "댕묘 네이버 카드 만들어줘", "발행완료된 글 네이버용으로" 등을 언급하면 반드시 이 스킬을 사용할 것. 글을 새로 쓰는 것이 아니라 이미 발행된 글을 옮기는 작업이다.
-version: 1.3.0
+version: 1.4.0
 origin: teampack
 tier: tenant-only
 extends: zulgap-blog
-parent-checksum: 76545bf8
+parent-checksum: 18ca5107
 ---
 
 ## 개요
@@ -157,9 +157,15 @@ python ../<블로그 스킬 폴더>/scripts/check-naver-repurpose.py <홈페이�
 **그다음, 참고 자료를 따로 판정한다. 이것도 FAIL 0이어야 카드를 만든다.**
 
 ```bash
-python scripts/check-references.py <홈페이지원문.md> <네이버원고.md>
-python scripts/check-references.py --selftest   # 8건
+python ../<블로그 스킬 폴더>/scripts/check-references.py <홈페이지원문.md> <네이버원고.md> \
+       --internal-domain dangmyo.com --internal-name 댕묘
+python ../<블로그 스킬 폴더>/scripts/check-references.py --selftest   # 10건
 ```
+
+> 🔴 **검사기는 2026-08-12에 부모(블로그 스킬)로 옮겼다.** 홈페이지·네이버를 함께 쓰는 동료사가
+> 실측 6곳이라 댕묘에만 두면 나머지 5곳이 무방비였다. 댕묘 폴더에는 **사본을 두지 않는다** —
+> 두 벌이 되면 부모 쪽 개선이 이쪽에 영영 안 온다.
+> `--internal-*` 두 값이 댕묘 고유값이고, 나머지 판정은 채널과 무관하다.
 
 🔴 **부모 검사기만 믿으면 안 된다.** 부모 검사기는 「원문을 베꼈나」를 보지 **「빠뜨렸나」를 보지
 않는다.** 실측(2026-08-09) e2e 로 만든 카드 3장(고양이 화장실 · 고양이 습식 사료 · 강아지
@@ -168,6 +174,10 @@ python scripts/check-references.py --selftest   # 8건
 다 됐다고 여기고 손을 뗀다.
 
 다섯을 판정한다 — 섹션 존재 · 외부 출처 개수 · 주소 유무(노션 자동 링크) · 원문 그대로 복사 · 해시태그보다 앞인지.
+
+⚠️ **`--internal-*` 를 빠뜨리면 댕묘 자기 글까지 외부 출처로 세어 `[MISSING-REFS]` 오탐이 난다.**
+틀리는 방향이 안전한 쪽(놓치지 않는 쪽)이라 진행은 되지만, 자기 글 링크를 본문 말미 안내로
+합쳤다면 두 값을 주는 편이 정확하다.
 
 도구가 판정하지 않는 댕묘 고유 항목만 사람이 확인한다.
 
