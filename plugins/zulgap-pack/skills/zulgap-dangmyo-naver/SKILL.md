@@ -5,7 +5,7 @@ version: 1.4.0
 origin: teampack
 tier: tenant-only
 extends: zulgap-blog
-parent-checksum: 18ca5107
+parent-checksum: 5969a51a
 ---
 
 ## 개요
@@ -159,7 +159,7 @@ python ../<블로그 스킬 폴더>/scripts/check-naver-repurpose.py <홈페이�
 ```bash
 python ../<블로그 스킬 폴더>/scripts/check-references.py <홈페이지원문.md> <네이버원고.md> \
        --internal-domain dangmyo.com --internal-name 댕묘
-python ../<블로그 스킬 폴더>/scripts/check-references.py --selftest   # 10건
+python ../<블로그 스킬 폴더>/scripts/check-references.py --selftest   # 12건
 ```
 
 > 🔴 **검사기는 2026-08-12에 부모(블로그 스킬)로 옮겼다.** 홈페이지·네이버를 함께 쓰는 동료사가
