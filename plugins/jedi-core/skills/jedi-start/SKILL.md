@@ -89,9 +89,11 @@ node "$HOME/.claude/plugins/marketplaces/zulgap-team-pack/teampack-config.js" hu
      | grep -v autohandoff | sort -u | while read f; do
          grep -q '^> *상태: *✅' "$f" && continue
          grep -q '^> *상태: *🔵' "$f" && m=🔵 || m="⚠️ 표시없음"
-         d=$(echo "$f" | grep -oE '^2026-[0-9]{2}-[0-9]{2}')
+         d=$(echo "$f" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}')
          # 오래된 것은 «접는다» — 빼는 게 아니다(오래됐다고 끝난 게 아니다)
-         [[ "$d" < "$CUT" ]] && g=OLD || g=NEW
+         # 🔴 날짜를 못 읽으면 NEW — 「모르면 안 접는다」. 빈 값은 어떤 날짜보다 «작아서»
+         #    그냥 두면 전부 접힌다(연도를 2026 으로 박았다가 잡은 갭 — 해가 바뀌면 전멸).
+         if [ -z "$d" ] || [[ ! "$d" < "$CUT" ]]; then g=NEW; else g=OLD; fi
          one=$(grep -A2 '^## 한 줄' "$f" | grep -v '^##\|^$\|^--' | head -1)
          echo "$g|$m|$f|$one"
        done | sort

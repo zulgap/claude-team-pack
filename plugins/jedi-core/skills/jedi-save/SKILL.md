@@ -183,9 +183,11 @@ cd ~/.claude/specs
 export LC_ALL=C
 CUT=$(date -d '3 days ago' +%Y-%m-%d)
 grep -l '^> *상태: *🔵' *handoff*.md 2>/dev/null | grep -v autohandoff | while read f; do
-  d=$(echo "$f" | grep -oE '^2026-[0-9]{2}-[0-9]{2}')
+  d=$(echo "$f" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}')
+  [ -n "$d" ] || continue    # 🔴 날짜를 못 읽으면 묻지 않는다(빈 값은 어떤 날짜보다 작아 전부 걸린다)
   [[ "$d" < "$CUT" ]] || continue
-  echo "$d|$f|$(grep -A2 '^## 한 줄' "$f" | grep -v '^##\|^$\|^--' | head -1 | cut -c1-70)"
+  # ⚠️ cut -c 로 자르지 말 것 — LC_ALL=C 라 한글이 바이트로 잘려 마지막 글자가 깨진다(실측)
+  echo "$d|$f|$(grep -A2 '^## 한 줄' "$f" | grep -v '^##\|^$\|^--' | head -1)"
 done | sort | head -3
 ```
 
