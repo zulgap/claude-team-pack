@@ -79,7 +79,21 @@ origin: teampack
 
 - `references/writing-rules.md` — 무엇을 쓸까 (PSST·톤·표·이미지·문체 수치·금지어)
 - `references/layout-traps.md` — 어떻게 만들까 (분량·이미지 삽입·도식·docx 함정)
-- `preset_slots.회사정본링크`가 채워져 있으면 그것도 함께 읽는다. **양식 원문과 어긋나면 원문이 이긴다.**
+- `preset_slots.회사정본링크`가 채워져 있으면 그것도 함께 읽는다
+
+### 소스가 서로 다른 말을 할 때
+
+세 곳이 같은 항목에 다른 값을 말하는 일이 잦다. **위가 이긴다.**
+
+| 순위 | 소스 | 예 |
+|---|---|---|
+| 1 | **양식 원문·공고문** | 폰트 15pt, 15p 이내, 파일명 규정 |
+| 2 | `회사정본링크` (사내 가이드) | 그 회사가 쌓아 온 관행 |
+| 3 | `references/` (이 스킬의 규격) | 22~30p 권장, 표 6종 |
+| 4 | 회의록·안내 메일·기억 | 🔴 **단독 근거로 쓰지 않는다** |
+
+어긋난 것을 발견하면 **조용히 한쪽을 택하지 말고 사용자에게 알린다.** 규격 문서가 상한
+22~30p를 권해도 양식이 15p면 15p가 답이고, 그때는 문항별 글자수 하한을 먼저 맞춘다.
 
 ## 2. 기존 자산을 찾는다
 
@@ -123,6 +137,34 @@ origin: teampack
 
 `validate_ai_voice` 호출 시 🔴 **`tenant_id`를 직접 넣지 않는다** — 자동 주입된다. 자칭
 `tenant_id`가 내 토큰의 회사와 다르면 그 자리에서 끊긴다.
+
+### 1번·4번은 세는 방법이 정해져 있다
+
+「센다」로만 두면 다음 사람이 다른 방식으로 세고 다른 답을 얻는다. 둘 다 **run 단위 재귀 순회**다.
+
+```python
+def cell_text(cell):
+    """중첩 표를 포함해 셀의 모든 글자를 모은다 — cell.text는 중첩분을 뺀다."""
+    parts = [p.text for p in cell.paragraphs]
+    for t in cell.tables:                      # 🔴 이 줄이 빠지면 절반만 세진다
+        for row in t.rows:
+            for c in row.cells:
+                parts.append(cell_text(c))
+    return '\n'.join(parts)
+
+def bold_runs(cell):
+    """볼드는 문단이 아니라 run 기준으로 센다 — 한 문단에 여러 개일 수 있다."""
+    n = sum(1 for p in cell.paragraphs for r in p.runs if r.bold)
+    for t in cell.tables:
+        for row in t.rows:
+            for c in row.cells:
+                n += bold_runs(c)
+    return n
+```
+
+- **글자수**는 공백을 포함해 센다. 양식이 「공백 제외」를 명시했으면 그 기준을 따른다
+- **볼드**는 문서 전체 합계를 재작성 **전후로** 비교한다. 절대값이 아니라 **감소 여부**가 신호다
+- 문항 경계는 양식의 셀 구조를 따른다. 문항이 몇 번째 셀인지 0단계에서 확인해 둔다
 
 ### 검증이 끝나는 조건
 
