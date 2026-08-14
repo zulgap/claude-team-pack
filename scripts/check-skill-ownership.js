@@ -188,6 +188,15 @@ async function main() {
   console.log('     버그가 원본에 남으면 그걸 복사해 간 쪽까지 같은 버그를 물려받습니다.');
   console.log('  3) 회사·브랜드별 값만 바꾸는 거라면 그 스킬의 channels/ 값 파일을 고치세요');
   console.log('     (channels/ 경로는 이 검사에서 제외됩니다).');
+
+  // @AI:INTENT 워크플로우가 팀챗 알림에 쓸 소유자 목록을 **구조화해서** 넘긴다.
+  //   🔴 stdout 을 grep 하지 않는 이유 — 위 안내 문구를 한 글자만 바꿔도 알림이 조용히 죽는다.
+  //   실사고(2026-08-14): 게이트가 @naraeng2 승인을 요구했는데 그 사실이 어디에도 도달하지 않아
+  //   PR #183·#184 가 반나절 멈춰 있었다. 소유자는 자기 차례인 줄 몰랐다.
+  if (process.env.GITHUB_OUTPUT) {
+    const owners = [...new Set(pending.map((f) => `@${f.owner}`))].join(' ');
+    require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `pending_owners=${owners}\n`);
+  }
   return 1;
 }
 
