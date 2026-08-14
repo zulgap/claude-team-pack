@@ -42,6 +42,7 @@ jobs:
           node-version: '20'
 
       - name: 스킬 소유권 게이트
+        id: gate
         shell: bash
         env:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
@@ -61,4 +62,48 @@ jobs:
             echo "::error::남의 스킬 본체를 고쳤습니다. 위 안내대로 소유자 승인을 받아 주세요."
             echo "  막는 것이 아니라 승인이 필요하다는 뜻입니다 — 승인이 등록되면 자동으로 다시 돕니다."
             exit 1
+          fi
+
+      # @AI:INTENT 게이트가 「@누구 승인이 필요하다」를 알아내고도 **그 사람에게 도달하지 않았다**.
+      #   실사고(2026-08-14): PR #183·#184 가 반나절 멈춰 있었는데 소유자는 자기 차례인 줄 몰랐다.
+      #   pr-notify 는 「올라왔습니다」만 말하고 누구 차례인지는 말하지 않는다.
+      # 🔴 승인 이벤트에는 보내지 않는다 — 승인 직후 다른 소유자 대기로 또 실패하면 연쇄 발송이 된다.
+      #   CLAUDE.md 원칙: 알림은 늘리는 것이 아니라 줄이는 것이 도달을 만든다.
+      # @AI:DEPENDS 발송 패턴(파일 경유 + ok:true 판정)의 SSOT 는 `pr-notify.yml` 이다.
+      #   한글이 인자로 넘어가면 CP949 로 깨져 텔레그램이 거부한 실측이 있어 그 방식을 따른다.
+      #   🔑 같은 패턴이 **3번째** 생기면 그때 공통 스크립트로 뺄 것(지금은 2곳이라 분리가 더 비싸다).
+      - name: 승인 필요 알림 (팀챗)
+        if: failure() && steps.gate.outputs.pending_owners != '' && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: '-5453618406'          # 줄갭-클로드(내부개발소통) — pr-notify 와 같은 방
+          OWNERS: ${{ steps.gate.outputs.pending_owners }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -o pipefail
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::warning::TELEGRAM_BOT_TOKEN 이 없어 알림을 못 보냈습니다 — 소유자에게 직접 알려주세요."
+            exit 0
+          fi
+          MSG="${RUNNER_TEMP:-/tmp}/ownership-notify.txt"
+          printf '%s\n%s\n%s\n%s\n%s' \
+            "🔑 PR #${PR_NUM} — ${OWNERS} 승인 필요" \
+            "${PR_TITLE}" \
+            "본인이 만든 스킬을 남이 고쳤습니다. 승인해야 진행됩니다." \
+            "Files changed → Review changes → Approve" \
+            "${PR_URL}" > "$MSG"
+          RESP=$(curl -sS -m 15 -X POST \
+            "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text@${MSG}") || RESP=''
+          # @AI:CONSTRAINT 알림 실패가 게이트 판정을 뒤집지 않는다 — 이 스텝은 이미 실패한 PR 의
+          #   부가 안내다. 여기서 죽으면 「왜 실패했는지」가 로그에서 밀려난다.
+          if printf '%s' "$RESP" | grep -q '"ok":true'; then
+            echo "알림 발송 — PR #${PR_NUM} → ${OWNERS}"
+          else
+            echo "::warning::팀챗 알림 실패 — ${OWNERS} 에게 직접 알려주세요."
+            printf '%s' "$RESP" | head -c 300
           fi
