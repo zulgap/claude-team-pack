@@ -1,7 +1,7 @@
 ---
 name: zulgap-blog
 description: 블로그 글 1편을 조사 → 개요 확정 → 초안 → 도구 검수 → 시각물 → 노션 카드 → 발행 시각 예약까지 만든다. 발행·예약은 사람이 확정할 때만. "/zulgap-blog", "블로그 써줘", "OO 주제로 글 써줘", "블로그 글 만들어줘", "홈페이지에 글 올려줘", "이 글 내일 아침에 나가게 해줘", "발행 예약해줘" 에 호출. (제디 토큰 필요)
-version: 2.11.0
+version: 2.12.0
 origin: teampack
 tier: tenant-only
 ---
@@ -242,6 +242,33 @@ grep -oE 'https://[a-z0-9.-]+/storage/v1/object/public/[^"]{10,200}\.(png|jpg|jp
 2. `attach_blog_card_images({ notion_page_id, images: [{ marker, url, caption }] })` → 마커 자리에 이미지 삽입 + 마커 제거
 
 **마커가 하나라도 남으면 발행이 차단된다.** 첨부 후 `markers_removed`가 이미지 수와 같은지 확인한다.
+
+### 🔴 표는 파이프 표로 넘긴다 — `<table>` 태그로 넘기면 평문으로 박힌다
+
+`create_blog_card`가 노션 표 블록으로 바꿔주는 것은 **마크다운 파이프 표**뿐이다.
+
+```markdown
+| 구분 | 값 |
+| --- | --- |
+| 기본 | 연 1회 |
+```
+
+`<table header-row="true">…</table>`을 넣으면 **에러가 안 난다.** 대신 태그가 통째로 이스케이프된
+텍스트 덩어리(`\<table header-row="true"\> \<tr\>\<td\>…`)로 본문에 박힌다. 발행되면 그 자리가 깨져 나간다.
+
+**왜 헷갈리나 — 두 도구의 표 문법이 반대다.** `notion-fetch`는 표를 `<table>`로 **출력**하므로,
+기존 카드를 읽어 형식을 흉내 내면 그 출력 형식을 그대로 입력에 쓰게 된다.
+
+| 도구 | 받는 표 문법 |
+|---|---|
+| `create_blog_card` (제디) | 마크다운 파이프 표 |
+| `notion-update-page` (노션 MCP) | `<table header-row="true">` + 탭 들여쓴 `<tr><td>` |
+
+✅ **반환값의 `table_count`가 원고의 표 개수와 같은지 본다.** 이 한 줄이 유일한 게이트다 —
+안 보면 `ok: true`와 `block_count: 62`만 보고 정상이라 판단하게 된다(2026-08-14 댕묘 실사고).
+
+이미 만든 카드는 `update_content` **부분 교체**로 `<table>` 문법을 넣어 고친다.
+`replace_content`로 본문을 통째로 갈지 말 것 — 이미지 마커까지 재생성되며 다른 사고가 난다.
 
 🔴 **`english_slug`는 홈페이지 블로그면 반드시 넘긴다** — STEP 2의 15번 칸 값이다. 안 넘기면 노션 칸이 비고, **한국어 제목은 크론 발행이 그 자리에서 멈춘다**(`need_english_slug`). 잘못된 값은 카드를 만들기 전에 거부되므로(`invalid_english_slug` / `english_slug_has_number`) 반환값을 보고 고쳐 다시 부른다. 반환의 `english_slug`가 **실제 저장된 값**이다(정규화됨).
 
@@ -617,6 +644,7 @@ python scripts/check-references.py --selftest    # 12건
 | **도식 없이 사진으로만 채움** | 이미지의 **40% 이상이 도식**이어야 한다 — 미달이면 `diagram_ratio_low` 위반 |
 | **자체 미디어를 `ext_search_partner_assets`로 조회** | `invalid_brand`가 **정상**(등록 목록은 동료사뿐). 에러로 보고 멈추지 말 것 |
 | **네이버에 원고를 그대로 복사** | 중복 콘텐츠 — **자체 도메인이 원본성에서 손해**를 본다. STEP 8 재가공 필수 |
+| **`create_blog_card`에 `<table>` 태그로 표를 넘김** | 에러 없이 태그가 **평문으로** 박힌다. `table_count: 0`만 조용히 나옴 — 파이프 표로 넘기고 `table_count`를 확인할 것 |
 | **`create_blog_card`로 네이버 카드 생성** | `unknown_content_type` (등록값은 홈페이지 블로그/유튜브 미드폼뿐) — 노션 MCP로 직접 |
 | **홈페이지 키워드를 네이버에 그대로 사용** | 채널이 다르면 판정이 뒤집힌다 — 구글 LOW가 네이버 포화. `locale='ko'`로 재측정 |
 | **예약만 하고 카드를 단계 6에 둠** | 시각은 들어갔는데 **크론이 그 카드를 안 본다**. 에러 0·조용한 미발행 — **단계 7 승격이 짝**이다 |
