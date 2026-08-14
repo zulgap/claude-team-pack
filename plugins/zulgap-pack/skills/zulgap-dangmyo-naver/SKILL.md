@@ -5,7 +5,7 @@ version: 1.4.0
 origin: teampack
 tier: tenant-only
 extends: zulgap-blog
-parent-checksum: 1f6d6c1e
+parent-checksum: 07d74639
 ---
 
 ## 개요

@@ -15,6 +15,11 @@
 """
 import sys, re, difflib
 
+# 윈도우 콘솔(cp949)에서 이 파일의 이모지를 못 찍어 **첫 출력에서 죽는다** — PASS든 FAIL이든 같다.
+# 팀원 PC가 전부 윈도우라 이걸 안 걸면 스크립트가 원리적으로 못 돈다(실측 2026-08-14).
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 # 오타 의심 하한 — 이보다 비슷하면 「같은 문장인데 글자가 틀어졌다」로 본다.
 # 0.80 미만은 다른 문장(정상적 추가/삭제)일 가능성이 커서 별도 항목으로 뺀다.
 TYPO_MIN = 0.80
@@ -31,7 +36,12 @@ def normalize(text: str) -> str:
     t = re.sub(r'<[^>]+>', ' ', t)                   # HTML/노션 표 태그
     t = re.sub(r'[#>*`~|\-—–]+', ' ', t)             # 마크다운 기호
     t = re.sub(r'\\([~*_])', r'\1', t)               # 이스케이프 해제
-    t = re.sub(r'\s+', ' ', t)
+    # 🔴 줄바꿈을 살려 둔다. 여기서 `\s+`로 뭉개면 아래 sentences()의 `\n+` 경계가 죽어
+    #    마침표로 안 끝나는 줄(제목·이미지 자리·목록)이 **다음 문장에 들러붙는다.**
+    #    그러면 이미지 자리의 차이(원고=마커 `img 1` / 카드=캡션)가 옆 문장을 오염시켜
+    #    멀쩡한 문장이 「글자가 틀어졌다」로 잡힌다 — 실측 2026-08-14, 오탐 7건.
+    t = re.sub(r'[^\S\n]+', ' ', t)
+    t = re.sub(r'\n[ \n]*', '\n', t)
     return t.strip()
 
 
@@ -143,7 +153,15 @@ def selftest() -> int:
     d = missing_img['draft_images'] == 1 and missing_img['card_images'] == 0
     print(('✅' if d else '❌') + ' T4 이미지 누락을 센다')
 
-    passed = all([a, b, c, d])
+    # T5 회귀 — 원고의 이미지 마커가 카드에서 캡션으로 바뀌는 것은 **정상 흐름**이다.
+    #    줄바꿈을 뭉개던 시절엔 이 차이가 옆 문장에 들러붙어 오탐을 냈다(실측 7건).
+    m_draft = '## 제목\n![img 1](img-1)\n' + base
+    m_card = '## 제목\n![두 나라의 계산서. 도식: 줄갭](http://x/y.png)\n' + base
+    marker = compare(m_draft, m_card)
+    e = len(marker['typos']) == 0
+    print(('✅' if e else '❌') + f" T5 마커→캡션 교체를 오타로 세지 않는다 (실제 {len(marker['typos'])}건)")
+
+    passed = all([a, b, c, d, e])
     print('\n셀프테스트: ' + ('PASS' if passed else 'FAIL'))
     return 0 if passed else 1
 
