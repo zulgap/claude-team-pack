@@ -34,6 +34,10 @@ const ENTRIES = [
   //   PreCompact 는 압축 때만 도는 훅이라 실패가 눈에 띄지 않는다 — 위 response-capture 와 동일 클래스.
   'hooks/precompact-handoff.js',
   'hooks/team-guide-fetch.js',
+  // @AI:CONSTRAINT 팩 판정 SSOT. install.ps1 §4.6 은 raw 를 먼저 받고 **실패하면 이 zip 사본**으로
+  //   폴백한다(사내망·오프라인 대비). 목록에서 빼면 그 폴백이 조용히 사라져 「판정 불가 = 줄갭 기본」이
+  //   되고, 외부 고객사 PC 에 zulgap-pack 이 깔린다 — 에러가 안 나서 아무도 모른다.
+  'resolve-packs.js',
   'mcp-bridge/index.js',
   'mcp-bridge/package.json',
   'install-dev.bat',
