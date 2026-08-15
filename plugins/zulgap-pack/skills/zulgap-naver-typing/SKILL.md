@@ -222,5 +222,8 @@ node scripts/typing-state.js pending
 
 ## 관련
 
+- **포맷 정본**: `plugins/zulgap-pack/shared/naver-format/FORMAT.md` — 소제목·여백·표·구분선 규칙.
+  **카드를 만드는 쪽도 같은 것을 본다**(원소스 멀티유즈). 🔴 규칙을 이 스킬 안에 되돌려 적지 말 것 —
+  채널이 늘 때마다 흩어진다(2026-08-16 그래서 분리했다)
 - 카드를 «만드는» 쪽: 채널별 재가공 스킬 (이 스킬은 만들어진 카드를 «옮긴다»)
 - 근거·실측 이력: `PROVENANCE.md`

@@ -79,13 +79,46 @@ ok('이미지가 텍스트 사이에 낀다', /html,image,html,image,html/.test(
 
 console.log('\n[5] 서식 보존');
 const allHtml = P.blocks.filter(b => b.kind === 'html').map(b => b.html).join('\n');
-ok('소제목이 h2 로', allHtml.includes('<h2>은행은 서류만 봅니다</h2>'));
+// 🔴 2026-08-16 계약 변경 — 포맷을 공용 정본(shared/naver-format)에 맡기면서 바뀐 것.
+//   네이버에서 <h2> 는 «컴포넌트가 되지 않고» 앞 문단에 흡수된다. 소제목은 인용구다.
+ok('🔴 소제목이 인용구로 (h2 아님)',
+   allHtml.includes('<blockquote>은행은 서류만 봅니다</blockquote>') && !allHtml.includes('<h2'));
 ok('굵게 유지', allHtml.includes('<b>은행이 보는 것이 물건이 아니기 때문</b>'));
-ok('표가 원본 그대로', allHtml.includes('<table header-row="true">') && allHtml.includes('<td>상황</td>'));
+ok('표 구조는 유지', allHtml.includes('<table header-row="true">'));
+ok('🔴 표 머리 행에 색 (header-row 속성은 네이버가 무시한다)',
+   allHtml.includes('background-color:rgb(0,78,130)') && allHtml.includes('color:#ffffff;'));
+ok('🔴 표 셀 안 마크다운이 풀린다 (별표가 글자로 안 나간다)',
+   allHtml.includes('<b>지급한다</b>') && !allHtml.includes('**지급한다**'));
+ok('머리 행 셀은 색을 입는다', allHtml.includes('<span style="color:#ffffff;">상황</span>'));
+ok('본문 행 셀에는 색이 없다', allHtml.includes('<td>물건에 문제, 서류는 완벽</td>'));
 ok('리스트가 ul/li 로', allHtml.includes('<ul>') && allHtml.includes('<li>선적기일'));
 ok('링크가 a 태그로', /<a href="http:\/\/redpassportglobal\.com/.test(allHtml));
 ok('해시태그 줄 보존', allHtml.includes('#신용장서류하자'));
 ok('인용구 유지', allHtml.includes('<blockquote>'));
+
+console.log('\n[5-1] 🔴 네이버 포맷 — 여백과 구분선 (기존 글은 빈 문단이 56~61%)');
+ok('문단 뒤에 여백이 붙는다', allHtml.includes('<p><br></p>'));
+const spacerCount = (allHtml.match(/<p><br><\/p>/g) || []).length;
+ok(`여백이 충분하다 (${spacerCount}개)`, spacerCount >= 5, `문단 대비 부족하면 빽빽해 보인다`);
+ok('구분선이 살아 있다 (버리지 않는다)', allHtml.includes('<hr>'));
+
+console.log('\n[5-2] 🔴 «줄 전체 볼드» = 소제목 (카드마다 ## 또는 **볼드** 로 쓴다)');
+const BOLD = parseCard(`# 제목
+${'앞 문단입니다. '.repeat(10)}
+**실제 숫자를 열어봤습니다**
+${'그 아래 본문입니다. '.repeat(10)}
+문장 중간에 **강조**가 있는 줄은 소제목이 아닙니다.
+**은행이 보는 것이 물건이 아니기 때문**입니다. 뒤에 말이 더 붙습니다.
+**마무리**
+${'끝 문단입니다. '.repeat(10)}`);
+const bHtml = BOLD.blocks.filter(b => b.kind === 'html').map(b => b.html).join('\n');
+ok('줄 전체 볼드 → 인용구', bHtml.includes('<blockquote>실제 숫자를 열어봤습니다</blockquote>'));
+ok('짧은 것도 인용구', bHtml.includes('<blockquote>마무리</blockquote>'));
+ok('🔴 문장 «일부» 볼드는 소제목이 아니다', !bHtml.includes('<blockquote>강조</blockquote>') && bHtml.includes('<b>강조</b>'));
+ok('🔴 볼드로 시작해도 뒤에 말이 붙으면 문단', !bHtml.includes('<blockquote>은행이 보는 것이 물건이 아니기 때문</blockquote>'));
+ok('  └ 그 줄은 굵게로 남는다', bHtml.includes('<b>은행이 보는 것이 물건이 아니기 때문</b>'));
+const bq = (bHtml.match(/<blockquote>/g) || []).length;
+ok(`인용구가 정확히 2개 (${bq})`, bq === 2);
 
 console.log('\n[6] 검증 함수');
 ok('정상 카드는 통과', V.ok === true, JSON.stringify(V.problems));
