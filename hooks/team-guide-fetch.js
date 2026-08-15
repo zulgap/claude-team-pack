@@ -190,13 +190,19 @@ function checkClaudeInstall() {
     //   **어디에도 없었다**(install이 1회 복사하고 끝). 그래서 훅 파일에 무엇을 넣어도 기존 PC엔
     //   영원히 안 닿았다 — 2026-07-30 실측: 팀원 PC의 훅이 설치 시점 버전이라 launchDoctor 자체가 없었다.
     //   자기 갱신은 **다음 세션부터** 반영된다(이번 세션은 이미 옛 파일이 메모리에 로드됨).
-    "const items=[['hook-doctor.js',30000],['hook-doctor-v2.js',210000],['team-guide-fetch.js',0]];",
+    // @AI:CONSTRAINT 🔴 `resolve-packs.js` 는 **hook-doctor-v2 보다 앞**이어야 한다 — v2 가 이 스크립트를
+    //   실행해 팩 판정을 받기 때문이다. 뒤에 두면 첫 세션엔 파일이 없어 v2 가 판정 불가로 떨어진다
+    //   (안전하긴 하나 전환이 하루 늦는다). timeout 0 = 받기만 하고 실행하지 않음.
+    // [파일명, 실행 timeout, 레포 내 경로] — 경로 생략 시 'hooks/'.
+    //   🔴 resolve-packs.js 는 레포 **루트**에 있다(설치기 3장부가 공유하는 SSOT라 hooks/ 소속이 아니다).
+    //   경로 인자가 없으면 'hooks/resolve-packs.js' 를 받으러 가 404 로 조용히 실패한다.
+    "const items=[['resolve-packs.js',0,''],['hook-doctor.js',30000],['hook-doctor-v2.js',210000],['team-guide-fetch.js',0]];",
     "function step(i){",
     "  if(i>=items.length)return;",
-    "  const [name,tmo]=items[i];const d=path.join(dir,name);",
+    "  const [name,tmo,sub]=items[i];const d=path.join(dir,name);const rel=(sub===undefined?'hooks/':sub)+name;",
     // 받기 실패해도 로컬 기존본으로 실행 — 네트워크가 갱신을 막을 뿐 실행까지 막지는 않게 한다
     "  const go=()=>{if(tmo>0){try{execFileSync(process.execPath,[d],{stdio:'ignore',timeout:tmo});}catch(_){}}step(i+1);};",
-    "  const r=https.get('" + RAW + "hooks/'+name,{timeout:8000},(res)=>{",
+    "  const r=https.get('" + RAW + "'+rel,{timeout:8000},(res)=>{",
     "    if(res.statusCode!==200){res.resume();return go();}",
     "    let s='';res.on('data',(c)=>{s+=c;});",
     "    res.on('end',()=>{try{fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(d,s);}catch(_){}go();});",

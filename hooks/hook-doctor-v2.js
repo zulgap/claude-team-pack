@@ -18,9 +18,6 @@ const SETTINGS = path.join(os.homedir(), '.claude', 'settings.json');
 const INSTALLED = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
 const FLAG = path.join(ZULGAP_DIR, '.hook-doctor-v2.done');
 const MP = 'zulgap-team-pack';
-const JURL = 'https://judgmentos-unified-agent-production.up.railway.app';
-const PACKS_CACHE = path.join(ZULGAP_DIR, '.teampack-packs.json');
-const PACKS_CACHE_MS = 24 * 60 * 60 * 1000;
 const MARKETPLACES = path.join(os.homedir(), '.claude', 'plugins', 'marketplaces');
 const REFRESH_STAMP = path.join(ZULGAP_DIR, '.plugin-refresh.stamp');
 const REFRESH_EVERY_MS = 24 * 60 * 60 * 1000;
@@ -218,32 +215,25 @@ function roleFromToken() {
   } catch (_) { return ''; }
 }
 
-// @AI:INTENT tenant-only 팩(zulgap-pack)의 활성화 판정 — packaging-spec §5 "그 회사에만 활성화" 이행.
-//   판정축 = GET /mcp/ext/teampack-config 의 packs 배열(토큰 tenant 기준, spec §1이 처방한 통로).
-//   줄갭 카드 = ['core','zulgap','dev'] (Migration 437). 'zulgap' 포함 → zulgap-pack 활성.
-// @AI:CONSTRAINT 🔴 confident 원칙 (dev-pack과 동일 클래스) — 판정이 확실할 때만 끈다.
-//   토큰 없음·네트워크 실패·404(카드 미등록)·curl 부재 = 전부 '판정 불가' → 현상 유지.
-//   404를 exclude로 접으면 줄갭 카드 행이 실수로 지워진 날 전 팀원이 스킬을 잃는다('스킬 0개' 클래스).
-//   고객사는 온보딩(카드 등록 → 토큰 발급) 순서라 토큰이 있으면 카드도 있다 — 그때만 confident.
-// @AI:FRAGILE 24h 캐시 — 매 세션 네트워크 콜을 피한다(직원 세션 시작 지연 방지, maybeRefresh와 같은 설계).
-function tenantPacksWithConfidence() {
-  const token = rawTokenFromConfigs();
-  if (!token) return { packs: null, confident: false };
+// @AI:INTENT 팩 활성화 판정은 **여기서 하지 않는다** — `resolve-packs.js`(3장부 공용 SSOT)에 위임한다.
+//   2026-08-16 이전에는 install.ps1 / install.sh / 이 파일이 같은 규칙을 각자 구현했고, 카드 `packs: []`
+//   하나로 **정반대 판정**이 났다(설치기 둘은 활성, 이 파일은 비활성). 언어마다 `[]` 의 진릿값이 달라서다.
+//   증상은 「설치하면 켜지고 24시간 뒤 이 훅이 꺼버린다」였고 에러가 안 나 아무도 몰랐다.
+// @AI:CONSTRAINT 🔴 판정 규칙(allow-list·confident·캐시)을 이 파일에 되살리지 말 것. 되살리는 순간 3벌이 된다.
+//   새 팩이 생기면 고칠 곳은 `resolve-packs.js` **한 곳**이다.
+// @AI:CONSTRAINT 🔴 스크립트가 없으면(옛 PC 첫 실행) **판정 불가로 떨어진다 = 아무것도 끄지 않는다.**
+//   여기서 옛 인라인 로직으로 폴백하면 그게 곧 3벌이므로 폴백하지 않는다. 다음 세션에 파일이 도착한다
+//   (team-guide-fetch 의 launchDoctor 가 이 파일보다 **먼저** 받도록 목록 선두에 있다).
+function resolvePluginsViaSsot(role, roleConfident) {
+  const rp = path.join(ZULGAP_DIR, 'resolve-packs.js');
   try {
-    const c = JSON.parse(fs.readFileSync(PACKS_CACHE, 'utf8'));
-    if (Date.now() - c.ts < PACKS_CACHE_MS && Array.isArray(c.packs)) return { packs: c.packs, confident: true };
-  } catch (_) { /* 캐시 없음/만료 → 라이브 조회 */ }
-  try {
-    // curl 사용 — Windows 10 1803+/macOS 기본 탑재. 없으면 catch → 판정 불가(현상 유지).
-    const out = execFileSync('curl', ['-fsS', '--max-time', '8',
-      '-H', 'Authorization: Bearer ' + token, JURL + '/mcp/ext/teampack-config'],
-      { encoding: 'utf8', timeout: 12000 });
+    const out = execFileSync(process.execPath,
+      [rp, '--role', role, '--role-confident', roleConfident ? '1' : '0'],
+      { encoding: 'utf8', timeout: 20000 });
     const j = JSON.parse(out);
-    const packs = j && j.success && j.data && Array.isArray(j.data.packs) ? j.data.packs : null;
-    if (!packs) return { packs: null, confident: false };
-    try { fs.mkdirSync(ZULGAP_DIR, { recursive: true }); fs.writeFileSync(PACKS_CACHE, JSON.stringify({ ts: Date.now(), packs })); } catch (_) {}
-    return { packs, confident: true };
-  } catch (_) { return { packs: null, confident: false }; }
+    if (j && j.plugins && j.canDisable) return j;
+  } catch (_) { /* 파일 없음·실행 실패·파싱 실패 → 아래 현상 유지 */ }
+  return null;
 }
 
 // @AI:CONSTRAINT 🔴 'staff로 확인됨'과 '몰라서 staff'를 반드시 구분한다.
@@ -271,16 +261,25 @@ if (!s.enabledPlugins || typeof s.enabledPlugins !== 'object') s.enabledPlugins 
 
 const ep = s.enabledPlugins;
 const { role, confident } = resolveRoleWithConfidence();
-const want = { ['jedi-core@' + MP]: true };
-const DEV_KEY = 'dev-pack@' + MP;
-const ZP_KEY = 'zulgap-pack@' + MP;
-if (role === 'dev' || role === 'master') want[DEV_KEY] = true;
-// tenant-only 팩: packs 판정이 확실히 '아님'일 때만 제외 — 판정 불가면 현상 유지(활성)
-const { packs, confident: packsConfident } = tenantPacksWithConfidence();
-const shouldDisableZulgap = packsConfident && !packs.includes('zulgap');
-if (!shouldDisableZulgap) want[ZP_KEY] = true;
-let zpFlipped = false;
-if (shouldDisableZulgap && ep[ZP_KEY] !== false) { ep[ZP_KEY] = false; zpFlipped = true; }
+// @AI:INTENT 켤 것·끌 것을 SSOT 한 곳에서 받는다. 이 파일은 **판정하지 않고 적용만** 한다.
+//   판정 불가(스크립트 부재·네트워크 실패 등)면 want 는 「지금 기준 켜져 있어야 할 것」으로만 채우고
+//   끄는 행위는 **하나도 하지 않는다** — 현상 유지가 항상 안전한 쪽이다.
+const rp = resolvePluginsViaSsot(role, confident);
+const want = {};
+const canDisable = (rp && rp.canDisable) || {};
+if (rp) {
+  for (const name of Object.keys(rp.plugins)) if (rp.plugins[name]) want[name + '@' + MP] = true;
+} else {
+  // 스크립트 미도달 — 공용 팩만 보장하고 나머지는 손대지 않는다(옛 PC 첫 실행 1회에 해당).
+  want['jedi-core@' + MP] = true;
+}
+const flippedNames = [];
+for (const name of Object.keys(canDisable)) {
+  if (!canDisable[name]) continue;
+  const key = name + '@' + MP;
+  if (ep[key] !== false) { ep[key] = false; flippedNames.push(name); }
+}
+const anyFlipped = flippedNames.length > 0;
 
 // @AI:CONSTRAINT 🔴 dev-pack은 **명시적 false**를 써야 꺼진다 — 키를 안 쓰면 켜진다.
 //   2026-07-29 실측(팀원 PC): enabledPlugins에 dev-pack 키가 **없는데도** start-dev/wrapup-dev가
@@ -288,10 +287,10 @@ if (shouldDisableZulgap && ep[ZP_KEY] !== false) { ep[ZP_KEY] = false; zpFlipped
 //   활성화 장부에 키가 없으면 Claude Code가 로드한다(opt-out). 우리는 opt-in인 줄 알고 `if(dev) = true`만
 //   써서 staff PC에 키가 아예 생기지 않았다.
 //   ⚠️ 이 전제 위에 `jedi-skills/SKILL.md:92`의 "목록이 곧 권한 — role 분기 코드 불필요"가 서 있다.
-// @AI:FRAGILE confident일 때만 끈다. 판정 불가 PC는 손대지 않는다(위 resolveRoleWithConfidence 참조).
-const shouldDisableDev = confident && role !== 'dev' && role !== 'master';
-let devFlipped = false;
-if (shouldDisableDev && ep[DEV_KEY] !== false) { ep[DEV_KEY] = false; devFlipped = true; }
+// @AI:FRAGILE confident일 때만 끈다. 판정 불가 PC는 손대지 않는다.
+//   🔴 이 규칙은 위 `canDisable` 루프가 이미 이행한다 — `resolve-packs.js` 가 role 축으로 false 가 된 팩은
+//   `--role-confident 0` 일 때 canDisable=false 로 돌려준다. **여기에 dev-pack 전용 분기를 되살리지 말 것**
+//   (되살리면 같은 규칙이 두 곳에 생기고, 그게 2026-08-16 에 봉합한 사고의 형태다).
 
 const wantKeys = Object.keys(want);
 // @AI:INTENT '전환 완료' 판정에 실물 설치까지 포함 — 활성화만 보면 미설치 상태를 완료로 오독해 영구히 스킬 0개가 된다.
@@ -302,14 +301,14 @@ if (alreadyNew) {
   //   갱신은 반드시 return '앞에' 있어야 한다.
   // @AI:INTENT dev-pack/zulgap-pack 비활성은 전환 완료 PC에도 필요하다(전환은 끝났는데 팩만 켜진 상태가 실재).
   //   그래서 이 조기 return 안에서도 저장한다 — 아래 전환 경로의 write에 의존하면 영구 미도달이다.
-  if (devFlipped || zpFlipped) {
+  if (anyFlipped) {
     try { fs.copyFileSync(SETTINGS, SETTINGS + '.bak-hookdoctor2'); } catch (_) { /* 백업 실패해도 진행 */ }
     try { fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2)); } catch (e) {
       console.log('[hook-doctor-v2] settings 쓰기 실패 — skip: ' + e.message);
       process.exit(0);
     }
   }
-  const flips = [devFlipped && 'dev-pack 비활성화', zpFlipped && 'zulgap-pack 비활성화(타 테넌트)'].filter(Boolean);
+  const flips = flippedNames.map((n) => n + ' 비활성화');
   const refreshed = maybeRefresh(wantKeys);
   return done('이미 전환됨 — 정상 (변경 ' + (flips.length ? flips.join('+') + ' — 다음 재시작부터 적용' : '0')
     + ', role=' + role + (refreshed ? ', 갱신 확인' : '') + ')');

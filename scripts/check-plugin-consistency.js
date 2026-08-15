@@ -62,32 +62,29 @@ const marketplace = new Set(
 );
 const expected = new Set([...marketplace].filter((n) => !DEPRECATED.includes(n)));
 
-// Tier A — 활성화 패턴만 추출
-const sources = {
-  'install.ps1': {
-    text: read('install.ps1'),
-    activation: /-NotePropertyName '([\w-]+)@zulgap-team-pack' -NotePropertyValue \$true/g,
-    legacyMention: (dep) => new RegExp(`${dep}@zulgap-team-pack`),
-  },
-  'install.sh': {
-    text: read('install.sh'),
-    activation: /enabledPlugins\[["']([\w-]+)@zulgap-team-pack["']\]\s*=\s*true/g,
-    legacyMention: (dep) => new RegExp(`${dep}@zulgap-team-pack`),
-  },
-  'hooks/hook-doctor-v2.js': {
-    text: read('hooks/hook-doctor-v2.js'),
-    // @AI:INTENT 활성화 표현이 2가지다 — 리터럴 키와 **변수 경유**.
-    //   role 조건부(dev-pack)는 `const DEV_KEY = 'dev-pack@' + MP;` … `want[DEV_KEY] = true`
-    //   형태라 리터럴 정규식에 안 걸린다. 2026-07-29 PR #53이 dev-pack을 조건부로 바꾼 뒤
-    //   게이트가 이 표현을 못 읽어 [A 활성화]가 6개 PR 동안 적색 방치됐다(5인검증 P1 발견).
-    //   → 코드가 아니라 게이트가 틀렸던 사례. 새 표현을 쓸 땐 여기 패턴도 같이 늘릴 것.
-    activation: [
-      /\['([\w-]+)@' \+ MP\]\s*(?::|=)\s*true/g,
-      /const\s+\w+\s*=\s*'([\w-]+)@'\s*\+\s*MP\s*;/g,
-    ],
-    legacyMention: (dep) => new RegExp(`'${dep}@' \\+ MP|${dep}@zulgap-team-pack`),
-  },
+// Tier A — 「누가 팩 판정을 하는가」 검사 (2026-08-16 개편)
+// @AI:INTENT 예전에는 3장부에서 **플러그인 이름 리터럴**을 정규식으로 뽑아 marketplace 와 대조했다.
+//   그 설계 자체가 사고를 낳았다: 판정을 3벌로 유지하도록 게이트가 **강제**했고, 실제로 카드
+//   `packs: []` 에서 3장부가 정반대 답을 내는 동안에도 10 Tier 가 전부 PASS 였다(P1 실측).
+//   그리고 리터럴을 걷어내는 리팩터를 하면 게이트가 **빈 집합**을 보고 FAIL 했다(사고 #10).
+// @AI:CONSTRAINT 🔴 이제 판정 SSOT 는 `resolve-packs.js` 하나다. 게이트가 볼 것은 두 가지다:
+//   ① SSOT 의 규칙표가 marketplace 를 빠짐없이 덮는가 — 새 팩을 만들고 규칙에 안 넣으면
+//      아무 장부도 그 팩을 몰라 키가 안 생기고 → opt-out 로드로 **전원에게 켜진다**
+//   ② 3장부가 판정을 **다시 구현하고 있지 않은가** — 되살아나면 같은 사고가 재발한다
+const RESOLVER = 'resolve-packs.js';
+const resolver = require(path.join(ROOT, RESOLVER));
+const resolverCovered = new Set([...resolver.BASE_PLUGINS, ...Object.keys(resolver.PLUGIN_RULES)]);
+
+const LEDGERS = {
+  'install.ps1': { revived: /-contains\s+'zulgap'|-notcontains\s+'zulgap'/ },
+  'install.sh': { revived: /case\s+"\s*\$TENANT_PACKS|indexOf\('zulgap'\)/ },
+  'hooks/hook-doctor-v2.js': { revived: /packs\.includes\('zulgap'\)|tenantPacksWithConfidence/ },
 };
+// @AI:CONSTRAINT 🔴 **주석은 빼고 본다.** 2026-08-16 mutation 에서 이 검사가 통과해버렸다 —
+//   위임 코드를 지워도 주석에 적힌 'resolve-packs.js' 만 보고 PASS 했다. 게이트가 문서를 읽으면
+//   코드가 사라진 것을 못 잡는다.
+const CALLS_RESOLVER = /resolve-packs\.js/;
+const stripComments = (text) => text.split(/\r?\n/).filter((l) => !/^\s*(#|\/\/)/.test(l)).join('\n');
 
 const fmt = (s) => [...s].sort().join(', ') || '(빈 집합)';
 const same = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
@@ -106,15 +103,35 @@ if (expected.size === 0) {
   fail = 1;
 }
 
-for (const [name, src] of Object.entries(sources)) {
-  const act = extract(src.text, src.activation);
-  if (same(act, expected)) console.log(`  PASS [A 활성화] ${name}: {${fmt(act)}}`);
-  else { console.error(`  FAIL [A 활성화] ${name}: {${fmt(act)}} ≠ {${fmt(expected)}}`); fail = 1; }
+// ① SSOT 규칙표 ↔ marketplace 1:1
+if (same(resolverCovered, expected)) {
+  console.log(`  PASS [A 판정SSOT] ${RESOLVER}: {${fmt(resolverCovered)}}`);
+} else {
+  console.error(`  FAIL [A 판정SSOT] ${RESOLVER}: {${fmt(resolverCovered)}} ≠ {${fmt(expected)}}`);
+  console.error('       → marketplace 에 팩을 추가했으면 resolve-packs.js 의 PLUGIN_RULES 에도 넣을 것.');
+  console.error('       → 안 넣으면 그 팩은 아무 장부도 몰라 키가 안 생기고 **전원에게 켜진다**(opt-out 로드).');
+  fail = 1;
+}
+
+// ② 3장부가 SSOT 를 부르는가 / 옛 판정이 되살아났는가
+for (const [name, rule] of Object.entries(LEDGERS)) {
+  const text = read(name);
+  if (CALLS_RESOLVER.test(stripComments(text))) console.log(`  PASS [A 위임] ${name}: 판정을 ${RESOLVER} 에 위임`);
+  else { console.error(`  FAIL [A 위임] ${name}: ${RESOLVER} 를 부르지 않음 — 판정이 이 파일에 되살아났는지 확인`); fail = 1; }
+
+  const revived = text.split(/\r?\n/)
+    .map((line, i) => ({ line, no: i + 1 }))
+    .filter(({ line }) => rule.revived.test(line) && !/^\s*(#|\/\/)/.test(line));
+  for (const { line, no } of revived) {
+    console.error(`  FAIL [A 판정중복] ${name}:${no} — 팩 판정이 되살아났다: ${line.trim().slice(0, 80)}`);
+    fail = 1;
+  }
+  if (!revived.length) console.log(`  PASS [A 판정중복] ${name}: 자체 팩 판정 0`);
 
   for (const dep of DEPRECATED) {
-    const badLines = src.text.split(/\r?\n/)
+    const badLines = text.split(/\r?\n/)
       .map((line, i) => ({ line, no: i + 1 }))
-      .filter(({ line }) => src.legacyMention(dep).test(line) && !LEGACY_OK.test(line));
+      .filter(({ line }) => new RegExp(`'${dep}@' \+ MP|${dep}@zulgap-team-pack`).test(line) && !LEGACY_OK.test(line));
     for (const { line, no } of badLines) {
       console.error(`  FAIL [B 레거시잔존] ${name}:${no} — '${dep}' 언급이 비활성화 패턴 아님: ${line.trim().slice(0, 80)}`);
       fail = 1;
