@@ -61,16 +61,61 @@ async function readBody(frame) {
       .join('\n').trim().length;
 
     const srcOf = (i) => i.getAttribute('src') || '';
-    const imgs = bodyComps.flatMap((comp) => [...comp.querySelectorAll('img')])
-      .filter((i) => !/^data:/.test(srcOf(i)));
+    const allImgs = bodyComps.flatMap((comp) => [...comp.querySelectorAll('img')]);
+    const imgs = allImgs.filter((i) => !/^data:/.test(srcOf(i)));
 
     return {
       chars,
       images: imgs.length,
       naverImages: imgs.filter((i) => /pstatic|naver/.test(srcOf(i))).length,
       externalImages: imgs.filter((i) => !/pstatic|naver/.test(srcOf(i))).length,
+      // @AI:INTENT 업로드가 «실패한 자리»를 센다. 네이버는 실패하면 그 자리에
+      //   data:image/svg+xml 플레이스홀더를 끼워 넣는다(2026-08-16 실측: 10장 중 2장).
+      //   이걸 안 세면 「이미지가 다 있다」로 보여 깨진 채 발행된다.
+      placeholders: allImgs.filter((i) => /^data:image\/svg/.test(srcOf(i))).length,
     };
   }, BODY);
+}
+
+const PLACEHOLDER_IMG = 'img[src^="data:image/svg"]';
+
+/**
+ * 업로드 실패 자리(SVG 플레이스홀더) 하나를 지운다.
+ *
+ * @AI:CONSTRAINT DOM 에서 직접 remove 하지 않는다 — 네이버 에디터는 자체 문서 모델을 들고 있어
+ *   DOM 만 지우면 저장 때 되살아나거나 문서가 깨진다. 에디터가 스스로 지우게 한다.
+ * @AI:FRAGILE `element.click()` 은 «선택»으로 인식되지 않는다(2026-08-16 실측: 지워지지 않음).
+ *   실제 마우스 좌표 클릭이라야 컴포넌트가 선택되고 Delete 가 먹는다.
+ *   여기서는 좌표를 써도 안전하다 — 대상 컴포넌트의 boundingBox 한가운데이고, 본문 영역이라
+ *   발행 버튼 같은 위험한 것이 근처에 없다.
+ * @returns {boolean} 실제로 하나 줄었는지
+ */
+async function removePlaceholder(page, frame) {
+  const before = await readBody(frame);
+  if (!before.placeholders) return false;
+
+  const ph = frame.locator('.se-content .se-component.se-image')
+    .filter({ has: frame.locator(PLACEHOLDER_IMG) }).first();
+  if (await ph.count() === 0) return false;
+
+  await ph.scrollIntoViewIfNeeded({ timeout: 8000 }).catch(() => {});
+  const box = await ph.boundingBox();
+  if (!box) return false;
+
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(600);
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(900);
+
+  // @AI:CONSTRAINT 「지웠다」고 믿지 않는다 — 엉뚱한 것을 지웠으면 «올라간 이미지가 줄어든다».
+  //   그때는 실패로 돌려 사람이 화면을 보게 한다. 조용히 넘어가면 그림 빠진 글이 발행된다.
+  const after = await readBody(frame);
+  if (after.naverImages < before.naverImages) {
+    const e = new Error(`실패 자리를 지우려다 «올라간 이미지»가 줄었습니다 (${before.naverImages} → ${after.naverImages}). 화면을 확인해 주세요.`);
+    e.code = 'DELETED_WRONG_IMAGE';
+    throw e;
+  }
+  return after.placeholders < before.placeholders;
 }
 
 /**
@@ -137,8 +182,8 @@ async function pasteHtml(page, frame, html) {
   await page.waitForTimeout(500);
 }
 
-/** 이미지 1장 업로드 — 「사진」 버튼 → 파일선택창 가로채기 */
-async function uploadImage(page, frame, filePath, timeoutMs = 30000) {
+/** 「사진」 버튼 → 파일선택창 가로채기 → 서버 반영까지 1회 시도 */
+async function uploadOnce(page, frame, filePath, timeoutMs) {
   const before = await readBody(frame);
   const btn = frame.locator('button.se-image-toolbar-button, [data-name="image"], button:has-text("사진")').first();
   const [chooser] = await Promise.all([
@@ -154,7 +199,34 @@ async function uploadImage(page, frame, filePath, timeoutMs = 30000) {
     const now = await readBody(frame);
     if (now.naverImages > before.naverImages) return { ok: true, naverImages: now.naverImages };
   }
-  return { ok: false, reason: '업로드 후 네이버 서버 이미지가 늘지 않았습니다', before: before.naverImages };
+  const end = await readBody(frame);
+  return {
+    ok: false,
+    reason: '업로드 후 네이버 서버 이미지가 늘지 않았습니다',
+    before: before.naverImages,
+    placeholders: end.placeholders,
+  };
+}
+
+/**
+ * 이미지 1장 업로드 — 실패하면 «실패 자리를 지우고» 다시 시도한다.
+ *
+ * @AI:FRAGILE 산발적으로 실패한다 — 2026-08-16 실측에서 10장 중 2장(6·10번)이 안 올라갔고
+ *   파일은 셋 다 정상 PNG 였다(크기·시그니처 확인). 즉 파일 문제가 아니라 네이버 쪽 지연/거절이다.
+ *   ❌ 실패를 problems 에 적고 넘어가지 말 것 — 그 자리에 SVG 플레이스홀더가 남아
+ *      「이미지가 다 있다」로 보이고, 사람이 그대로 등록하면 «깨진 이미지가 발행된다».
+ *   ✅ 자리를 치우고 다시 올린다. 치우지 않고 재시도하면 플레이스홀더와 새 이미지가 «둘 다» 남는다.
+ */
+async function uploadImage(page, frame, filePath, timeoutMs = 45000, retries = 1) {
+  let last = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    last = await uploadOnce(page, frame, filePath, timeoutMs);
+    if (last.ok) return attempt === 0 ? last : { ...last, retried: attempt };
+    // 실패 — 남은 자리를 치우고 숨을 돌린 뒤 다시
+    await removePlaceholder(page, frame);
+    if (attempt < retries) await page.waitForTimeout(2500);
+  }
+  return { ...last, attempts: retries + 1 };
 }
 
 /** 이미지 URL → 로컬 파일 (순서 보존 이름) */
@@ -236,16 +308,35 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
     await page.waitForTimeout(opts.gapMs ?? 700);
   }
 
+  // ④-b 남은 실패 자리 정리
+  // @AI:INTENT 재시도로 이미지는 다 올라가도 «실패했던 자리»는 그대로 남는다(2026-08-16 실측).
+  //   그림이 있어 보여서 사람도 못 알아채므로 여기서 치운다. 못 치우면 ⑤에서 problems 로 잡힌다.
+  for (let guard = 0; guard < 6; guard += 1) {
+    const s = await readBody(frame);
+    if (!s.placeholders) break;
+    let removed = false;
+    try { removed = await removePlaceholder(page, frame); }
+    catch (e) { problems.push(e.message); break; }   // 엉뚱한 걸 지웠다 — 더 건드리지 않는다
+    if (!removed) break;
+    notes.push('업로드 실패 자리 1개 정리');
+  }
+
   // ⑤ 결과 검증
   const end = await readBody(frame);
   if (end.externalImages > 0) problems.push(`외부 주소 이미지가 ${end.externalImages}장 남았습니다`);
   if (uploaded !== parsed.images) problems.push(`이미지 ${uploaded}/${parsed.images}장만 올라갔습니다`);
+  // @AI:CONSTRAINT 이게 남아 있으면 «깨진 이미지가 발행된다». 개수만 세고 넘어가면
+  //   화면에는 그림이 있어 보여서 사람도 못 알아챈다(2026-08-16 실측 사고).
+  if (end.placeholders > 0) {
+    problems.push(`업로드 실패 자리가 ${end.placeholders}개 남았습니다 — 이대로 등록하면 그 자리가 깨진 채 발행됩니다`);
+  }
 
   const okAll = problems.length === 0;
   return {
     status: okAll ? 'ready_to_register' : 'partial',
     checkpoint: okAll ? 'ready_to_register' : checkpoint,
     filled: { chars: end.chars, naverImages: end.naverImages, externalImages: end.externalImages,
+              placeholders: end.placeholders,
               images_expected: parsed.images, images_uploaded: uploaded },
     problems,
     notes,
@@ -254,4 +345,5 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   };
 }
 
-module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, downloadImages, readBody, cursorToEnd, getFrame, BODY, PARA };
+module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
+                   downloadImages, readBody, cursorToEnd, getFrame, BODY, PARA };
