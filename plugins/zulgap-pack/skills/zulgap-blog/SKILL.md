@@ -1,7 +1,7 @@
 ---
 name: zulgap-blog
 description: 블로그 글 1편을 조사 → 개요 확정 → 초안 → 도구 검수 → 시각물 → 노션 카드 → 발행 시각 예약까지 만든다. 발행·예약은 사람이 확정할 때만. "/zulgap-blog", "블로그 써줘", "OO 주제로 글 써줘", "블로그 글 만들어줘", "홈페이지에 글 올려줘", "이 글 내일 아침에 나가게 해줘", "발행 예약해줘" 에 호출. (제디 토큰 필요)
-version: 2.15.0
+version: 2.16.0
 origin: teampack
 tier: tenant-only
 ---
@@ -245,13 +245,24 @@ outline: {
    ```js
    // ① 표로 안 되는 것만 HTML로 그린다 (대비·순서·구조·화면의 어느 지점)
    // ② 렌더 → Storage 영구 URL
-   ext_render_html({ html, format: 'png', width: 2240, height: 1122 })
-   //   → { file_urls: [...] }   ※ storage_prefix 는 생략하면 테넌트 경로로 자동
+   ext_render_html({ html, format: 'png' })
+   //   → { file_urls: [...], storage_paths: [...], cloud_run_duration_ms: ~1700 }
    // ③ STEP 6에서 카드에 붙인다
    attach_blog_card_images({ notion_page_id, images: [{ marker, url: file_urls[0], caption }] })
    ```
 
-   📊 실측(2026-08-15): HTML **90KB·2240px** ↔ AI 생성 **1,100KB·1536px**. 12배 가볍고 더 선명하다.
+   🔴 **넘기면 깨지는 것 둘 — 둘 다 실제로 막혔던 것이다(2026-08-15 실증).**
+
+   1. **`tenant_id` 를 넣지 마라.** 넣으면 `tenant_mismatch` 로 **차단된다.**
+      친절하게 채우는 게 오히려 깨뜨린다 — 토큰의 테넌트가 서버에서 자동으로 들어간다.
+   2. **외부 `<link rel="stylesheet">` 는 로드되지 않는다.** CSS 를 `<style>` 로 **인라인해서** 넘겨라.
+      (도구는 HTML 문자열 하나만 받는다. 옆 파일을 읽어 오지 못한다)
+
+   ⚠️ `width`·`height` 는 **최종 픽셀을 정하지 못한다.** 2240 을 줘도 1120 을 줘도 결과가 같았다
+   (서버가 `deviceScaleFactor: 2` 고정 + `fullPage` 캡처). **크기를 줄이려면 CSS 에서 `html{zoom:2}` 를 빼라.**
+
+   📊 실측(2026-08-15, 이 경로로 직접 렌더): HTML **209KB·4480px** ↔ AI 생성 **1,100KB·1536px**.
+   5배 가볍고 **해상도는 3배**다. 한글 폰트도 정상(Cloud Run 에 들어 있다).
 
 3. **공공 캡쳐** — 공개된 통계·기관 자료만
 4. **AI 생성** — 🔴 **위 셋이 다 없을 때만.** `ext_generate_image`
