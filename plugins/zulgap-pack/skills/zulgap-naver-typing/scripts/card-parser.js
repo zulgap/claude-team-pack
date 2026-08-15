@@ -42,6 +42,11 @@ const LEAK_FINGERPRINTS = [
   '삽입 위치', '담당자 피드백', '도구 검수', '오검출', '유사문서',
 ];
 
+// @AI:INTENT 「무엇인가」(경계 판정)는 이 파일, 「어떻게 보이나」(포맷)는 공용 정본.
+//   경로가 pack root 기준이라 스킬 폴더 이름이 설치마다 달라도 같은 곳을 가리킨다.
+//   규칙을 여기에 되돌려 적지 말 것 — 채널이 늘 때마다 흩어진다(2026-08-16 그래서 분리했다).
+const NF = require('../../../shared/naver-format/naver-format');
+
 const IMG_RE = /^!\[([^\]]*)\]\(([^)]+)\)\s*$/;
 const HEADING_RE = /^(#{1,4})\s+(.+?)\s*$/;
 
@@ -79,14 +84,8 @@ function cutToBodyStart(lines) {
   return idx < 0 ? { lines, cut: 0 } : { lines: lines.slice(idx + 1), cut: idx + 1 };
 }
 
-/** 인라인 마크다운 → HTML (네이버 에디터가 붙여넣기로 받는 형태) */
-function inline(s) {
-  return s
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-    .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<i>$1</i>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-}
+/** 인라인 마크다운 → HTML. 구현은 공용 정본에 있다(중복 금지). */
+const inline = NF.inline;
 
 /**
  * @param {string} md  노션 카드 본문 마크다운
@@ -106,6 +105,8 @@ function parseCard(md) {
   let inFence = false;       // ``` 코드블록 안 (AI 이미지 프롬프트)
   let skipSection = false;   // 머리말 섹션 안 (다음 헤딩까지 버린다)
   let expectTitle = false;   // 「제목」 라벨 바로 다음 줄을 기다린다
+  let tableRow = 0;          // 표 안 몇 번째 행인가 (머리 행 판정)
+  let tableHasHeader = false;
   let dropped = cutRes.cut;  // 시작 경계 앞에서 버린 줄까지 센다
 
   const flushList = () => { if (listOpen) { buf.push('</ul>'); listOpen = false; } };
@@ -129,11 +130,17 @@ function parseCard(md) {
     // 본문에 끼어든 내부 메모 (엔노블형) — 이모지로 시작하는 인용문·지시줄
     if (MEMO_QUOTE_RE.test(line) || IMG_DIRECTIVE_RE.test(line)) { flushText(); dropped++; continue; }
 
-    // 표는 원본 HTML 이 이미 들어있다 — 그대로 통과시킨다
-    if (/^<table/i.test(line)) inTable = true;
+    // 표 — 구조는 원본을 그대로 두고, «표현»만 공용 정본에 맡긴다
+    // (머리 행 색 + 셀 안 마크다운 풀기. 규칙은 naver-format.js 가 안다)
+    if (/^<table/i.test(line)) { inTable = true; tableRow = 0; tableHasHeader = NF.tableWantsHeader(line); }
     if (inTable) {
       if (skipSection) { dropped++; }
-      else buf.push(line);
+      else {
+        if (/^<tr/i.test(line)) tableRow += 1;
+        buf.push(/^<t[dh]/i.test(line)
+          ? NF.tableCell(line, { isHeaderRow: tableHasHeader && tableRow === 1 })
+          : line);
+      }
       if (/<\/table>/i.test(line)) inTable = false;
       continue;
     }
@@ -158,7 +165,10 @@ function parseCard(md) {
       if (isTitleLabelHeading(text)) { expectTitle = true; dropped++; continue; }  // 다음 줄이 제목
       if (isLabelHeading(text)) { dropped++; continue; }      // 구획 표시 — 헤딩만 버리고 내용은 남긴다
       flushList();
-      buf.push(`<h${Math.min(level, 4)}>${inline(text)}</h${Math.min(level, 4)}>`);
+      // 🔴 소제목은 «인용구»다 — <h2> 는 네이버에서 컴포넌트가 안 되고 앞 문단에 흡수된다.
+      //   이 블로그 발행글 4편이 전부 인용구를 소제목 자리에 쓴다(CIF 10개·마케터가 5개).
+      buf.push(NF.subheading(text));
+      buf.push(NF.SPACER);
       continue;
     }
 
@@ -173,7 +183,16 @@ function parseCard(md) {
       continue;
     }
 
-    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line)) { flushList(); continue; }  // 구분선은 버린다
+    // 구분선 — 버리지 않는다. 기존 발행글이 실제로 쓴다(마케터가 편 9개)
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line)) { flushList(); buf.push(NF.divider()); continue; }
+
+    // 🔴 «줄 전체가 볼드» = 소제목 (2026-08-16 실측)
+    // @AI:INTENT 카드가 소제목을 `##` 로 쓰기도 하고 `**볼드**` 로 쓰기도 한다.
+    //   마미사·검단가온 카드는 후자다 — 그대로 두면 굵은 문단이 되어 네이버에서 밋밋하다.
+    // @AI:FRAGILE 판정축은 «줄 전체»다. 본문 중간 강조는 문장 «일부»라(`**A**입니다.`)
+    //   안 걸린다. 길이로 자르지 말 것 — 긴 소제목이 있고 짧은 강조 문장도 있다.
+    const boldOnly = line.match(/^\*\*(.+?)\*\*$/);
+    if (boldOnly) { flushList(); buf.push(NF.subheading(boldOnly[1])); buf.push(NF.SPACER); continue; }
 
     const li = line.match(/^\s*[-*]\s+(.+)$/);
     if (li) {
@@ -183,12 +202,14 @@ function parseCard(md) {
     }
 
     const quote = line.match(/^>\s?(.*)$/);
-    if (quote) { flushList(); buf.push(`<blockquote>${inline(quote[1])}</blockquote>`); continue; }
+    if (quote) { flushList(); buf.push(NF.quote(quote[1])); continue; }
 
-    if (!line.trim()) { flushList(); continue; }
+    // 원고의 빈 줄은 «여백»이다. 버리면 문단이 빽빽하게 붙는다
+    if (!line.trim()) { flushList(); buf.push(NF.SPACER); continue; }
 
     flushList();
-    buf.push(`<p>${inline(line)}</p>`);
+    // 문단 뒤에 여백 한 칸 — 기존 글은 빈 문단이 56~61%
+    buf.push(NF.paragraph(line));
   }
 
   flushText();
