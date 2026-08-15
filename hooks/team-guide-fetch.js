@@ -5,6 +5,8 @@
 //     매핑: admin/master→master(주입 skip, 개인 컨텍스트 보존) · dev/developer/engineer→dev(영어 가이드) · 그 외(PM/MEMBER/USER)→staff.
 //     토큰 없거나 해석 실패 → role 파일(~/.claude/zulgap/role) 폴백 → staff 기본.
 //     역할 변경 = 토큰 재발급 1곳 (role 파일 drift 원천 제거 — 매 세션 라이브 유도).
+//   v1.21: 축이 하나 더 붙었다 — **tenant**. role 만 보면 외부 고객사 직원도 staff 로 떨어져
+//     줄갭 고객사 실명이 든 team-guide.md 를 매 세션 읽는다(2026-08-16 실측). 아래 INTERNAL_TENANTS 참조.
 // @AI:CONSTRAINT 반드시 standalone 훅(settings.json)으로 등록. 플러그인 번들 훅은 additionalContext
 //   미주입 버그(#16538)로 동작 안 함. 출력은 SessionStart additionalContext 계약을 정확히 따른다.
 // @AI:CONSTRAINT staff 경로(team-guide.md + 캐시 team-guide.cache.md)는 기존 설치 PC와 동일 유지 — 기존 직원 회귀 0.
@@ -20,8 +22,8 @@ function b64urlJson(seg) {
   return JSON.parse(Buffer.from(String(seg).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
 }
 
-function roleFromToken() {
-  // 제디 토큰 위치: Claude Code(~/.claude.json) 우선, 데스크탑앱 config 폴백 (Windows/macOS 양쪽)
+// 제디 토큰 위치: Claude Code(~/.claude.json) 우선, 데스크탑앱 config 폴백 (Windows/macOS 양쪽)
+function tokenClaims() {
   const candidates = [path.join(os.homedir(), '.claude.json')];
   if (process.env.APPDATA) candidates.push(path.join(process.env.APPDATA, 'Claude', 'claude_desktop_config.json'));
   candidates.push(path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json'));
@@ -30,24 +32,55 @@ function roleFromToken() {
       const j = JSON.parse(fs.readFileSync(f, 'utf8'));
       const t = j && j.mcpServers && j.mcpServers.jedi && j.mcpServers.jedi.env && j.mcpServers.jedi.env.JUDGMENTOS_TOKEN;
       if (!t) continue;
-      const r = String((b64urlJson(String(t).split('.')[1]) || {}).role || '').toLowerCase();
-      if (!r) continue;
-      if (r === 'admin' || r === 'master') return 'master';
-      if (r === 'dev' || r === 'developer' || r === 'engineer') return 'dev';
-      return 'staff'; // 알 수 없는/직무 role(PM·MEMBER·USER 등) = 안전측
+      const c = b64urlJson(String(t).split('.')[1]) || {};
+      if (!c.role && !c.tenant_id) continue;
+      return c;
     } catch (_) { /* 파일 없음/파싱 실패 → 다음 후보 */ }
   }
-  return ''; // 토큰 기반 판정 불가 → 폴백으로
+  return null; // 토큰 기반 판정 불가 → 폴백으로
 }
 
-function resolveRole() {
-  const fromToken = roleFromToken();
+function roleFromClaims(claims) {
+  const r = String((claims && claims.role) || '').toLowerCase();
+  if (!r) return '';
+  if (r === 'admin' || r === 'master') return 'master';
+  if (r === 'dev' || r === 'developer' || r === 'engineer') return 'dev';
+  return 'staff'; // 알 수 없는/직무 role(PM·MEMBER·USER 등) = 안전측
+}
+
+function resolveRole(claims) {
+  const fromToken = roleFromClaims(claims);
   if (fromToken) return fromToken; // 토큰 = SSOT (role 파일과 불일치 시 토큰 우선)
   try {
     const r = fs.readFileSync(path.join(ZULGAP_DIR, 'role'), 'utf8').trim();
     if (r === 'dev' || r === 'master') return r; // 토큰 없는 설치 초기(발급 전) 폴백
   } catch (_) {}
   return 'staff';
+}
+
+// ── 외부 테넌트 안내문 격리 ────────────────────────────────────────────────
+// @AI:CONSTRAINT 🔴 `team-guide.md` 에는 줄갭 고객사 실명이 들어 있다(실측 2026-08-16:
+//   「엔노블」·「검단가온치과」·「노블냥」). 이 훅은 그전까지 role 만 분기해서, 외부 고객사
+//   직원도 role=staff 로 떨어져 **같은 파일을 매 세션 읽었다.** 팩·레포를 나눠도 이 경로는
+//   raw fetch 라 안 없어진다 — 격리는 여기서 한 번 더 서야 한다.
+// @AI:TENANT 판정축 = JWT `tenant_id` 클레임. role 과 같은 토큰에서 나온다
+//   (`unified-agent/scripts/issue-mcp-token.js` payload = {actor_id, tenant_id, role}).
+// @AI:CONSTRAINT 🔴 **fail-closed** — 줄갭이 아닌 테넌트는 전용 안내문을 못 받으면
+//   주입을 포기한다(`team-guide.md` 로 폴백하지 않는다). 폴백을 열면 「guides/ 파일을
+//   만드는 것을 사람이 잊었다」가 곧 유출이 되고, 에러가 안 나므로 아무도 모른다.
+//   줄갭 직원 경로(토큰 없음 포함)는 byte-identical 로 보존 — 회귀 0.
+// @AI:FRAGILE 🔴 마스터 테넌트를 목록에서 빼지 말 것 — 사장님 토큰의 tenant_id 는 `…-0000` 이라
+//   줄갭(`…-0002`)만 넣으면 **사장님 PC가 외부로 분류된다.** 주입은 어차피 0이라 증상이 안 나고
+//   404 요청만 조용히 하나 늘어난다(2026-08-16 검증 D 케이스에서 실제로 걸렸다).
+const INTERNAL_TENANTS = new Set([
+  'a0000000-0000-0000-0000-000000000002', // ZULGAP (줄갭)
+  'a0000000-0000-0000-0000-000000000000', // Master (admin)
+]);
+
+function tenantFromClaims(claims) {
+  const t = String((claims && claims.tenant_id) || '').trim().toLowerCase();
+  // UUID 형태만 신뢰 — 파일명에 그대로 들어가므로 경로 조작 여지를 없앤다
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(t) ? t : '';
 }
 
 const RAW = 'https://raw.githubusercontent.com/zulgap/claude-team-pack/main/';
@@ -178,10 +211,21 @@ function checkClaudeInstall() {
   } catch (_) { /* 기동 실패해도 안내문 주입은 계속 — 세션 절대 차단 X */ }
 })();
 
-const role = resolveRole();
+const CLAIMS = tokenClaims();
+const role = resolveRole(CLAIMS);
+const tenant = tenantFromClaims(CLAIMS);
 
-const URL = role === 'dev' ? RAW + 'docs/dev-guide-en.md' : RAW + 'team-guide.md';
-const CACHE = path.join(ZULGAP_DIR, role === 'dev' ? 'dev-guide.cache.md' : 'team-guide.cache.md');
+// 줄갭(그리고 토큰 없는 설치 초기) = 기존 경로 그대로. 그 외 테넌트 = 전용 안내문만.
+// @AI:FRAGILE 캐시 파일명도 테넌트별로 갈라야 한다 — 이름을 공유하면 한 PC에서 줄갭 캐시를
+//   외부 테넌트가 읽어(네트워크 실패 시) 격리가 캐시로 새어나간다.
+const external = !!tenant && !INTERNAL_TENANTS.has(tenant);
+const URL = external
+  ? RAW + 'guides/' + tenant + '.md'
+  : (role === 'dev' ? RAW + 'docs/dev-guide-en.md' : RAW + 'team-guide.md');
+const CACHE = path.join(
+  ZULGAP_DIR,
+  external ? 'guide.' + tenant + '.cache.md' : (role === 'dev' ? 'dev-guide.cache.md' : 'team-guide.cache.md')
+);
 const MAX = 9500; // additionalContext 약 10k자 한도 안전선
 const INSTALL_WARN = checkClaudeInstall(); // '' 이면 정상 — 아래 emit이 알아서 생략
 
@@ -198,7 +242,13 @@ function emit(text) {
 // 사장님(admin) — 팀 가이드는 주입 안 함(개인 CLAUDE.md/메모리 보존).
 // 단 설치 경로 문제는 역할과 무관하므로 경고만은 전달한다. emit('')이 경고 유무를 알아서 처리.
 // @AI:FRAGILE 이 분기는 MAX/emit 선언 **뒤에** 있어야 한다 — 앞으로 옮기면 const TDZ로 즉사.
-if (role === 'master') { emit(''); }
+// @AI:TENANT 🔴 `!external` 를 빼지 말 것 — 이 훅의 role 매핑은 서버보다 거칠어서
+//   **어느 테넌트든** ADMIN 이면 'master' 로 접힌다. 외부 고객사의 관리자도 ADMIN 이라
+//   조건이 없으면 그분들은 안내문을 **한 줄도** 못 받는다(에러 없이 조용히).
+//   서버 SSOT 는 `shared/mcp-permission-resolver.js` — isMaster = **마스터 테넌트의** ADMIN 뿐이다.
+//   여기서는 그 정의에 맞춰 「내 테넌트가 아닌 곳의 ADMIN」만 조기 종료에서 뺀다.
+//   조기 종료의 의도(사장님 개인 컨텍스트 보존)는 외부 테넌트에 해당하지 않는다.
+if (role === 'master' && !external) { emit(''); }
 function cache() { try { return fs.readFileSync(CACHE, 'utf8'); } catch { return ''; } }
 
 const req = https.get(URL, { timeout: 4000 }, (res) => {
