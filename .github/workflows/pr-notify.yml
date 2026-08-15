@@ -22,12 +22,19 @@ name: pr-telegram-notify
 #    알림에 필요한 것은 이벤트 페이로드뿐이다. 체크아웃하면 PR 브랜치의 코드가
 #    secret 을 쥔 러너에서 돌 여지가 생긴다. 이 job 은 저장소 내용을 보지 않는다.
 #
-# 알림이 안 오는 경우는 둘이고 성격이 다르다:
-#    ① draft 로 연 PR      → 정상. ready_for_review 때 알린다 (job skip = 회색)
-#    ② 토큰 미등록·API 실패 → 장애 (빨간불). 실패 메시지에 사유를 적는다
+# 알림이 안 오는 경우는 셋이고 성격이 다르다:
+#    ① 레포 주인 PR        → 정상. 의도적으로 보내지 않는다 (아래 if: 주석 참조)
+#    ② draft 로 연 PR      → 정상. ready_for_review 때 알린다 (job skip = 회색)
+#    ③ 토큰 미등록·API 실패 → 장애 (빨간불). 실패 메시지에 사유를 적는다
 #
 #    ⚠️ fork PR 은 여기 해당하지 않는다 — 아래 pull_request_target 이라 secret 이
 #       전달되어 정상 발송된다. (트리거를 pull_request 로 되돌리면 이 항목이 부활한다)
+#
+#    ⚠️ 알려진 결함(2026-08-16 실측, 이번에 고치지 않음) — 아래 `branches: [main]` 때문에
+#       **스택 PR 의 「열림」은 알림이 안 간다.** PR-2 를 PR-1 브랜치 위에 열면 base 가 main 이
+#       아니라 필터에 걸리고, 앞 PR 이 머지될 때 base 가 main 으로 자동 변경되어 「머지」만 온다.
+#       실측: #191~194 가 그 형태였다(타임라인 base_ref_changed). 팀원은 스택 PR 을 쓰지 않아
+#       지금은 드러나지 않지만, 쓰기 시작하면 그 PR 은 조용히 묻힌다.
 
 # 🔴 pull_request 가 아니라 pull_request_target 이다.
 #    pull_request 는 **PR 브랜치의** 워크플로우를 실행한다 → 팀원이 이 파일을 고친 PR 을
@@ -51,8 +58,26 @@ permissions:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    # 🔴 레포 주인(사장님)이 올린 PR 은 보내지 않는다 — 2026-08-16 사장님 확정.
+    #    사장님 지시: *"pr메시지가 두번씩 오고 또 너무 많이 오니 우리팀원들이 오히려 잘 안보게됩니다.
+    #    꼭 팀원들이 봐야할것만 보내는게 맞을듯합니다."*
+    #
+    #    실측(8/8~8/15, 8일): PR 53건 중 **47건(89%)이 레포 주인** 것이었고, 여기에 서버 웹훅
+    #    중복(judgmentos/routes/github-webhook.js)까지 겹쳐 **한 방에 165건 = 하루 21건**이 쌓였다.
+    #    사장님이 올려 사장님이 머지하는 PR 에 팀원이 할 일은 없다.
+    #
+    #    이 배선의 원래 목적은 **팀원 PR 이 묻히는 것**(#103·#127)을 막는 것이었다.
+    #    그 6건을 살리려고 47건을 함께 보내던 상태를 되돌린다 — 목적은 그대로 두고 잡음만 뺀다.
+    #    🔴 되살리기 전에 물을 것: "이거 팀원이 손을 써야 하는 일인가?" 아니면 보내지 않는다.
+    #
+    # ⚠️ 판정축은 author_association 이다(실측: 사장님 OWNER / 팀원 COLLABORATOR).
+    #    이 레포가 **조직 소유로 이관되면 OWNER 가 사라져** 전원이 MEMBER 가 되고 알림이 다시
+    #    폭증한다. 조용한 실패가 아니라 시끄러운 실패라 발견은 되지만, 이관 시 이 줄을 함께 고칠 것.
+    #
     # draft 는 ready_for_review 때 알린다. 단 closed 는 draft 였어도 결과를 알린다.
-    if: github.event.pull_request.draft == false || github.event.action == 'closed'
+    if: >-
+      github.event.pull_request.author_association != 'OWNER'
+      && (github.event.pull_request.draft == false || github.event.action == 'closed')
     steps:
       - name: 팀챗 발송
         env:
