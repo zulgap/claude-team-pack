@@ -1,0 +1,6 @@
+{
+  "name": "zulgap-naver-typing",
+  "private": true,
+  "description": "네이버 블로그 타이핑 보조 (팀팩 스킬 로컬 의존)",
+  "dependencies": { "playwright-core": "^1.49.0" }
+}
