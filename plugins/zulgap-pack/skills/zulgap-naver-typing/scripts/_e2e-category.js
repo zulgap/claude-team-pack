@@ -8,7 +8,7 @@
  */
 const path = require('path');
 const { chromium } = require(path.join(__dirname, '..', 'node_modules', 'playwright-core'));
-const { getFrame, readBody } = require('./naver-fill');
+const { getFrame, readBody, handleStartupPopup } = require('./naver-fill');
 const cat = require('./naver-category');
 
 const PORT = process.argv[2] || '9223';
@@ -26,6 +26,10 @@ const ok = (n, c, d = '') => { c ? (pass++, console.log(`  ✅ ${n}`)) : (fail++
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`, { timeout: 15000 });
   const page = browser.contexts()[0].pages()[0];
   const frame = getFrame(page);
+
+  // 「작성 중인 글이 있습니다」 팝업이 떠 있으면 dim 이 클릭을 가로챈다 — 먼저 치운다
+  const popups = await handleStartupPopup(page, frame, 8000);
+  if (popups.length) console.log(`  (팝업 처리: ${popups.join(', ')})`);
 
   // 안전 게이트 — 남의 원고 위에서 돌리지 않는다
   const body = await readBody(frame);
