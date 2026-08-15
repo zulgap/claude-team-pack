@@ -23,8 +23,10 @@ console.log('\n[1] 크롬 경로 탐지');
 {
   const cands = S.chromeCandidates();
   ok('후보가 여러 OS를 덮는다', cands.length >= 5, `${cands.length}개`);
+  // 후보가 실제로 «여러 OS 계열»을 덮는지 — 경로 끝까지 정확히 본다.
+  // (끝 슬래시를 빼면 실제 후보 `/Applications/Google Chrome.app/...` 와 어긋나 검사가 헐거워진다)
   ok('Windows 단독 절대경로가 아니다',
-     cands.some(p => p.startsWith('/Applications')) && cands.some(p => p.startsWith('/usr/bin')));
+     cands.some(p => p.startsWith('/Applications/')) && cands.some(p => p.startsWith('/usr/bin/')));
   let resolved = null, err = null;
   try { resolved = S.resolveChromePath(); } catch (e) { err = e; }
   if (resolved) ok('이 PC에서 크롬을 찾았다', fs.existsSync(resolved), resolved);
