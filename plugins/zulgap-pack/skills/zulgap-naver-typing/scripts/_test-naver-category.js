@@ -68,5 +68,38 @@ console.log('\n[5] 이름만으로는 못 고른다 — 번호가 주 키다');
 ok('이름이 맞아도 번호가 틀리면 거부', !matchCategory(LIST, { no: '75', name: '일상 줄GAP' }).ok);
 ok('설정에 접두사째 적어도 통한다', matchCategory(LIST, { no: '75', name: '하위 카테고리 마케팅 줄GAP' }).ok);
 
+console.log('\n[6] 예약 시각 — 노션 「예상 발행일」을 그대로 옮긴다');
+{
+  const { parseScheduleAt } = require('./naver-category');
+  const okCase = parseScheduleAt('2026-08-16T19:20:00');
+  ok('ISO 시각을 읽는다', okCase.ok && okCase.hour === '19' && okCase.minute === '20', JSON.stringify(okCase));
+  ok('네이버 날짜 표기로 바꾼다', okCase.date === '2026. 08. 16', okCase.date);
+  ok('공백형도 받는다', parseScheduleAt('2026-08-16 19:20').ok);
+
+  // 🔴 조용히 고치지 않는다 — 노션에 적힌 시각과 실제 발행 시각이 어긋나면 아무도 못 본다
+  const odd = parseScheduleAt('2026-08-16T19:23:00');
+  ok('🔴 10분 단위가 아니면 «반올림하지 않고» 거부한다', !odd.ok && odd.code === 'MINUTE_STEP', JSON.stringify(odd));
+  ok('무엇을 고쳐야 하는지 알려준다', /노션의 발행 시각을 고쳐/.test(odd.reason || ''), odd.reason);
+
+  const noTime = parseScheduleAt('2026-08-16');
+  ok('날짜만 있으면 거부한다(시각이 정본이다)', !noTime.ok && noTime.code === 'NO_TIME');
+  ok('빈 값도 거부한다', !parseScheduleAt('').ok && !parseScheduleAt(null).ok);
+
+  ['00', '10', '20', '30', '40', '50'].forEach((mm) => {
+    ok(`  ${mm}분은 통과`, parseScheduleAt(`2026-08-16T09:${mm}:00`).ok);
+  });
+
+  // 🔴 회귀 방어 — 노션은 UTC 로 준다. 이 변환이 빠지면 9시간 어긋난 시각에 발행된다.
+  const utc = parseScheduleAt('2026-08-16 10:20:00Z');
+  ok('🔴 노션 UTC 를 KST 로 옮긴다 (10:20Z → 19:20)', utc.ok && utc.hour === '19' && utc.minute === '20', JSON.stringify(utc));
+  const cross = parseScheduleAt('2026-08-16T15:30:00Z');
+  ok('  자정을 넘기면 날짜도 넘어간다 (15:30Z → 17일 00:30)',
+     cross.ok && cross.date === '2026. 08. 17' && cross.hour === '00', JSON.stringify(cross));
+  const plus = parseScheduleAt('2026-08-16T10:20:00+00:00');
+  ok('  +00:00 표기도 같게 본다', plus.ok && plus.hour === '19', JSON.stringify(plus));
+  const local = parseScheduleAt('2026-08-16T19:20:00');
+  ok('  오프셋이 없으면 «이미 현지시각»으로 그대로 둔다', local.ok && local.hour === '19', JSON.stringify(local));
+}
+
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAIL'}  ${pass}/${pass + fail}\n`);
 process.exit(fail === 0 ? 0 : 1);
