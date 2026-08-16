@@ -209,24 +209,82 @@ async function uploadOnce(page, frame, filePath, timeoutMs) {
 }
 
 /**
- * 이미지 1장 업로드 — 실패하면 «실패 자리를 지우고» 다시 시도한다.
+ * 이미지 1장 업로드 — «자리는 건드리지 않는다».
  *
- * @AI:FRAGILE 산발적으로 실패한다 — 2026-08-16 실측에서 10장 중 2장(6·10번)이 안 올라갔고
- *   파일은 셋 다 정상 PNG 였다(크기·시그니처 확인). 즉 파일 문제가 아니라 네이버 쪽 지연/거절이다.
- *   ❌ 실패를 problems 에 적고 넘어가지 말 것 — 그 자리에 SVG 플레이스홀더가 남아
- *      「이미지가 다 있다」로 보이고, 사람이 그대로 등록하면 «깨진 이미지가 발행된다».
- *   ✅ 자리를 치우고 다시 올린다. 치우지 않고 재시도하면 플레이스홀더와 새 이미지가 «둘 다» 남는다.
+ * @AI:CONSTRAINT 실패해 보여도 여기서 자리를 지우거나 다시 올리지 말 것.
+ *   2026-08-16 관측: 업로드는 늘 1.1초에 성공하고, «실패»는 대부분 오판이다 —
+ *   다음 텍스트를 붙일 때 이전 이미지가 SVG 자리로 깨지면서 네이버 이미지 수가 «줄어»
+ *   「개수가 늘었나」 판정이 어긋나기 때문이다. 그 상태에서 자리를 지우면
+ *   «멀쩡한 자리에서 깨진 그림»을 위치까지 함께 날린다(1회차에 실제로 그렇게 잃었다).
+ *   복구는 텍스트가 전부 들어간 뒤 repairBrokenImages() 가 «자리를 지키며» 한다.
  */
-async function uploadImage(page, frame, filePath, timeoutMs = 45000, retries = 1) {
-  let last = null;
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    last = await uploadOnce(page, frame, filePath, timeoutMs);
-    if (last.ok) return attempt === 0 ? last : { ...last, retried: attempt };
-    // 실패 — 남은 자리를 치우고 숨을 돌린 뒤 다시
-    await removePlaceholder(page, frame);
-    if (attempt < retries) await page.waitForTimeout(2500);
+async function uploadImage(page, frame, filePath, timeoutMs = 45000) {
+  return uploadOnce(page, frame, filePath, timeoutMs);
+}
+
+/**
+ * 깨진 이미지 자리를 «그 자리에» 되살린다.
+ *
+ * @AI:INTENT 자리(순서)는 이미 정확하다 — 깨진 것은 그림뿐이다(2026-08-16 실측: 10곳 전부 제자리).
+ *   그래서 지우고 다시 넣는 게 아니라, 그 «앞»에 그림을 넣고 깨진 자리를 치운다. 순서가 보존된다.
+ * @AI:CONSTRAINT 텍스트를 다 붙인 «뒤»에만 부른다. 붙여넣기가 이미지를 깨뜨리므로,
+ *   중간에 고쳐 봐야 다음 붙여넣기가 다시 깨뜨린다.
+ */
+async function repairBrokenImages(page, frame, files, opts = {}) {
+  const notes = [];
+  const problems = [];
+  const limit = opts.maxRepairs ?? 12;
+
+  for (let guard = 0; guard < limit; guard += 1) {
+    // 이미지 자리를 순서대로 훑어 «몇 번째»가 깨졌는지 찾는다 — 그 번호가 곧 파일 번호다
+    const target = await frame.evaluate(() => {
+      const comps = [...document.querySelectorAll('.se-content .se-component')]
+        .filter((c) => !c.classList.contains('se-documentTitle'));
+      let seq = 0;
+      for (const c of comps) {
+        const im = c.querySelector('img');
+        if (!im) continue;
+        seq += 1;
+        if ((im.getAttribute('src') || '').startsWith('data:image/svg')) return { seq };
+      }
+      return null;
+    });
+    if (!target) break;
+
+    const f = (files || []).find((x) => x.index === target.seq);
+    if (!f || !f.ok) { problems.push(`이미지 ${target.seq} 자리를 되살릴 파일이 없습니다`); break; }
+
+    // ① 깨진 자리 «자체»를 눌러 선택한다 — 글은 건드리지 않는다
+    // @AI:FRAGILE 앞 문단 끝에 커서를 놓는 방식으로 하지 말 것. 네이버 에디터는 자체 문서 모델을 들고
+    //   있어 DOM Selection 을 바꿔도 «클릭한 지점»을 커서로 쓴다. 긴 문단은 여러 줄로 감기므로
+    //   그 지점이 문단 한가운데가 되고, 거기 이미지가 들어가면 문장이 글자 단위로 갈라진다
+    //   (2026-08-16 실측: 「광고」→「광」+[이미지]+「고를」, 「목록」→「목」+[이미지]+「록 밖의」).
+    //   깨진 자리 옆에 넣으면 글을 한 글자도 건드리지 않는다.
+    // @AI:FRAGILE element.click() 은 «선택»으로 인식되지 않는다 — 실제 좌표 클릭이라야 한다
+    //   (removePlaceholder 와 같은 이유). 본문 영역이라 좌표를 써도 위험한 버튼이 근처에 없다.
+    const brokenComp = frame.locator('.se-content .se-component.se-image')
+      .filter({ has: frame.locator(PLACEHOLDER_IMG) }).first();
+    if (await brokenComp.count() === 0) break;
+    await brokenComp.scrollIntoViewIfNeeded({ timeout: 8000 }).catch(() => {});
+    const box = await brokenComp.boundingBox();
+    if (!box) { problems.push(`이미지 ${target.seq} 의 깨진 자리를 화면에서 찾지 못했습니다`); break; }
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForTimeout(400);
+
+    // ② 그림만 다시 올린다
+    const r = await uploadOnce(page, frame, f.file, opts.timeoutMs ?? 45000);
+    if (!r.ok) { problems.push(`이미지 ${target.seq} 자리를 되살리지 못했습니다: ${r.reason}`); break; }
+
+    // ③ 깨진 자리를 치운다 — 이제 그림은 바로 앞에 있으므로 순서가 유지된다
+    let removed = false;
+    try { removed = await removePlaceholder(page, frame); }
+    catch (e) { problems.push(e.message); break; }
+    if (!removed) { problems.push(`이미지 ${target.seq} 의 깨진 자리를 치우지 못했습니다`); break; }
+
+    notes.push(`이미지 ${target.seq} 자리 되살림`);
+    await page.waitForTimeout(opts.gapMs ?? 700);
   }
-  return { ...last, attempts: retries + 1 };
+  return { notes, problems };
 }
 
 /** 이미지 URL → 로컬 파일 (순서 보존 이름) */
@@ -291,6 +349,7 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
 
   // ④ 조각 순서대로
   let imgSeq = 0, uploaded = 0;
+  const unsureUploads = [];   // 중간 판정이 「안 늘었다」고 본 것 — 대개 오판이라 ⑤에서 화면으로 가른다
   for (const b of parsed.blocks) {
     if (b.kind === 'html') {
       await pasteHtml(page, frame, b.html);
@@ -300,7 +359,10 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
       const f = files.find((x) => x.index === imgSeq);
       if (!f || !f.ok) { problems.push(`이미지 ${imgSeq} 건너뜀 (파일 없음)`); continue; }
       const r = await uploadImage(page, frame, f.file);
-      if (!r.ok) { problems.push(`이미지 ${imgSeq} 업로드 확인 실패: ${r.reason}`); continue; }
+      // @AI:INTENT 여기서 problems 로 올리지 않는다 — 이 판정은 «개수 증가»라서 자주 오판이다
+      //   (붙여넣기가 이전 이미지를 깨뜨리면 개수가 줄어 늘어난 것이 안 보인다).
+      //   ④-b 가 자리를 되살리므로, 최종 화면이 온전하면 문제가 아니다. ⑤ 가 화면으로 판정한다.
+      if (!r.ok) { unsureUploads.push(imgSeq); continue; }
       uploaded += 1;
       checkpoint = `image_ok(${uploaded}/${parsed.images})`;
     }
@@ -308,22 +370,28 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
     await page.waitForTimeout(opts.gapMs ?? 700);
   }
 
-  // ④-b 남은 실패 자리 정리
-  // @AI:INTENT 재시도로 이미지는 다 올라가도 «실패했던 자리»는 그대로 남는다(2026-08-16 실측).
-  //   그림이 있어 보여서 사람도 못 알아채므로 여기서 치운다. 못 치우면 ⑤에서 problems 로 잡힌다.
-  for (let guard = 0; guard < 6; guard += 1) {
+  // ④-b 깨진 이미지 자리 되살리기
+  // @AI:INTENT 붙여넣기가 이전 이미지를 깨뜨리므로(2026-08-16 실측) 여기서 한 번에 고친다.
+  //   «지우는» 게 아니라 «그 자리에 다시 넣는다» — 자리는 이미 맞기 때문이다.
+  //   텍스트가 전부 들어간 뒤라서, 고친 것이 다시 깨질 일이 없다.
+  {
     const s = await readBody(frame);
-    if (!s.placeholders) break;
-    let removed = false;
-    try { removed = await removePlaceholder(page, frame); }
-    catch (e) { problems.push(e.message); break; }   // 엉뚱한 걸 지웠다 — 더 건드리지 않는다
-    if (!removed) break;
-    notes.push('업로드 실패 자리 1개 정리');
+    if (s.placeholders) {
+      const rep = await repairBrokenImages(page, frame, files, { gapMs: opts.gapMs });
+      notes.push(...rep.notes);
+      problems.push(...rep.problems);
+    }
   }
 
-  // ⑤ 결과 검증
+  // ⑤ 결과 검증 — 판정은 «화면»이 한다
   const end = await readBody(frame);
-  problems.push(...verifyFilled({ start, end, expected: parsed.images, uploaded }));
+  const verdict = verifyFilled({ start, end, expected: parsed.images, uploaded });
+  problems.push(...verdict);
+  // 중간에 「안 늘었다」고 본 것들은, 화면이 온전하면 문제가 아니다 — 기록만 남긴다
+  if (unsureUploads.length) {
+    if (verdict.length) problems.push(`업로드 확인이 어긋난 이미지: ${unsureUploads.join(', ')}번`);
+    else notes.push(`이미지 ${unsureUploads.join(', ')}번은 중간 확인이 어긋났으나 화면은 온전합니다`);
+  }
 
   const okAll = problems.length === 0;
   return {
@@ -376,4 +444,4 @@ function verifyFilled({ start, end, expected, uploaded }) {
 }
 
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
-                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, BODY, PARA };
+                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, repairBrokenImages, BODY, PARA };
