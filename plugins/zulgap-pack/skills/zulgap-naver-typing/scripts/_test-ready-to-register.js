@@ -1,0 +1,94 @@
+#!/usr/bin/env node
+/**
+ * ready-to-register 판정 — 브라우저 없이 «순수 함수»만 본다.
+ *
+ * @AI:INTENT 이 판정이 무르면 사람이 «누르면 안 되는 창»을 누른다. 등록은 되돌릴 수 없으므로
+ *   「하나라도 걸리면 거부」를 시나리오로 못 박는다.
+ * 실행: node _test-ready-to-register.js   (종료코드 0 = ALL PASS)
+ */
+const { sortBySchedule, judgeRow, normalizeName } = require('./ready-to-register');
+
+let pass = 0, fail = 0;
+const ok = (n, c, d = '') => { c ? (pass++, console.log(`  ✅ ${n}`)) : (fail++, console.log(`  ❌ ${n}${d ? '  → ' + d : ''}`)); };
+
+/** 정상 창 한 벌 — 여기서 하나씩 망가뜨려 본다. */
+const 정상 = () => ({
+  title: 'UTM 파라미터 붙이기 전에 표기 규칙부터 정하세요',
+  chars: 2580,
+  slots: 11,
+  images_expected: 11,
+  category: '마미사_ai로 회사 굴립니다',
+  schedule: { reserved: true, date: '2026. 08. 17', hour: '19', minute: '20', at: '2026. 08. 17 19:20' },
+  hasPublishBtn: true,
+});
+const 기대 = { category: '마미사_ai로 회사 굴립니다' };
+
+console.log('\n[1] 순서 — 사람이 누르는 순서가 곧 발행 순서다');
+{
+  const rows = [
+    { title: '3편', schedule: { at: '2026. 08. 17 22:30' } },
+    { title: '1편', schedule: { at: '2026. 08. 17 19:20' } },
+    { title: '2편', schedule: { at: '2026. 08. 17 20:50' } },
+  ];
+  const s = sortBySchedule(rows).map((r) => r.title);
+  ok('예약이 이른 것부터', JSON.stringify(s) === JSON.stringify(['1편', '2편', '3편']), JSON.stringify(s));
+
+  const 섞임 = sortBySchedule([
+    { title: '예약없음', schedule: { at: '' } },
+    { title: '예약있음', schedule: { at: '2026. 08. 17 19:20' } },
+  ]).map((r) => r.title);
+  ok('예약 없는 창은 뒤로 민다', 섞임[0] === '예약있음', JSON.stringify(섞임));
+
+  ok('원본 배열을 건드리지 않는다', (() => {
+    const orig = [{ title: 'b', schedule: { at: '2' } }, { title: 'a', schedule: { at: '1' } }];
+    sortBySchedule(orig);
+    return orig[0].title === 'b';
+  })());
+}
+
+console.log('\n[2] 정상이면 통과');
+{
+  const v = judgeRow(정상(), 기대);
+  ok('전부 갖춰지면 ok', v.ok, JSON.stringify(v.problems));
+  ok('기대 카테고리를 안 주면 카테고리는 안 본다', judgeRow(정상(), {}).ok);
+}
+
+console.log('\n[3] 🔴 하나라도 걸리면 «누르지 마세요»');
+{
+  const 사례 = [
+    ['예약이 안 걸렸다 (누르면 지금 나간다)', (r) => { r.schedule = { reserved: false, at: '' }; }],
+    ['예약 날짜가 비었다', (r) => { r.schedule.date = ''; }],
+    ['예약 시각이 비었다', (r) => { r.schedule.hour = ''; }],
+    ['카테고리가 다르다', (r) => { r.category = '줄갭이 뭐죠?'; }],
+    ['카테고리를 못 읽었다', (r) => { r.category = null; }],
+    ['그림 자리가 모자라다', (r) => { r.slots = 9; }],
+    ['발행 버튼이 안 보인다', (r) => { r.hasPublishBtn = false; }],
+    ['제목이 비었다', (r) => { r.title = ''; }],
+    ['본문이 비었다', (r) => { r.chars = 0; }],
+  ];
+  for (const [name, 망가뜨림] of 사례) {
+    const r = 정상(); 망가뜨림(r);
+    const v = judgeRow(r, 기대);
+    ok(name, !v.ok && v.problems.length > 0, JSON.stringify(v));
+  }
+}
+
+// @AI:CONSTRAINT 🔴 예약 미설정을 «경고»로 낮추지 말 것 — 그 상태로 누르면 그 자리에서 발행된다.
+console.log('\n[4] 🔴 예약 미설정은 특히 위험하다 (지금 나간다)');
+{
+  const r = 정상(); r.schedule = { reserved: false, date: '', hour: '', minute: '', at: '' };
+  const v = judgeRow(r, 기대);
+  ok('사유에 «지금»이라고 적어 준다', !v.ok && v.problems.some((p) => p.includes('지금')), JSON.stringify(v.problems));
+}
+
+console.log('\n[5] 카테고리 이름 비교 — 네이버 nbsp 를 흡수한다');
+{
+  const NB = ' ';
+  ok('nbsp 가 섞여도 같게 본다', normalizeName(`마미사_ai로${NB}회사${NB}굴립니다`) === '마미사_ai로 회사 굴립니다');
+  ok('하위 카테고리 접두사를 뗀다', normalizeName('하위 카테고리 마케팅 줄GAP') === '마케팅 줄GAP');
+  const r = 정상(); r.category = `마미사_ai로${NB}회사${NB}굴립니다`;
+  ok('🔴 그래서 실제 화면값으로도 통과한다', judgeRow(r, 기대).ok, JSON.stringify(judgeRow(r, 기대).problems));
+}
+
+console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAIL'}  ${pass}/${pass + fail}\n`);
+process.exit(fail === 0 ? 0 : 1);
