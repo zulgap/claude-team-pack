@@ -5,7 +5,7 @@
 //     --bg "<배경 image_url>" \
 //     --title "월 500 노처녀들이|**상향혼**에 빠지는 과정"   (| = 줄바꿈, **강조** = 색)
 //     --subtitle "33세 약사가 5년 만에 다시 상담받은 사연" \
-//     --acc yellow --role 결혼전문가 --channel 엔노블 \
+//     --acc yellow --role 결혼전문가 --channel "<채널명>" \
 //     --host "<진행자 얼굴 image_url>"        (레이아웃 A 우측 인물, 선택) \
 //     --quote "제발 저리가!!@22,14" --quote "!여우?@40,10"   (인물 위 말풍선, x,y=%, ! = 빨강)
 // 출력: 마지막 줄 = 완성 썸네일 image_url
@@ -26,7 +26,7 @@ const LAYOUTS = {
   B: { file: 'layout-B-split.html',  width: 1280, height: 720 },
   C: { file: 'layout-C-shorts.html', width: 1080, height: 1920 },
 };
-// 채널 강조색 클래스 (실측: 엔노블=빨강, 한방언니풍=노랑, 가연=핑크)
+// 채널 강조색 클래스 (실측: 고객사 채널=빨강, 한방언니풍=노랑, 가연=핑크)
 const ACC = { yellow: 'acc-yellow', red: 'acc-red', pink: 'acc-pink' };
 
 // @AI:INTENT --font 후보 (전부 Google Fonts 무료). weight가 폰트마다 다른 게 핵심 —
@@ -69,7 +69,7 @@ export function assembleHtml(opts) {
   const accClass = ACC[opts.acc] || ACC.yellow;
   const strokeVars = opts.stroke
     ? `<style>:root{--stroke:${opts.stroke}}</style>`
-    : ''; // 프리셋이 외곽선 두께 덮을 때 (엔노블=얇게 4px, 한방언니풍=6px 기본)
+    : ''; // 프리셋이 외곽선 두께 덮을 때 (채널에 따라 얇게 4px, 한방언니풍=6px 기본)
 
   // @AI:INTENT --font 로 채널별 폰트 교체. 미지정 시 _base.css 기본값(Noto 900) 그대로 = 기존 동작 보존.
   //   weight가 폰트마다 다르다 — Black Han Sans·Do Hyeon은 단일 굵기(400)라 900을 주면 가짜 굵기가 된다.
