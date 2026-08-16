@@ -54,7 +54,11 @@
 - [ ] **모니터 해상도** — 🔴 슬라이드는 **1920×1080 고정**이다. 울트라와이드(2560×1080)에 전체화면하면
       좌우에 검은 띠가 생기고, 그대로 캡처하면 유튜브에서 **레터박스가 두 번** 겹친다.
       **1920×1080 모니터에 올린다**
-- [ ] **녹화 비트레이트** — 1080p는 **8Mbps** 권장. 낮으면 화질이 뭉갠다
+- [ ] **OBS 출력 해상도** — 🔴 **모니터와 다른 칸이다.** 모니터를 1920×1080으로 맞춰도
+      OBS 「출력(조정) 해상도」가 1280×720이면 **그대로 줄여 저장한다**
+- [ ] **녹화 품질** — 「스트리밍과 동일」이면 스트리밍용 낮은 비트레이트가 쓰인다. 1080p는 **8Mbps** 권장
+- [ ] **마이크 음량** — 말할 때 미터가 **-12 ~ -6dB**에서 놀아야 한다.
+      작게 녹음된 것을 유튜브는 **키워주지 않는다**
 
 ```powershell
 # 웹캠·마이크·모니터 한 번에 (Windows)
@@ -62,6 +66,15 @@ Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Screen]::AllScreens | % { "$($_.DeviceName) $($_.Bounds.Width)x$($_.Bounds.Height) 주=$($_.Primary)" }
 Get-PnpDevice -Class Camera,AudioEndpoint -Status OK | ? FriendlyName -match 'cam|Micro|마이크' | % FriendlyName
 ```
+
+🔴 **위 세 줄(OBS 출력·품질·음량)은 눈으로 보지 말고 «잰다».** 「고쳤겠지」가 15분을 날린 원인이다.
+
+```bash
+node "<jedi-youtube-script 스킬 폴더>/scripts/check-recording.js" --obs                     # 촬영 직전
+node "<jedi-youtube-script 스킬 폴더>/scripts/check-recording.js" --obs <10초테스트.mkv>     # 시험 녹화까지
+```
+
+⚠️ **OBS를 끄고 재라** — 켜 둔 채로는 바꾸기 «전» 값이 파일에 남아 있다. 기대: **실패 0건.**
 
 ---
 
