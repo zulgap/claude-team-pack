@@ -74,6 +74,14 @@ node "<jedi-youtube-script 스킬 폴더>/scripts/check-recording.js" --obs     
 node "<jedi-youtube-script 스킬 폴더>/scripts/check-recording.js" --obs <10초테스트.mkv>     # 시험 녹화까지
 ```
 
+🔴 **대본을 고쳤다면 슬라이드도 고쳤는지 잰다** — 프롬프터는 대본 파일이 아니라 슬라이드의 `data-script` 를 읽는다.
+
+```bash
+node "<jedi-youtube-script 스킬 폴더>/scripts/check-deck-sync.js" <대본.md> <슬라이드.html>
+```
+
+기대: **실패 0건**. 낭독 원고 동기화와 «실제 화면 캡처 장수» 를 함께 잰다.
+
 ⚠️ **OBS를 끄고 재라** — 켜 둔 채로는 바꾸기 «전» 값이 파일에 남아 있다. 기대: **실패 0건.**
 
 ---

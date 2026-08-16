@@ -74,6 +74,13 @@ const fails = [];
 const warns = [];
 const notes = [];
 const rows = [];
+
+// @AI:INTENT 「고품질」(CQP) 로 녹화하면 비트레이트가 «내용에 따라» 변한다. 슬라이드처럼 정지한
+//   화면은 데이터가 거의 안 생겨 244kbps 도 나오는데 화질은 멀쩡하다(2026-08-17 실측: 그 파일의
+//   글자가 또렷했다). 그래서 품질 모드를 알고 있을 때는 하한 판정을 «참고» 로 낮춘다.
+//   비트레이트를 못 채운 것과 안 채워도 되는 것을 같은 실패로 적으면 사람이 게이트를 안 믿게 된다.
+let recQualityMode = null;
+
 function judge(label, value, ok, want) {
   rows.push({ label, value, ok, want });
   if (ok === false) fails.push(`${label}: ${value} (기대 ${want})`);
@@ -173,6 +180,7 @@ function checkObs() {
   if (mode === 'Simple') {
     const S = cfg.SimpleOutput || {};
     const q = S.RecQuality || 'Stream';
+    recQualityMode = q;
     // "Stream" = 녹화에 «스트리밍용» 비트레이트를 쓴다. 스트리밍은 회선에 맞춰 낮게 잡으므로
     // 녹화 품질이 거기에 묶인다. 오늘 2.5Mbps 가 나온 이유가 이것이다.
     const qOk = q !== 'Stream';
@@ -331,10 +339,31 @@ function checkFile(file) {
     p.w && p.h ? p.w === WANT_W && p.h === WANT_H : null, WANT_RES);
   judge('파일 프레임', p.fps ? p.fps.toFixed(0) + 'fps' : '미검출',
     p.fps ? p.fps >= MIN_FPS - 0.5 : null, `${MIN_FPS}fps 이상`);
-  judge('파일 비트레이트', p.kbps ? p.kbps + 'kbps' : '미검출',
-    p.kbps ? p.kbps >= MIN_KBPS : null, `${MIN_KBPS}kbps 이상`);
+  // 품질 기준(CQP) 녹화면 비트레이트 하한은 잣대가 아니다 — 위 @AI:INTENT 참조
+  const cqp = recQualityMode && recQualityMode !== 'Stream';
+  if (cqp) {
+    rows.push({ label: '파일 비트레이트', value: (p.kbps || '?') + 'kbps', ok: 'info', want: '' });
+    notes.push(`품질 기준(${recQualityMode}) 녹화라 비트레이트는 내용에 따라 변한다 — 정지 화면이면 낮게 나오고 그게 정상이다`);
+  } else {
+    judge('파일 비트레이트', p.kbps ? p.kbps + 'kbps' : '미검출',
+      p.kbps ? p.kbps >= MIN_KBPS : null, `${MIN_KBPS}kbps 이상`);
+  }
   if (p.seconds) notes.push('길이: ' + Math.floor(p.seconds / 60) + '분 ' + (p.seconds % 60).toFixed(1) + '초');
   if (p.audio) notes.push(`음성 규격: ${p.audio.codec} ${p.audio.hz}Hz ${p.audio.layout}`);
+
+  // @AI:INTENT 코드가 못 잡는 것이 있다 — 작업표시줄·다른 창·알림 팝업이 화면에 들어왔는지는
+  //   픽셀을 봐야 알고, 그 판정을 결정론으로 만들기 어렵다(슬라이드 배경이 검정이라 여백 검출도
+  //   빗나간다). 실사고(2026-08-17): 리허설 프레임 하단에 작업표시줄이 시계까지 통째로 찍혔는데
+  //   위의 수치는 «전부 정상» 이었다. 그래서 재는 대신 «보게 만든다» — 프레임을 뽑아 경로를 들이민다.
+  if (ff) {
+    const shot = file.replace(/\.[^.]+$/, '') + '-frame.png';
+    const at = p.seconds && p.seconds > 4 ? Math.min(p.seconds / 2, 30) : 1;
+    ffRun(ff, ['-hide_banner', '-y', '-ss', String(at), '-i', file, '-frames:v', '1', shot]);
+    if (fs.existsSync(shot)) {
+      notes.push('프레임 뽑음: ' + shot);
+      notes.push('🔴 이 그림을 «열어» 볼 것 — 작업표시줄·다른 창·알림이 찍혔는지는 코드가 못 잡는다');
+    }
+  }
 
   if (NO_AUDIO) { notes.push('음량 검사 건너뜀 (--no-audio)'); return; }
   if (!ff) { judge('음량', '못 쟀음 (ffmpeg 없음)', null, `${WANT_LUFS} LUFS`); return; }
@@ -367,8 +396,8 @@ console.log('');
 console.log('  녹화 게이트 — 재서 판정한다');
 console.log('  ' + '─'.repeat(58));
 for (const r of rows) {
-  const mark = r.ok === true ? '통과' : r.ok === false ? '실패' : ' ?  ';
-  const want = r.ok === true ? '' : `   (기대 ${r.want})`;
+  const mark = r.ok === true ? '통과' : r.ok === false ? '실패' : r.ok === 'info' ? '참고' : ' ?  ';
+  const want = (r.ok === true || r.ok === 'info') ? '' : `   (기대 ${r.want})`;
   console.log(`  [${mark}] ${r.label.padEnd(18)} ${String(r.value).padEnd(22)}${want}`);
 }
 if (notes.length) { console.log(''); for (const n of notes) console.log('   · ' + n); }
