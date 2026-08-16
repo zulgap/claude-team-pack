@@ -5,7 +5,7 @@ version: 1.1.0
 origin: teampack
 tier: tenant-only
 extends: zulgap-blog
-parent-checksum: 9e8e4042
+parent-checksum: a4f03063
 ---
 
 # 검단가온치과 블로그 초안 (네이버블로그)
@@ -208,9 +208,39 @@ Do NOT translate them into English.
 
 ---
 
+## STEP 7-B — 🔴 썸네일 (필수 · 2026-08-16 신설)
+
+**빼먹으면 타이핑이 막힌다.** `zulgap-naver-typing` 의 `validateCard` 가 차단한다(경고 아님).
+
+**만드는 법 = HTML → `ext_render_html`** (부모 스킬 「썸네일은 필수다」 절과 동일 경로).
+
+```js
+ext_render_html({ html, format: 'png', width: 1080, height: 1080 })  // → Storage 영구 URL
+```
+
+🔴 `tenant_id` 를 넣지 말 것(차단된다). CSS 는 `<style>` 로 인라인.
+
+**규격은 `zulgap-gaon-thumbnail` 이 정본** — 배경·색·서체가 거기 실측으로 박혀 있다.
+카피는 **4줄 이내**. 그 값을 그대로 HTML 로 옮긴다(눈으로 새로 정하지 말 것).
+
+```
+## 썸네일 (1080 x 1080)
+![](<Storage URL>)
+```
+
+🔴 **헤딩만 만들고 `⬜ 미제작` 으로 두지 말 것** — 검사는 «그림이 있나»를 본다.
+
+**왜 필요한가** — 네이버는 대표 이미지를 **본문에 있는 그림 중에서만** 고른다.
+없으면 검색결과 얼굴이 **본문 첫 사진**(전후 사진 등)이 된다.
+그전까지 이 스킬에는 썸네일 절이 아예 없었고, 그래서 만든 카드가 전부 얼굴 없이 나갈 상태였다.
+
+---
+
 ## STEP 8 — 마무리
 
 카드를 **「5. 초안작성완료」** 로 두고 **「8. 타이핑요청」** 으로 넘긴다. 발행하지 않는다.
+
+🔴 **넘기기 전에 썸네일이 카드에 들어갔는지 확인한다** (STEP 7-B). 없으면 타이핑이 막힌다.
 
 담당자에게 넘길 때 아래를 함께 알린다.
 

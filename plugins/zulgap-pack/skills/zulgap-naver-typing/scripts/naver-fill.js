@@ -79,6 +79,14 @@ async function readBody(frame) {
       // @AI:CONSTRAINT 이 숫자를 「업로드 실패」로 읽지 말 것 — 위 실측이 아니라고 말한다.
       //   화면 표시 상태일 뿐이라 사람에게 보여 줄 참고값이다.
       placeholders: allImgs.filter((i) => /^data:image\/svg/.test(srcOf(i))).length,
+
+      // 🔴 서식 오염 — 우리가 «안 보낸» 서식이 글에 먹었나 (2026-08-16 실사고)
+      // @AI:INTENT 취소선 토글이 켜진 채 붙여넣으면 «글 전체»가 취소선이 된다(실측 175개).
+      //   우리 HTML 에는 <s>/<del>/<strike> 이 «한 번도» 들어가지 않는다 — 그러니 화면에
+      //   하나라도 있으면 그건 «에디터가 씌운 것»이고, 그대로 나가면 고객 블로그에 줄 그은 글이 실린다.
+      // @AI:CONSTRAINT 끄는 것(clearFormatting)만으로는 부족하다 — «결과»를 세야 안 나간다.
+      //   사장님이 화면을 보고 발견하신 사고다. 사람 눈이 마지막 방어선이면 안 된다.
+      struck: c.querySelectorAll('s, del, strike').length,
     };
   }, BODY);
 }
@@ -184,6 +192,51 @@ async function withPopupGuard(page, frame, fn) {
     await page.waitForTimeout(600);
     return fn();
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 서식 토글 초기화 — 🔴 2026-08-16 실사고
+//
+// 사장님이 화면에서 «글자에 취소선이 박힌 것»을 발견하셨다. 실측해 보니
+// **창을 연 직후부터** 취소선 버튼이 `se-is-selected` 였다 — 우리가 누른 것이 아니라
+// **네이버가 계정에 마지막 서식 상태를 기억**하고 있었던 것이다.
+// 그 상태로 붙여넣으면 **글 전체가 그 서식을 먹는다**(실측: STRIKE 175개).
+//
+// @AI:CONSTRAINT 「우리가 안 눌렀으니 우리 탓이 아니다」로 넘기지 말 것 —
+//   결과물이 고객 블로그에 취소선 그은 글로 나간다. 켜져 있으면 «끄고» 시작한다.
+// @AI:CONSTRAINT 굵게(b)는 «끄지 않는다» — 본문에 정상적으로 쓰이고, 우리가 HTML 로
+//   직접 넣는다. 토글이 켜져 있어도 붙여넣는 HTML 이 이기는지는 확인되지 않았으므로
+//   «글 전체를 덮는» 축(취소선·밑줄·기울임)만 끈다.
+// ─────────────────────────────────────────────────────────────
+const FORMAT_TOGGLES = [
+  ['취소선', '.se-strikethrough-toolbar-button'],
+  ['밑줄',   '.se-underline-toolbar-button'],
+  ['기울임', '.se-italic-toolbar-button'],
+];
+const TOGGLE_ON = 'se-is-selected';
+
+/**
+ * 켜져 있는 서식 토글을 끈다.
+ * @returns {{turnedOff:string[], stillOn:string[]}}
+ */
+async function clearFormatting(page, frame) {
+  const turnedOff = [], stillOn = [];
+  for (const [name, sel] of FORMAT_TOGGLES) {
+    const on = await frame.evaluate((s) => {
+      const b = document.querySelector(s.sel);
+      return b ? b.classList.contains(s.on) : null;
+    }, { sel, on: TOGGLE_ON });
+    if (on !== true) continue;                       // 없거나(null) 꺼져 있으면 둘 것
+    await frame.evaluate((s) => { document.querySelector(s.sel)?.click(); }, { sel });
+    await page.waitForTimeout(300);
+    const after = await frame.evaluate((s) => {
+      const b = document.querySelector(s.sel);
+      return b ? b.classList.contains(s.on) : null;
+    }, { sel, on: TOGGLE_ON });
+    // @AI:CONSTRAINT 「껐다」고 믿지 않는다 — 화면에서 다시 읽는다. 토글이라 한 번 더 누르면 되켜진다.
+    (after === false ? turnedOff : stillOn).push(name);
+  }
+  return { turnedOff, stillOn };
 }
 
 /** 커서를 본문 «맨 끝»에 둔다 — 문단 중간에 박히는 사고 방지(2026-08-15 실측) */
@@ -397,6 +450,13 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
     };
   }
 
+  // ①-b 서식 토글 끄기 — 🔴 «창을 연 직후부터» 켜져 있을 수 있다 (2026-08-16 실사고)
+  //   네이버가 계정에 마지막 서식 상태를 기억한다. 켜진 채 붙여넣으면 글 전체가 먹는다.
+  //   반드시 «붙여넣기 전»이어야 한다 — 뒤에 끄면 이미 먹은 것은 안 풀린다.
+  const fmt = await clearFormatting(page, frame);
+  if (fmt.turnedOff.length) notes.push(`켜져 있던 서식을 껐습니다: ${fmt.turnedOff.join(', ')}`);
+  if (fmt.stillOn.length) problems.push(`서식이 안 꺼집니다: ${fmt.stillOn.join(', ')} (이대로 채우면 글 전체가 그 서식을 먹습니다)`);
+
   // ② 이미지 미리 받기 — 중간에 받으면 실패 시 반쪽 글이 남는다
   const files = await downloadImages(parsed.blocks, imageDir);
   const failed = files.filter((f) => !f.ok);
@@ -526,6 +586,14 @@ function verifyFilled({ start, end, expected, uploaded }) {
 
   if (end.externalImages > 0) problems.push(`외부 주소 이미지가 ${end.externalImages}장 남았습니다`);
 
+  // 🔴 서식 오염 (2026-08-16 실사고 — 사장님이 화면에서 발견)
+  // @AI:CONSTRAINT 우리 HTML 에 <s>/<del>/<strike> 는 «한 번도» 안 들어간다. 화면에 있으면
+  //   에디터가 씌운 것이다 — 취소선 토글이 켜진 채 붙여넣으면 글 «전체»가 먹는다(실측 175개).
+  //   숫자가 크든 작든 막는다. 한 군데만 그어져도 고객 블로그에 나가는 글이다.
+  if (end.struck > 0) {
+    problems.push(`글자에 취소선이 ${end.struck}군데 그어졌습니다 — 붙여넣기 전 서식이 켜져 있었습니다 (지우고 다시 채우세요)`);
+  }
+
   if (placed !== expected) {
     problems.push(
       `이미지가 ${placed}/${expected}장 들어갔습니다` +
@@ -541,4 +609,5 @@ function verifyFilled({ start, end, expected, uploaded }) {
 
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
                    downloadImages, describeImageFailure, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard,
+                   clearFormatting, FORMAT_TOGGLES,
                    readRepImage, setRepImage, REP_BTN, REP_ON, IMG_COMPONENT, BODY, PARA };

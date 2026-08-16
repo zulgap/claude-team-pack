@@ -18,7 +18,7 @@ const ok = (name, cond, detail = '') => {
   else { fail += 1; console.log(`  ❌ ${name}${detail ? '  → ' + detail : ''}`); }
 };
 /** slots = 이미지 자리 수(플레이스홀더 포함), naverImages = 화면에 URL 이 붙은 수 */
-const body = (o = {}) => ({ chars: 100, slots: 0, images: 0, naverImages: 0, externalImages: 0, placeholders: 0, ...o });
+const body = (o = {}) => ({ chars: 100, slots: 0, images: 0, naverImages: 0, externalImages: 0, placeholders: 0, struck: 0, ...o });
 const EMPTY = body();
 
 console.log('\n[1] 정상 — 자리가 원고 수와 같다');
@@ -106,6 +106,30 @@ console.log('\n[10] 🔴 대표 지정은 «검증 뒤»에 온다 — 그림이
   const iRep = src.indexOf('await setRepImage(page, frame, parsed.thumbnailIndex)');
   ok('🔴 setRepImage 호출이 verifyFilled «뒤»에 있다', iVerify > 0 && iRep > iVerify, `verify@${iVerify} rep@${iRep}`);
   ok('🔴 verdict 가 깨끗할 때만 세운다', /verdict\.length === 0/.test(src.slice(iVerify, iRep + 200)));
+}
+
+console.log('\n[11] 🔴 취소선이 그어졌으면 «막는다» (2026-08-16 실사고 — 사장님이 화면에서 발견)');
+{
+  // 창을 연 직후부터 취소선 토글이 켜져 있었고(네이버가 계정에 서식 상태를 기억한다),
+  // 그 상태로 붙여넣자 글 «전체»가 취소선이 됐다(실측 175개). 그런데 도구는 ready_to_register 였다.
+  // @AI:CONSTRAINT 우리 HTML 에 <s>/<del>/<strike> 는 «한 번도» 안 들어간다 —
+  //   화면에 있으면 그건 에디터가 씌운 것이다. 개수와 무관하게 막는다.
+  const ok0 = verifyFilled({ start: EMPTY, end: body({ slots: 8, naverImages: 8, struck: 0 }), expected: 8, uploaded: 8 });
+  ok('취소선 0이면 통과', ok0.length === 0, JSON.stringify(ok0));
+
+  const many = verifyFilled({ start: EMPTY, end: body({ slots: 8, naverImages: 8, struck: 175 }), expected: 8, uploaded: 8 });
+  ok('🔴 175군데면 막는다', many.some((x) => /취소선/.test(x)), JSON.stringify(many));
+
+  const one = verifyFilled({ start: EMPTY, end: body({ slots: 8, naverImages: 8, struck: 1 }), expected: 8, uploaded: 8 });
+  ok('🔴 «한 군데»만 그어져도 막는다', one.some((x) => /취소선/.test(x)), JSON.stringify(one));
+  ok('  왜 그런지·어떻게 할지 알려준다', one.some((x) => /서식이 켜져|다시 채우/.test(x)), JSON.stringify(one));
+
+  // @AI:CONSTRAINT 끄는 것만으로는 부족했다는 것이 이 사고의 교훈이다 — 두 겹을 소스로 잠근다.
+  const src = require('fs').readFileSync(path.join(__dirname, 'naver-fill.js'), 'utf8');
+  ok('🔴 채우기 «전»에 서식을 끈다', /clearFormatting\(page, frame\)/.test(src) &&
+     src.indexOf('clearFormatting(page, frame)') < src.indexOf('downloadImages(parsed.blocks'),
+     '순서 어긋남');
+  ok('🔴 결과도 «센다» (readBody 가 struck 를 돌려준다)', /struck:\s*c\.querySelectorAll\('s, del, strike'\)/.test(src));
 }
 
 console.log('\n──────────────────────────────────────────────');

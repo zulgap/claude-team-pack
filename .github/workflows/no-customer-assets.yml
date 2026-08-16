@@ -1,0 +1,69 @@
+name: customer-asset-guard
+
+# 목적: «고객 자산»(내려받은 카드 이미지)이 공개 레포에 커밋되는 것을 차단.
+#
+# 🔴 2026-08-16 실사고 — `.gitignore` 에 `tmp-img/` 만 있었는데 호출부가 `tmp-img-gaon` 이라는
+#   «다른 이름»을 쓰는 바람에 검단가온치과 **환자 구강 전후 사진 8장**이 커밋·푸시됐다.
+#   푸시 직후 발견해 원격 브랜치를 삭제했지만, 몇 초라도 공개된 것은 되돌릴 수 없다.
+#
+# 🔑 .gitignore 는 «이름을 하나 늘리면» 뚫린다. 그래서 게이트를 따로 둔다 —
+#   규칙만으로는 안 지켜진 전례가 있으므로 결정론 검사가 SSOT다.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 고객 자산 커밋 차단
+        shell: bash
+        run: |
+          fail=0
+
+          # ① 작업용 이미지 폴더 — 이름이 어떻든 tmp-img 로 시작하면 전부 막는다
+          hits=$(git ls-files | grep -E '(^|/)tmp-img[^/]*/' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::작업용 이미지 폴더가 커밋됐습니다 (고객 자산일 수 있습니다)"
+            echo "$hits" | sed 's/^/  /'
+            fail=1
+          fi
+
+          # ② 크롬 프로필 — 네이버 로그인 쿠키가 들어 있다
+          hits=$(git ls-files | grep -E '(^|/)\.profiles/' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::크롬 프로필이 커밋됐습니다 (로그인 쿠키 유출)"
+            echo "$hits" | sed 's/^/  /'
+            fail=1
+          fi
+
+          # ③ 아웃박스 — 어느 고객 글을 언제 올렸는지가 들어 있다
+          hits=$(git ls-files | grep -E '(^|/)\.outbox\.jsonl$' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::아웃박스가 커밋됐습니다 (고객 작업 이력)"
+            echo "$hits" | sed 's/^/  /'
+            fail=1
+          fi
+
+          # ④ 스킬 폴더 안 이미지 — 문서용 자산만 허용(references/ · docs/ · assets/)
+          # @AI:INTENT 스킬은 «글자»로 이뤄진다. 이미지가 스킬 폴더에 있으면 대개 내려받은 고객 자산이다.
+          hits=$(git ls-files 'plugins/**/*.png' 'plugins/**/*.jpg' 'plugins/**/*.jpeg' 'plugins/**/*.webp' \
+                 | grep -vE '/(references|docs|assets|templates)/' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::스킬 폴더에 이미지가 있습니다 — 고객 자산이면 지우고, 문서용이면 assets/ 로 옮기세요"
+            echo "$hits" | sed 's/^/  /'
+            fail=1
+          fi
+
+          if [ "$fail" = "1" ]; then
+            echo ""
+            echo "🔴 이 레포는 «공개»입니다. 고객 자산은 커밋하지 마세요."
+            echo "   이미 푸시했다면: 원격 브랜치를 지우고(git push origin --delete <브랜치>)"
+            echo "   커밋에서 파일을 뺀 뒤 다시 올리세요."
+            exit 1
+          fi
+          echo "OK — 고객 자산 0건"

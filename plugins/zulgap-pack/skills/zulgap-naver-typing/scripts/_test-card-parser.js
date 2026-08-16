@@ -167,7 +167,7 @@ https://mamisa.vercel.app/blog/2-ga4-direct-traffic-check
 ${'저희가 관리하는 사이트 90일치를 꺼냈습니다. '.repeat(6)}
 ### 해시태그 (정확히 10개)
 #구글애널리틱스 #GA4 #직접유입`;
-const M = parseCard(MAMISA), MV = validateCard(M);
+const M = parseCard(MAMISA), MV = validateCard(M, /* 썸네일 축은 [14]에서 따로 — 여기선 경계 판정만 본다 */ { requireThumbnail: false });
 ok('제목을 「### 제목」 다음 줄에서 집는다', M.title === '구글 애널리틱스에서 「직접」이 제일 크면 확인해야 할 네 가지', String(M.title));
 ok('앞쪽 내부 메모를 버린다', M.dropped > 10, `dropped=${M.dropped}`);
 ok('원고를 살린다(이미지 1장)', M.images === 1);
@@ -204,9 +204,9 @@ ok('AI 프롬프트 코드블록 제거', !ePlain.includes('--ar 16:9') && !ePla
 ok('🖼️ 이미지 지시줄 제거', !ePlain.includes('이미지1'));
 ok('실제 이미지는 살린다', E.images === 1);
 ok('본문 소제목은 살린다', ePlain.includes('문의보다 표를 먼저 찾게 되는 이유'));
-ok('카드에 제목이 없으면 문제로 잡는다', validateCard(E).ok === false);
-ok('노션 제목을 넘기면 통과', validateCard(E, { title: '결혼정보회사 등급표, 그대로 믿어도 될까요' }).ok === true,
-   JSON.stringify(validateCard(E, { title: 'x' }).problems));
+ok('카드에 제목이 없으면 문제로 잡는다', validateCard(E, { requireThumbnail: false }).ok === false);
+ok('노션 제목을 넘기면 통과', validateCard(E, { title: '결혼정보회사 등급표, 그대로 믿어도 될까요', requireThumbnail: false }).ok === true,
+   JSON.stringify(validateCard(E, { title: 'x', requireThumbnail: false }).problems));
 
 console.log('\n[9] 검단가온형 — 「SEO 제목」·「메타 설명」 머리말이 앞에');
 const GAON = `## SEO 제목
@@ -223,7 +223,7 @@ ${'땅에 기둥을 세울 때 얼마나 파야 하는지는 땅의 단단함이
 출처 : [서울아산병원 의료정보](https://www.amc.seoul.kr/asan/healthinfo/management/managementDetail.do?managementId=365)
 ${'즉 임플란트 절개는 과정의 일부입니다. '.repeat(6)}
 > "블로그 보고 예약합니다."`;
-const G = parseCard(GAON), GV = validateCard(G);
+const G = parseCard(GAON), GV = validateCard(G, /* 썸네일 축은 [14]에서 따로 — 여기선 경계 판정만 본다 */ { requireThumbnail: false });
 const gPlain = G.blocks.filter(b => b.kind === 'html').map(b => b.html).join('\n').replace(/<[^>]+>/g, '');
 ok('H1 을 제목으로', G.title === '검단신도시 임플란트, 잇몸 절개는 얼마나 할까요?', String(G.title));
 ok('🔴 「SEO 제목」 머리말 제거', !gPlain.includes('SEO 제목') && !gPlain.includes('검단가온치과 |') );
@@ -243,7 +243,8 @@ console.log('\n[11] 강조 밀도 — «세기만» 한다 (넣지 않는다)');
 {
   const IMG_LINE = '![설명](https://example.com/a.png)';          // 이미지 0장은 «다른 이유»로 막히므로 넣는다
   const long = '충분히 긴 본문 문장입니다. '.repeat(40);          // 500자 이상
-  const bare = validateCard(parseCard(`# 제목\n${long}\n${IMG_LINE}`));
+  // 썸네일 축은 [14]에서 따로 — 여기선 «강조 밀도가 막지 않는다»만 본다
+  const bare = validateCard(parseCard(`# 제목\n${long}\n${IMG_LINE}`), { requireThumbnail: false });
   ok('강조가 없으면 알린다', bare.warnings.some((w) => w.includes('강조가 0개')));
   ok('🔴 그래도 «막지는» 않는다', bare.ok === true);
   ok('몇 개가 어울리는지 숫자로 알려준다', /\d+개 안팎/.test(bare.warnings[0] || ''));
@@ -375,6 +376,52 @@ ${BODY}
   const leaked = validateCard(parseCard(`# 제목\n${BODY}\n문단 안에 붙여넣기 안내 라고 적혀 있다`));
   ok('🔴 자리 판정을 뚫어도 검증이 잡는다', leaked.ok === false && leaked.problems.some(p => p.includes('붙여넣기 안내')),
      JSON.stringify(leaked.problems));
+}
+
+// ─────────────────────────────────────────────────────────────
+// [14] 🔴 썸네일이 없으면 «막는다» (2026-08-16 사장님 확정 — 「블로그는 전부 썸네일을 넣는다」)
+//
+//   그전까지 나는 카드 4장을 열어 보고 「엔노블·검단가온은 썸네일을 안 만든다」고 보고했다.
+//   그건 **관측을 정책으로 오독**한 것이었다 — 카드가 빠뜨린 것이지 방침이 아니었다.
+//   실제로 썸네일 생성기는 동료사마다 이미 있고(`zulgap-*-thumbnail`), **부르는 자리만 없었다.**
+//
+// @AI:CONSTRAINT 네이버는 대표를 «본문에 있는 그림 중에서만» 고른다 — 카드에 없으면
+//   파서가 만들어낼 수 없다. 그래서 「경고」로는 부족하고 «차단»이 맞다(사장님 확정).
+// @AI:CONSTRAINT 이 검사는 «전 동료사»에 걸린다. 지금 걸리는 것: 엔노블 4 · 검단가온 1 · 마미사.
+//   그게 의도다 — 빠뜨린 것을 조용히 통과시키지 않는다.
+// ─────────────────────────────────────────────────────────────
+console.log('\n[14] 🔴 썸네일이 없으면 막는다');
+{
+  const BODY = '본문 문장입니다. '.repeat(40);
+  const IMG = '![도식](https://ex.supabase.co/a/1.png)';
+  const THUMB = '![](https://prod-files-secure.s3.amazonaws.com/x/thumb.png)';
+
+  const withThumb = validateCard(parseCard(`# 제목\n${BODY}\n${IMG}\n## 썸네일 (1080 x 1080)\n${THUMB}`));
+  ok('썸네일 있으면 통과', withThumb.ok === true, JSON.stringify(withThumb.problems));
+
+  const noThumb = validateCard(parseCard(`# 제목\n${BODY}\n${IMG}`));
+  ok('🔴 썸네일 없으면 막는다', noThumb.ok === false && noThumb.problems.some((p) => /썸네일/.test(p)),
+     JSON.stringify(noThumb.problems));
+  ok('  «왜»와 «어떻게»를 알려준다', noThumb.problems.some((p) => /검색결과|얼굴/.test(p) && /thumbnail|만들/.test(p)),
+     JSON.stringify(noThumb.problems.filter((p) => /썸네일/.test(p))));
+
+  // 🔴 「미제작」 — 헤딩은 있는데 그림이 없는 RPG 실측 구조. 헤딩만 보고 통과시키면 안 된다.
+  const notMade = validateCard(parseCard(
+    `# 제목\n${BODY}\n${IMG}\n## 썸네일 (1080 x 1080)\n⬜ **미제작** — 카드 본문 확정 후 일괄 제작 예정`));
+  ok('🔴 헤딩만 있고 «미제작»이면 막는다', notMade.ok === false && notMade.problems.some((p) => /썸네일/.test(p)),
+     JSON.stringify(notMade.problems));
+
+  // @AI:CONSTRAINT 끄는 문(opts)을 열어 둔다 — 「썸네일 없이 급히 내보내야 한다」는 판단은
+  //   사람 것이지 도구 것이 아니다. 다만 «명시»해야 열린다(기본값은 막는 쪽).
+  const skipped = validateCard(parseCard(`# 제목\n${BODY}\n${IMG}`), { requireThumbnail: false });
+  ok('사람이 명시로 끄면 통과한다', skipped.ok === true, JSON.stringify(skipped.problems));
+  ok('  기본값은 «막는 쪽»이다', validateCard(parseCard(`# 제목\n${BODY}\n${IMG}`), {}).ok === false);
+
+  // 이미지가 아예 0장인 카드는 «이미지 0장»으로 이미 막힌다 — 메시지가 겹쳐도 둘 다 나온다
+  const noImg = validateCard(parseCard(`# 제목\n${BODY}`));
+  ok('이미지 0장 + 썸네일 없음 = 둘 다 알려준다',
+     noImg.problems.some((p) => /이미지가 0장/.test(p)) && noImg.problems.some((p) => /썸네일/.test(p)),
+     JSON.stringify(noImg.problems));
 }
 
 console.log(`\n${'─'.repeat(46)}\nPASS ${pass} / FAIL ${fail}`);
