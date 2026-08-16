@@ -260,6 +260,74 @@ async function uploadImage(page, frame, filePath, timeoutMs = 45000) {
   return uploadOnce(page, frame, filePath, timeoutMs);
 }
 
+// ─────────────────────────────────────────────────────────────
+// 대표 이미지 (썸네일) — 2026-08-16 실측
+//
+// 네이버 검색결과·블로그 목록에 뜨는 «얼굴»이다. 발행 패널에는 이 항목이 **없고**
+// (실측: 카테고리·주제·공개설정·태그·발행시간·공지사항이 전부),
+// 본문 이미지마다 붙은 `.se-set-rep-image-button` 이 그 일을 한다.
+//
+// 실측 4단계 —
+//   ① 그림 2장 업로드 직후: **첫 장이 자동으로 대표**(se-is-selected), 2번은 아님
+//   ② 2번 이미지를 클릭만 해서는 안 바뀐다
+//   ③ 2번의 .se-set-rep-image-button 클릭
+//   ④ 대표가 1번 → 2번으로 «옮겨간다»(배타적)
+// ─────────────────────────────────────────────────────────────
+
+const REP_BTN = '.se-set-rep-image-button';
+const REP_ON = 'se-is-selected';
+const IMG_COMPONENT = '.se-content .se-component.se-image';
+
+/**
+ * 지금 몇 번째 그림이 대표인가.
+ * @AI:INTENT 「지정했다」를 믿지 않고 화면에서 다시 읽으려고 분리했다.
+ * @returns {{index:number|null, total:number}} index 는 0부터. 대표가 없으면 null
+ */
+async function readRepImage(frame) {
+  return frame.evaluate((s) => {
+    const list = [...document.querySelectorAll(s.comp)];
+    let index = null;
+    list.forEach((c, i) => {
+      const b = c.querySelector(s.btn);
+      if (b && b.classList.contains(s.on)) index = i;
+    });
+    return { index, total: list.length };
+  }, { comp: IMG_COMPONENT, btn: REP_BTN, on: REP_ON });
+}
+
+/**
+ * n번째 그림을 대표로 지정한다(0부터).
+ *
+ * @AI:CONSTRAINT 🔴 이미 그 그림이 대표면 **누르지 않는다.** 이 버튼은 토글이라
+ *   한 번 더 누르면 대표가 «풀릴» 수 있고, 그러면 네이버가 다시 첫 장을 쓴다.
+ * @AI:CONSTRAINT 지정 후 화면에서 다시 읽어 확인한다. 안 바뀌었으면 거짓을 돌려주고 멈춘다 —
+ *   대표 이미지는 검색결과에 그대로 노출되므로 «아마 됐을 것»으로 넘기지 않는다.
+ */
+async function setRepImage(page, frame, index = 0) {
+  const before = await readRepImage(frame);
+  if (!before.total) return { ok: false, code: 'NO_IMAGE', reason: '본문에 그림이 없습니다' };
+  if (index < 0 || index >= before.total) {
+    return { ok: false, code: 'OUT_OF_RANGE', reason: `${index + 1}번째 그림이 없습니다 (총 ${before.total}장)`, total: before.total };
+  }
+  if (before.index === index) return { ok: true, index, total: before.total, already: true };
+
+  const clicked = await frame.evaluate((s) => {
+    const c = [...document.querySelectorAll(s.comp)][s.i];
+    const b = c && c.querySelector(s.btn);
+    if (!b) return false;
+    b.click();
+    return true;
+  }, { comp: IMG_COMPONENT, btn: REP_BTN, i: index });
+  if (!clicked) return { ok: false, code: 'NO_BUTTON', reason: `${index + 1}번째 그림에 대표 버튼이 없습니다` };
+
+  await page.waitForTimeout(1200);
+  const after = await readRepImage(frame);
+  if (after.index !== index) {
+    return { ok: false, code: 'NOT_APPLIED', reason: `대표가 반영되지 않았습니다 (지금 ${after.index === null ? '없음' : after.index + 1}번째)`, actual: after };
+  }
+  return { ok: true, index, total: after.total, moved_from: before.index };
+}
+
 /** 이미지 URL → 로컬 파일 (순서 보존 이름) */
 async function downloadImages(blocks, dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -410,4 +478,5 @@ function verifyFilled({ start, end, expected, uploaded }) {
 }
 
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
-                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard, BODY, PARA };
+                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard,
+                   readRepImage, setRepImage, REP_BTN, REP_ON, IMG_COMPONENT, BODY, PARA };

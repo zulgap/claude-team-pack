@@ -20,6 +20,7 @@ const 정상 = () => ({
   category: '마미사_ai로 회사 굴립니다',
   schedule: { reserved: true, date: '2026. 08. 17', hour: '19', minute: '20', at: '2026. 08. 17 19:20' },
   hasPublishBtn: true,
+  rep: { index: 0, total: 11 },
 });
 const 기대 = { category: '마미사_ai로 회사 굴립니다' };
 
@@ -88,6 +89,25 @@ console.log('\n[5] 카테고리 이름 비교 — 네이버 nbsp 를 흡수한�
   ok('하위 카테고리 접두사를 뗀다', normalizeName('하위 카테고리 마케팅 줄GAP') === '마케팅 줄GAP');
   const r = 정상(); r.category = `마미사_ai로${NB}회사${NB}굴립니다`;
   ok('🔴 그래서 실제 화면값으로도 통과한다', judgeRow(r, 기대).ok, JSON.stringify(judgeRow(r, 기대).problems));
+}
+
+// @AI:INTENT 대표 이미지 = 검색결과·블로그 목록에 뜨는 «얼굴». 지정을 안 하면 네이버가 첫 장을
+//   쓰므로 대개는 뜨지만, 그림이 있는데 «대표가 없는» 상태면 얼굴 없이 나간다.
+//   2026-08-16 실측으로 열린 축이다 — 그 전에는 스킬에 이 개념 자체가 없었다.
+console.log('\n[6] 대표 이미지');
+{
+  const r1 = 정상(); r1.rep = { index: null, total: 11 };
+  const v1 = judgeRow(r1, 기대);
+  ok('🔴 그림이 있는데 대표가 없으면 거부', !v1.ok && v1.problems.some((p) => p.includes('대표')), JSON.stringify(v1.problems));
+
+  const r2 = 정상(); r2.rep = { index: 3, total: 11 };
+  ok('  첫 장이 아니어도 지정만 돼 있으면 통과', judgeRow(r2, 기대).ok);
+
+  const r3 = 정상(); r3.rep = { index: null, total: 0 };
+  ok('  그림이 아예 없으면 대표를 묻지 않는다', judgeRow(r3, 기대).ok);
+
+  const r4 = 정상(); delete r4.rep;
+  ok('  rep 를 못 읽었으면(구버전 모듈) 막지 않는다', judgeRow(r4, 기대).ok);
 }
 
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAIL'}  ${pass}/${pass + fail}\n`);

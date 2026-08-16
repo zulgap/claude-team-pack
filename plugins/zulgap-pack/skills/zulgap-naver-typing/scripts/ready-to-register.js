@@ -56,6 +56,13 @@ function judgeRow(row, expect = {}) {
     problems.push(`그림 자리 ${row.slots}/${row.images_expected}`);
   }
 
+  // @AI:INTENT 대표 이미지는 검색결과·블로그 목록에 뜨는 «얼굴»이다. 지정을 안 하면
+  //   네이버가 첫 장을 쓰므로 대개는 그림이 뜨지만, 그림이 있는데도 «대표가 없는» 상태가
+  //   되면 얼굴 없이 나간다. 그건 사람이 알아야 한다.
+  if (row.rep && row.rep.total > 0 && row.rep.index === null) {
+    problems.push('대표 이미지가 지정돼 있지 않습니다 (검색결과에 얼굴이 안 뜹니다)');
+  }
+
   if (expect.category) {
     if (!row.category) problems.push('카테고리를 읽지 못했습니다');
     else if (normalizeName(row.category) !== normalizeName(expect.category)) {
@@ -104,6 +111,9 @@ async function readWindow(page, mod) {
   let category = null;
   try { category = await mod.cat.currentCategory(f); } catch { /* 패널이 닫혔을 수 있다 */ }
 
+  let rep = null;
+  try { rep = await mod.fill.readRepImage(f); } catch { /* 구버전 모듈 */ }
+
   const schedule = await f.evaluate(() => {
     const g = (s) => document.querySelector(s);
     const pre = g('[data-testid=preTimeRadioBtn]');
@@ -118,7 +128,7 @@ async function readWindow(page, mod) {
 
   return {
     page, title, chars: body.chars, slots: body.slots,
-    category, schedule,
+    category, schedule, rep,
     panelOpen: panel.open, hasPublishBtn: !!panel.hasPublishBtn, publishText: panel.publishText,
   };
 }
@@ -163,7 +173,10 @@ async function main() {
     const v = judgeRow(r, { category: expectCategory });
     if (!v.ok) bad += 1;
     console.log(`${i + 1}. ${v.ok ? '✅ 눌러도 됩니다' : '🔴 누르지 마세요'}  ${String(r.title).slice(0, 34)}`);
-    console.log(`     본문 ${r.chars}자 · 그림 ${r.slots}자리 · ${r.category || '카테고리 못 읽음'}`);
+    const repTxt = !r.rep || !r.rep.total ? '그림 없음'
+      : r.rep.index === null ? '🔴 대표 미지정'
+      : `대표 ${r.rep.index + 1}번째`;
+    console.log(`     본문 ${r.chars}자 · 그림 ${r.slots}자리(${repTxt}) · ${r.category || '카테고리 못 읽음'}`);
     console.log(`     예약 ${r.schedule.at || '(안 걸림)'}${r.publishText ? ` · 버튼 "${r.publishText}"` : ''}`);
     v.problems.forEach((p) => console.log(`     🔴 ${p}`));
   });
