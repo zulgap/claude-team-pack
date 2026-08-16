@@ -69,9 +69,15 @@ async function readBody(frame) {
       images: imgs.length,
       naverImages: imgs.filter((i) => /pstatic|naver/.test(srcOf(i))).length,
       externalImages: imgs.filter((i) => !/pstatic|naver/.test(srcOf(i))).length,
-      // @AI:INTENT 업로드가 «실패한 자리»를 센다. 네이버는 실패하면 그 자리에
-      //   data:image/svg+xml 플레이스홀더를 끼워 넣는다(2026-08-16 실측: 10장 중 2장).
-      //   이걸 안 세면 「이미지가 다 있다」로 보여 깨진 채 발행된다.
+      // @AI:INTENT 이미지 «자리» 수 — 플레이스홀더로 그려진 것까지 센다. 이것이 판정축이다.
+      //   2026-08-16 실측: 글을 붙이면 이미 올라간 이미지가 화면에서 SVG 플레이스홀더로 바뀐다.
+      //   그런데 임시저장된 문서를 서버에서 받아 보면 이미지 URL 이 «10개 전부» 들어 있다
+      //   (RabbitTempPostRead 응답: 이미지 10 / SVG 0). 즉 깨진 게 아니라 «표시»만 바뀐 것이다.
+      //   그래서 naverImages(화면에 URL 이 붙은 수)로 성공을 재면 오판하고,
+      //   그 오판이 재시도와 «멀쩡한 이미지 삭제»를 부른다.
+      slots: allImgs.length,
+      // @AI:CONSTRAINT 이 숫자를 「업로드 실패」로 읽지 말 것 — 위 실측이 아니라고 말한다.
+      //   화면 표시 상태일 뿐이라 사람에게 보여 줄 참고값이다.
       placeholders: allImgs.filter((i) => /^data:image\/svg/.test(srcOf(i))).length,
     };
   }, BODY);
@@ -80,7 +86,12 @@ async function readBody(frame) {
 const PLACEHOLDER_IMG = 'img[src^="data:image/svg"]';
 
 /**
- * 업로드 실패 자리(SVG 플레이스홀더) 하나를 지운다.
+ * 플레이스홀더로 «그려진» 이미지 자리 하나를 지운다.
+ *
+ * 🔴 **채우기 경로에서 부르지 말 것.** 플레이스홀더는 「업로드 실패」가 아니라 «화면 표시»다 —
+ *   문서에는 이미지가 온전히 들어 있음을 서버 응답으로 확인했다(2026-08-16, PROVENANCE 참조).
+ *   그걸 모르고 이 함수로 «정리»하다가 멀쩡한 그림을 지웠다(10장 → 9장).
+ *   사람이 「이 그림은 빼 달라」고 지목했을 때를 위해 남겨 둘 뿐이다.
  *
  * @AI:CONSTRAINT DOM 에서 직접 remove 하지 않는다 — 네이버 에디터는 자체 문서 모델을 들고 있어
  *   DOM 만 지우면 저장 때 되살아나거나 문서가 깨진다. 에디터가 스스로 지우게 한다.
@@ -192,19 +203,23 @@ async function uploadOnce(page, frame, filePath, timeoutMs) {
   ]);
   await chooser.setFiles(filePath);
 
-  // 네이버 서버로 올라갈 때까지 대기 (개수 증가로 판정)
+  // @AI:CONSTRAINT 「이미지 자리가 늘었나」로 잰다 — naverImages 로 재지 말 것.
+  //   글을 붙이면 이미 올라간 이미지가 화면에서 플레이스홀더로 바뀌어 naverImages 가 «줄어든다».
+  //   그러면 새 이미지가 들어와도 늘어난 것이 안 보여 «실패»로 오판하고,
+  //   그 오판이 재시도와 멀쩡한 이미지 삭제를 부른다(2026-08-16 실측: 10장 → 9장 유실).
+  //   자리 수는 표시 상태와 무관하게 늘기만 하므로 흔들리지 않는다.
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await page.waitForTimeout(1000);
     const now = await readBody(frame);
-    if (now.naverImages > before.naverImages) return { ok: true, naverImages: now.naverImages };
+    if (now.slots > before.slots) return { ok: true, slots: now.slots };
   }
   const end = await readBody(frame);
   return {
     ok: false,
-    reason: '업로드 후 네이버 서버 이미지가 늘지 않았습니다',
-    before: before.naverImages,
-    placeholders: end.placeholders,
+    reason: '업로드 후 이미지 자리가 늘지 않았습니다',
+    before: before.slots,
+    after: end.slots,
   };
 }
 
@@ -220,71 +235,6 @@ async function uploadOnce(page, frame, filePath, timeoutMs) {
  */
 async function uploadImage(page, frame, filePath, timeoutMs = 45000) {
   return uploadOnce(page, frame, filePath, timeoutMs);
-}
-
-/**
- * 깨진 이미지 자리를 «그 자리에» 되살린다.
- *
- * @AI:INTENT 자리(순서)는 이미 정확하다 — 깨진 것은 그림뿐이다(2026-08-16 실측: 10곳 전부 제자리).
- *   그래서 지우고 다시 넣는 게 아니라, 그 «앞»에 그림을 넣고 깨진 자리를 치운다. 순서가 보존된다.
- * @AI:CONSTRAINT 텍스트를 다 붙인 «뒤»에만 부른다. 붙여넣기가 이미지를 깨뜨리므로,
- *   중간에 고쳐 봐야 다음 붙여넣기가 다시 깨뜨린다.
- */
-async function repairBrokenImages(page, frame, files, opts = {}) {
-  const notes = [];
-  const problems = [];
-  const limit = opts.maxRepairs ?? 12;
-
-  for (let guard = 0; guard < limit; guard += 1) {
-    // 이미지 자리를 순서대로 훑어 «몇 번째»가 깨졌는지 찾는다 — 그 번호가 곧 파일 번호다
-    const target = await frame.evaluate(() => {
-      const comps = [...document.querySelectorAll('.se-content .se-component')]
-        .filter((c) => !c.classList.contains('se-documentTitle'));
-      let seq = 0;
-      for (const c of comps) {
-        const im = c.querySelector('img');
-        if (!im) continue;
-        seq += 1;
-        if ((im.getAttribute('src') || '').startsWith('data:image/svg')) return { seq };
-      }
-      return null;
-    });
-    if (!target) break;
-
-    const f = (files || []).find((x) => x.index === target.seq);
-    if (!f || !f.ok) { problems.push(`이미지 ${target.seq} 자리를 되살릴 파일이 없습니다`); break; }
-
-    // ① 깨진 자리 «자체»를 눌러 선택한다 — 글은 건드리지 않는다
-    // @AI:FRAGILE 앞 문단 끝에 커서를 놓는 방식으로 하지 말 것. 네이버 에디터는 자체 문서 모델을 들고
-    //   있어 DOM Selection 을 바꿔도 «클릭한 지점»을 커서로 쓴다. 긴 문단은 여러 줄로 감기므로
-    //   그 지점이 문단 한가운데가 되고, 거기 이미지가 들어가면 문장이 글자 단위로 갈라진다
-    //   (2026-08-16 실측: 「광고」→「광」+[이미지]+「고를」, 「목록」→「목」+[이미지]+「록 밖의」).
-    //   깨진 자리 옆에 넣으면 글을 한 글자도 건드리지 않는다.
-    // @AI:FRAGILE element.click() 은 «선택»으로 인식되지 않는다 — 실제 좌표 클릭이라야 한다
-    //   (removePlaceholder 와 같은 이유). 본문 영역이라 좌표를 써도 위험한 버튼이 근처에 없다.
-    const brokenComp = frame.locator('.se-content .se-component.se-image')
-      .filter({ has: frame.locator(PLACEHOLDER_IMG) }).first();
-    if (await brokenComp.count() === 0) break;
-    await brokenComp.scrollIntoViewIfNeeded({ timeout: 8000 }).catch(() => {});
-    const box = await brokenComp.boundingBox();
-    if (!box) { problems.push(`이미지 ${target.seq} 의 깨진 자리를 화면에서 찾지 못했습니다`); break; }
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    await page.waitForTimeout(400);
-
-    // ② 그림만 다시 올린다
-    const r = await uploadOnce(page, frame, f.file, opts.timeoutMs ?? 45000);
-    if (!r.ok) { problems.push(`이미지 ${target.seq} 자리를 되살리지 못했습니다: ${r.reason}`); break; }
-
-    // ③ 깨진 자리를 치운다 — 이제 그림은 바로 앞에 있으므로 순서가 유지된다
-    let removed = false;
-    try { removed = await removePlaceholder(page, frame); }
-    catch (e) { problems.push(e.message); break; }
-    if (!removed) { problems.push(`이미지 ${target.seq} 의 깨진 자리를 치우지 못했습니다`); break; }
-
-    notes.push(`이미지 ${target.seq} 자리 되살림`);
-    await page.waitForTimeout(opts.gapMs ?? 700);
-  }
-  return { notes, problems };
 }
 
 /** 이미지 URL → 로컬 파일 (순서 보존 이름) */
@@ -370,18 +320,11 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
     await page.waitForTimeout(opts.gapMs ?? 700);
   }
 
-  // ④-b 깨진 이미지 자리 되살리기
-  // @AI:INTENT 붙여넣기가 이전 이미지를 깨뜨리므로(2026-08-16 실측) 여기서 한 번에 고친다.
-  //   «지우는» 게 아니라 «그 자리에 다시 넣는다» — 자리는 이미 맞기 때문이다.
-  //   텍스트가 전부 들어간 뒤라서, 고친 것이 다시 깨질 일이 없다.
-  {
-    const s = await readBody(frame);
-    if (s.placeholders) {
-      const rep = await repairBrokenImages(page, frame, files, { gapMs: opts.gapMs });
-      notes.push(...rep.notes);
-      problems.push(...rep.problems);
-    }
-  }
+  // @AI:CONSTRAINT ④-b 「플레이스홀더 정리」를 여기에 되살리지 말 것.
+  //   그것이 «멀쩡한 이미지»를 지워 그림이 사라지게 한 원인이었다(2026-08-16 실측).
+  //   화면의 플레이스홀더는 «표시»일 뿐이고 문서에는 이미지가 온전히 들어 있다
+  //   (임시저장분 서버 응답 RabbitTempPostRead: 이미지 URL 10 / SVG 0 — PROVENANCE 참조).
+  //   고칠 것이 없으므로 아무것도 하지 않는다.
 
   // ⑤ 결과 검증 — 판정은 «화면»이 한다
   const end = await readBody(frame);
@@ -397,10 +340,14 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   return {
     status: okAll ? 'ready_to_register' : 'partial',
     checkpoint: okAll ? 'ready_to_register' : checkpoint,
-    filled: { chars: end.chars, naverImages: end.naverImages, externalImages: end.externalImages,
-              placeholders: end.placeholders,
-              images_expected: parsed.images, images_uploaded: uploaded,
-              images_on_screen: end.naverImages - start.naverImages },
+    filled: { chars: end.chars,
+              // 판정에 쓰는 값 — 들어간 이미지 «자리» 수
+              images_expected: parsed.images,
+              images_placed: end.slots - start.slots,
+              images_uploaded: uploaded,
+              externalImages: end.externalImages,
+              // 참고값 — 화면 표시 상태일 뿐이다(문서에는 이미지가 온전히 들어 있다)
+              화면표시: `URL ${end.naverImages}장 · 그림자리 ${end.placeholders}장` },
     problems,
     notes,
     // @AI:CONSTRAINT 여기서 끝. 등록은 사람이 누른다.
@@ -421,27 +368,23 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
  */
 function verifyFilled({ start, end, expected, uploaded }) {
   const problems = [];
-  const before = (start && start.naverImages) || 0;
-  const onScreen = ((end && end.naverImages) || 0) - before;
+  const before = (start && start.slots) || 0;
+  const placed = ((end && end.slots) || 0) - before;
 
   if (end.externalImages > 0) problems.push(`외부 주소 이미지가 ${end.externalImages}장 남았습니다`);
 
-  if (onScreen !== expected) {
+  if (placed !== expected) {
     problems.push(
-      `화면에 이미지가 ${onScreen}/${expected}장 있습니다` +
-      (uploaded !== undefined && uploaded !== onScreen
-        ? ` (올렸다고 센 것은 ${uploaded}장 — 재시도가 겹쳐 실제와 어긋났습니다)`
-        : ''),
+      `이미지가 ${placed}/${expected}장 들어갔습니다` +
+      (uploaded !== undefined && uploaded !== placed ? ` (올렸다고 센 것은 ${uploaded}장)` : ''),
     );
   }
 
-  // @AI:CONSTRAINT 이게 남아 있으면 «깨진 이미지가 발행된다». 개수만 세고 넘어가면
-  //   화면에는 그림이 있어 보여서 사람도 못 알아챈다(2026-08-16 실측 사고).
-  if (end.placeholders > 0) {
-    problems.push(`업로드 실패 자리가 ${end.placeholders}개 남았습니다 — 이대로 등록하면 그 자리가 깨진 채 발행됩니다`);
-  }
+  // @AI:CONSTRAINT placeholders 를 문제로 올리지 말 것 — 「업로드 실패」가 아니라 «화면 표시»다.
+  //   문서에는 이미지가 온전히 들어 있음을 서버 응답으로 확인했다(2026-08-16, PROVENANCE 참조).
+  //   여기서 문제로 올리면 멀쩡한 글이 partial 로 막히고, 사람이 「고치려고」 지우다 진짜로 잃는다.
   return problems;
 }
 
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
-                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, repairBrokenImages, BODY, PARA };
+                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, BODY, PARA };
