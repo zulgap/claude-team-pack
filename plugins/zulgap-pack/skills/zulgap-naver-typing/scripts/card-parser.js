@@ -42,6 +42,11 @@ const LEAK_FINGERPRINTS = [
   '삽입 위치', '담당자 피드백', '도구 검수', '오검출', '유사문서',
 ];
 
+// 강조 밀도 기준 — 2026-08-16 실측(발행글 「원산지증명서」 편: 2,698자에 볼드 37개 ≈ 73자당 1개)
+// @AI:INTENT 알림용 잣대일 뿐 차단선이 아니다. 근거는 shared/naver-format/FORMAT.md 「강조」 절.
+const EMPHASIS_REF_CHARS_PER_BOLD = 73;   // 기존 글이 이만큼마다 하나씩 굵게 한다
+const EMPHASIS_MAX_CHARS_PER_BOLD = 200;  // 이보다 드물면 「강조가 거의 없다」로 보고 알린다
+
 // @AI:INTENT 「무엇인가」(경계 판정)는 이 파일, 「어떻게 보이나」(포맷)는 공용 정본.
 //   경로가 pack root 기준이라 스킬 폴더 이름이 설치마다 달라도 같은 곳을 가리킨다.
 //   규칙을 여기에 되돌려 적지 말 것 — 채널이 늘 때마다 흩어진다(2026-08-16 그래서 분리했다).
@@ -246,7 +251,28 @@ function validateCard(parsed, opts = {}) {
   if (/\[이미지\s*\d+/.test(plain)) problems.push('이미지 마커가 남아 있습니다');
   if (/TODO|FIXME|<[A-Z_]{3,}>/.test(plain)) problems.push('플레이스홀더가 남아 있습니다');
 
-  return { ok: problems.length === 0, problems, body_chars: plain.length, title: effectiveTitle || null };
+  // 강조 밀도 — «세기만» 한다
+  // @AI:CONSTRAINT 여기서 볼드를 «넣지» 말 것. 어디를 굵게 할지는 「작성」의 판단이고,
+  //   발행이 정하면 원고를 고치는 셈이다(FORMAT.md 「강조」 절). 세는 것은 결정론이라 여기서 한다.
+  // @AI:INTENT 막지 않고 알리기만 한다 — 이미 만들어진 카드 26편이 전부 강조 0 이라
+  //   차단하면 전부 멈춘다. 강조 부족은 «깨짐»이 아니라 «덜 좋음»이다.
+  const warnings = [];
+  const bolds = (textHtml.match(/<b>/g) || []).length;
+  const perBold = bolds ? Math.round(plain.length / bolds) : null;
+  if (plain.length >= 300 && (bolds === 0 || perBold > EMPHASIS_MAX_CHARS_PER_BOLD)) {
+    warnings.push(
+      `문장 안 강조가 ${bolds}개입니다 (본문 ${plain.length}자). ` +
+      `기존 발행글은 ${EMPHASIS_REF_CHARS_PER_BOLD}자당 1개꼴이라 ` +
+      `${Math.round(plain.length / EMPHASIS_REF_CHARS_PER_BOLD)}개 안팎이 어울립니다 — ` +
+      `카드를 만드는 쪽에서 «문장 일부»를 **굵게** 표시해 주세요`,
+    );
+  }
+
+  return {
+    ok: problems.length === 0, problems, warnings,
+    body_chars: plain.length, bolds, chars_per_bold: perBold,
+    title: effectiveTitle || null,
+  };
 }
 
 module.exports = {

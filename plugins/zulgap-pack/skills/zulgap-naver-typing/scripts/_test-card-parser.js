@@ -90,7 +90,9 @@ ok('🔴 표 머리 행에 색 (header-row 속성은 네이버가 무시한다)'
 ok('🔴 표 셀 안 마크다운이 풀린다 (별표가 글자로 안 나간다)',
    allHtml.includes('<b>지급한다</b>') && !allHtml.includes('**지급한다**'));
 ok('머리 행 셀은 색을 입는다', allHtml.includes('<span style="color:#ffffff;">상황</span>'));
-ok('본문 행 셀에는 색이 없다', allHtml.includes('<td>물건에 문제, 서류는 완벽</td>'));
+// 본문 셀은 «선은 있고 배경색은 없다» (선은 2026-08-16 사장님 결정으로 추가)
+ok('본문 행 셀에 선이 있다', /<td style="border:[^";]*">물건에 문제, 서류는 완벽<\/td>/.test(allHtml));
+ok('본문 행 셀에는 배경색이 없다', !/<td[^>]*background-color[^>]*>물건에 문제/.test(allHtml));
 ok('리스트가 ul/li 로', allHtml.includes('<ul>') && allHtml.includes('<li>선적기일'));
 ok('링크가 a 태그로', /<a href="http:\/\/redpassportglobal\.com/.test(allHtml));
 ok('해시태그 줄 보존', allHtml.includes('#신용장서류하자'));
@@ -225,6 +227,27 @@ const leaked = validateCard(parseCard(`# 제목\n${'정상 본문입니다. '.re
 ok('도구 이름이 본문에 있으면 실패', leaked.ok === false && leaked.problems.some(p => p.includes('validate_blog_draft')));
 const leaked2 = validateCard(parseCard(`# 제목\n${'정상 본문입니다. '.repeat(40)}\n메타 설명 이라는 말이 본문에`));
 ok('머리말 이름이 본문에 있으면 실패', leaked2.ok === false);
+
+console.log('\n[11] 강조 밀도 — «세기만» 한다 (넣지 않는다)');
+{
+  const IMG_LINE = '![설명](https://example.com/a.png)';          // 이미지 0장은 «다른 이유»로 막히므로 넣는다
+  const long = '충분히 긴 본문 문장입니다. '.repeat(40);          // 500자 이상
+  const bare = validateCard(parseCard(`# 제목\n${long}\n${IMG_LINE}`));
+  ok('강조가 없으면 알린다', bare.warnings.some((w) => w.includes('강조가 0개')));
+  ok('🔴 그래도 «막지는» 않는다', bare.ok === true);
+  ok('몇 개가 어울리는지 숫자로 알려준다', /\d+개 안팎/.test(bare.warnings[0] || ''));
+
+  // 문장 «일부» 볼드를 촘촘히 — 기존 글 밀도(73자당 1개)를 넘어서면 조용해야 한다
+  const dense = '이것은 **핵심**이고 저것도 **중요**합니다. '.repeat(30);
+  const rich = validateCard(parseCard(`# 제목\n${dense}`));
+  ok('강조가 충분하면 알림이 없다', rich.warnings.length === 0, JSON.stringify(rich.warnings).slice(0, 90));
+  ok('볼드 개수를 센다', rich.bolds === 60, String(rich.bolds));
+  ok('밀도(자/볼드)를 준다', typeof rich.chars_per_bold === 'number');
+
+  // @AI:CONSTRAINT 파서가 볼드를 «넣지» 않는다 — 세기만 한다
+  const untouched = parseCard(`# 제목\n${long}`).blocks.map((b) => b.html || '').join('');
+  ok('🔴 파서가 볼드를 만들어 넣지 않는다', !untouched.includes('<b>'));
+}
 
 console.log(`\n${'─'.repeat(46)}\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail === 0 ? 0 : 1);
