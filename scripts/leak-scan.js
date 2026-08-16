@@ -72,10 +72,16 @@ function walk(dir, out = []) {
   return out;
 }
 
-/** 레포 전체를 훑어 { '<rel>': { '<pattern>': n } } 를 만든다. 값은 담지 않는다. */
-function scan() {
+/**
+ * 레포 전체를 훑어 { '<rel>': { '<pattern>': n } } 를 만든다. 값은 담지 않는다.
+ * @param {string[]} [only] 이 파일들만 본다(커밋 전 훅 — 전체 스캔은 느려서 사람이 훅을 끈다).
+ */
+function scan(only) {
   const found = {};
-  for (const full of walk(ROOT)) {
+  const targets = only
+    ? only.map((f) => path.join(ROOT, f)).filter((f) => fs.existsSync(f) && !SKIP_EXT.test(f) && !SKIP_DIR.test(f))
+    : walk(ROOT);
+  for (const full of targets) {
     let raw;
     try { raw = fs.readFileSync(full, 'utf8'); } catch { continue; }
     if (CONTROL_BYTES.test(raw)) continue;
@@ -124,6 +130,28 @@ function totalOf(map) {
 }
 
 function main() {
+  // 커밋 전 훅 — 스테이징된 파일만. @AI:INTENT 전체 스캔(수백 파일)을 매 커밋마다 돌리면
+  //   사람이 훅을 꺼 버린다. 꺼진 훅은 없는 훅보다 나쁘다(있다고 믿기 때문).
+  const stagedAt = process.argv.indexOf('--staged');
+  if (stagedAt !== -1) {
+    const files = process.argv.slice(stagedAt + 1).filter((a) => !a.startsWith('--'));
+    if (!files.length) return;
+    const { violations } = diff(scan(files), loadBaseline());
+    if (!violations.length) return;
+    console.error('');
+    console.error('🔴 커밋을 멈췄다 — 이 레포는 PUBLIC 이다. 올리면 인터넷에 공개되고 이력에 영구히 남는다.');
+    for (const v of violations) {
+      const why = (PATTERNS.find((p) => p.name === v.name) || {}).why || v.name;
+      console.error(`   ${v.file} [${v.name}] ${v.was} → ${v.now}  (${why})`);
+    }
+    console.error('');
+    console.error('   고치는 법: 값을 ~/.claude/zulgap/ 로 옮기고 문서에는 「그 파일의 어느 값」이라고만 적을 것');
+    console.error('   예시로 적어야 하면 123-45-67890 · USERNAME 처럼 실값이 아님이 드러나는 형태로');
+    console.error('   정말 올려야 한다면(공개돼도 되는 값이라면): git commit --no-verify');
+    console.error('');
+    process.exit(1);
+  }
+
   const found = scan();
   const frozen = loadBaseline();
 
