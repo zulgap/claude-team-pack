@@ -320,5 +320,62 @@ ${'고양이 혀 표면에는 뒤쪽으로 누운 딱딱한 돌기가 있습니�
   ok('마미사: 썸네일 없음', M.thumbnail === null && M.thumbnailIndex === null);
 }
 
+// ─────────────────────────────────────────────────────────────
+// [13] 🔴 맨 앞 「붙여넣기 안내」 — 타이피스트에게 하는 말이 «고객 블로그 첫 줄»로 나갔다
+//   2026-08-16 실제 카드 사전점검에서 발견. 이모지로 시작하지 않아 메모 걸러내기를 통과하고,
+//   유출 지문에도 없어 «검증까지 초록»이었다. RPG 16편이 전부 이 구조다.
+// @AI:CONSTRAINT 판정축은 «자리»다 — 「첫 헤딩·첫 본문 줄보다 앞에 있는 인용문」.
+//   문구 목록으로 잡지 말 것: 동료사마다 다르게 쓰고 새 문구가 계속 생긴다.
+//   본문 «안»의 인용문은 건드리지 않는다(검단가온 의료 안내·기관 인용은 발행돼야 한다).
+// ─────────────────────────────────────────────────────────────
+console.log('\n[13] 🔴 맨 앞 붙여넣기 안내는 버린다 (본문 안 인용문은 그대로)');
+{
+  const BODY = '본문 문장입니다. '.repeat(40);
+  const txt = (md) => parseCard(md).blocks.filter(b => b.kind === 'html').map(b => b.html).join('').replace(/<[^>]+>/g, ' ');
+
+  // RPG형 — 인용문 한 줄이 H1 앞에
+  const R = `> 네이버 블로그에 그대로 붙여넣는 원고입니다. 홈페이지 원문과 문장이 겹치지 않게 전면 재작성했습니다.
+# 진짜 제목입니다
+${BODY}
+![그림](https://ex.supabase.co/a/1.png)`;
+  ok('🔴 RPG형 안내문이 본문에 없다', !/붙여넣는 원고/.test(txt(R)), txt(R).trim().slice(0, 50));
+  ok('  제목은 그대로 잡힌다', parseCard(R).title === '진짜 제목입니다');
+  ok('  본문은 살아 있다', txt(R).includes('본문 문장입니다'));
+
+  // 댕묘형 — 여러 줄 인용문 + 구분선 + `## 본문`
+  const D = `> **붙여넣기 안내**
+> 1. 제목 끝 괄호 **(8/13)은 떼고** 붙여넣으세요.
+> 5. 이미지는 **내려받아 네이버 에디터에 직접 업로드**해야 합니다.
+---
+## 본문
+## 진짜 제목입니다
+${BODY}
+![그림](https://ex.supabase.co/a/1.png)`;
+  ok('🔴 댕묘형 안내문이 본문에 없다', !/붙여넣기 안내|떼고/.test(txt(D)), txt(D).trim().slice(0, 50));
+  ok('  안내문 뒤 구분선도 함께 버린다 (본문이 선으로 시작하지 않는다)',
+     !txt(D).trim().startsWith('─') && !parseCard(D).blocks[0].html.startsWith('<hr'), parseCard(D).blocks[0].html.slice(0, 40));
+  ok('  본문 소제목은 살아 있다', txt(D).includes('진짜 제목입니다'));
+
+  // ✅ 안 건드려야 하는 것 — 본문 «안»의 인용문 (검단가온 의료 안내·기관 인용)
+  const G = `# 제목입니다
+${BODY}
+> **의료 안내**: 치료 결과·기간은 개인차가 있습니다.
+> 1. 국소 마취를 합니다.
+![그림](https://ex.supabase.co/a/1.png)`;
+  ok('✅ 본문 안 의료 안내 인용문은 «남는다»', txt(G).includes('의료 안내'));
+  ok('✅ 본문 안 기관 인용문도 «남는다»', txt(G).includes('국소 마취'));
+
+  // ✅ 맨 앞이 인용문이 «아니면» 아무것도 안 자른다
+  const N = `# 제목입니다
+${BODY}
+![그림](https://ex.supabase.co/a/1.png)`;
+  ok('✅ 안내문 없는 카드는 그대로', txt(N).includes('본문 문장입니다') && parseCard(N).title === '제목입니다');
+
+  // 2차 방어선 — 새 모양이 자리 판정을 뚫어도 검증이 잡는다
+  const leaked = validateCard(parseCard(`# 제목\n${BODY}\n문단 안에 붙여넣기 안내 라고 적혀 있다`));
+  ok('🔴 자리 판정을 뚫어도 검증이 잡는다', leaked.ok === false && leaked.problems.some(p => p.includes('붙여넣기 안내')),
+     JSON.stringify(leaked.problems));
+}
+
 console.log(`\n${'─'.repeat(46)}\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail === 0 ? 0 : 1);

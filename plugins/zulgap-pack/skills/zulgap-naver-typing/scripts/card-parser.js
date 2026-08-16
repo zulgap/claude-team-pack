@@ -57,6 +57,10 @@ const TITLE_LABEL_HEADINGS = ['제목'];   // 이 헤딩 «다음 줄»이 제�
 const LEAK_FINGERPRINTS = [
   'validate_blog_draft', '--ar ', '--style raw', 'SEO 제목', '메타 설명',
   '삽입 위치', '담당자 피드백', '도구 검수', '오검출', '유사문서',
+  // 붙여넣기 안내 (2026-08-16) — 자리 판정(cutPasteNotice)이 1차, 이게 2차 방어선이다.
+  // @AI:CONSTRAINT 「붙여넣」 만으로 줄이지 말 것 — 마미사는 «도구 사용법»을 다루는 블로그라
+  //   본문에 「붙여넣기」가 정상적으로 나온다. 카드 템플릿의 «관용구»만 지문으로 쓴다.
+  '붙여넣기 안내', '그대로 붙여넣는 원고',
 ];
 
 // 강조 밀도 기준 — 2026-08-16 실측(발행글 「원산지증명서」 편: 2,698자에 볼드 37개 ≈ 73자당 1개)
@@ -132,6 +136,34 @@ function cutToBodyStart(lines) {
   return idx < 0 ? { lines, cut: 0 } : { lines: lines.slice(idx + 1), cut: idx + 1 };
 }
 
+/**
+ * 카드 «맨 앞»의 붙여넣기 안내를 잘라낸다.
+ *
+ * @AI:INTENT 🔴 2026-08-16 실측 — 타이피스트에게 하는 말이 «고객 블로그 첫 줄»로 나가고 있었다:
+ *   RPG  `> 네이버 블로그에 그대로 붙여넣는 원고입니다. …`
+ *   댕묘  `> **붙여넣기 안내**` + `> 1. 제목 끝 괄호는 떼고 …` (여러 줄) + `---`
+ *   이모지로 시작하지 않아 MEMO_QUOTE_RE 를 통과하고 유출 지문에도 없어 «검증까지 초록»이었다.
+ *
+ * @AI:CONSTRAINT 판정축은 «자리»다 — 첫 헤딩·첫 본문 줄보다 «앞»에 있는 인용문만.
+ *   ❌ 문구 목록으로 잡지 말 것: 동료사마다 다르게 쓰고 새 문구가 계속 생긴다.
+ *   ❌ «모든» 인용문을 버리지 말 것: 검단가온은 의료 안내·기관 인용을 본문에 인용문으로 싣고
+ *      그건 발행돼야 한다. 그것들은 전부 본문 «안»(첫 줄 뒤)이라 이 규칙에 안 걸린다.
+ *   안내문 뒤의 구분선 하나까지 함께 먹는다 — 그건 안내문과 본문을 가르는 선이지 본문이 아니다.
+ */
+function cutPasteNotice(lines) {
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;               // 앞쪽 빈 줄
+  let end = i;
+  while (end < lines.length && /^>/.test(lines[end].trim())) end++;
+  if (end === i) return { lines, cut: 0 };                        // 맨 앞이 인용문이 아니다 = 안내문 없음
+  while (end < lines.length && !lines[end].trim()) end++;         // 뒤따르는 빈 줄
+  if (end < lines.length && /^(-{3,}|\*{3,}|_{3,})$/.test(lines[end].trim())) {
+    end++;                                                        // 안내문과 본문을 가르는 선 «하나»
+    while (end < lines.length && !lines[end].trim()) end++;
+  }
+  return { lines: lines.slice(end), cut: end };
+}
+
 /** 인라인 마크다운 → HTML. 구현은 공용 정본에 있다(중복 금지). */
 const inline = NF.inline;
 
@@ -143,7 +175,10 @@ const inline = NF.inline;
 function parseCard(md) {
   const all = String(md || '').replace(/\r\n/g, '\n').split('\n');
   const cutRes = cutToBodyStart(all);
-  const lines = cutRes.lines;
+  // @AI:INTENT 순서가 중요하다 — «본문 시작» 헤딩을 먼저 보고, 그 뒤에 남은 것의 맨 앞을 본다.
+  //   반대로 하면 마미사처럼 안내문이 머리말 «안»에 있는 구조에서 헛돈다(이미 잘려 있다).
+  const noticeRes = cutPasteNotice(cutRes.lines);
+  const lines = noticeRes.lines;
   const blocks = [];
   let title = null;
   let buf = [];              // 현재 텍스트 조각 (HTML 줄들)
@@ -155,7 +190,7 @@ function parseCard(md) {
   let expectTitle = false;   // 「제목」 라벨 바로 다음 줄을 기다린다
   let tableRow = 0;          // 표 안 몇 번째 행인가 (머리 행 판정)
   let tableHasHeader = false;
-  let dropped = cutRes.cut;  // 시작 경계 앞에서 버린 줄까지 센다
+  let dropped = cutRes.cut + noticeRes.cut;  // 시작 경계·안내문에서 버린 줄까지 센다
 
   const flushList = () => { if (listOpen) { buf.push('</ul>'); listOpen = false; } };
   const flushText = () => {
