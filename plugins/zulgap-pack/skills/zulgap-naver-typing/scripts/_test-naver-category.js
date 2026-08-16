@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * naver-category 시나리오 — 픽스처는 «실측» 이다
- *   2026-08-16 ff1030 발행 패널 드롭다운에서 읽은 구조 (번호 + li.innerText)
+ *   2026-08-16 대상 블로그 발행 패널 드롭다운에서 읽은 구조 (번호 + li.innerText)
  *   🔴 RPG 항목의 공백은 네이버가 넣은 `&nbsp;`(U+00A0) 를 «그대로» 재현했다
  * 실행: node _test-naver-category.js   (종료코드 0 = ALL PASS)
  */
