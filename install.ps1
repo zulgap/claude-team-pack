@@ -377,9 +377,23 @@ try {
   $claudeCmd = if (Test-Path $claudeExe) { $claudeExe } else { 'claude' }
   Write-Host "[설치 중] 줄갭 플러그인 실물 (몇 십 초 걸릴 수 있음)..." -ForegroundColor Yellow
   $installOk = $true
-  try { & $claudeCmd plugin marketplace add zulgap/claude-team-pack 2>&1 | Out-Null } catch { }
+  # @AI:INTENT 🔴 실패를 «버리지» 않는다. 예전에는 출력도 Out-Null 로 지우고 catch 도 비워 둬서
+  #   인증·네트워크 실패가 화면에 한 줄도 안 떴다 — 증상이 «설치는 끝났는데 스킬이 0개» 였고
+  #   직원 화면만으로는 원인을 알 수 없었다. 레포가 private 로 바뀌면 여기가 첫 실패 지점이다.
+  # @AI:CONSTRAINT 실패해도 **멈추지는 않는다** — 이미 등록된 마켓은 add 가 비0을 낼 수 있고,
+  #   그 경우 아래 install 이 정상 동작한다. 보여주되 진행한다.
+  function Show-MpFailure($label, $out) {
+    if ($LASTEXITCODE -eq 0) { return }
+    $t = ($out | Out-String).Trim()
+    if ($t -match '이미|already|exists') { return }   # 이미 등록됨 = 정상
+    Write-Host ("  [경고] $label 실패 — " + $(if ($t) { ($t -split "`n")[0] } else { "종료코드 $LASTEXITCODE" })) -ForegroundColor DarkYellow
+    Write-Host "         레포가 private 이면 인증이 필요합니다: gh auth login" -ForegroundColor DarkYellow
+  }
+  $mpOut = & $claudeCmd plugin marketplace add zulgap/claude-team-pack 2>&1
+  Show-MpFailure '마켓플레이스 등록' $mpOut
   # @AI:INTENT add는 이미 등록된 마켓의 카탈로그를 새로 받지 않는다 - 낡은 카탈로그로 install하면 구 sha가 박힌다.
-  try { & $claudeCmd plugin marketplace update zulgap-team-pack 2>&1 | Out-Null } catch { }
+  $mpOut = & $claudeCmd plugin marketplace update zulgap-team-pack 2>&1
+  Show-MpFailure '마켓플레이스 갱신' $mpOut
   foreach ($p in $wantPlugins) {
     try {
       $out = (& $claudeCmd plugin install "$p@zulgap-team-pack" --scope user 2>&1) | Out-String
