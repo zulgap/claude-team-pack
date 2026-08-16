@@ -10,7 +10,7 @@ requires:
   jedi_tools: [ext_golden_keyword, create_blog_card]
   endpoints: []
   config: []
-version: 1.0.0
+version: 1.1.0
 origin: teampack
 ---
 
@@ -24,12 +24,11 @@ origin: teampack
 
 ### 1. 채널 정본을 **먼저 읽는다** — 없으면 멈춘다
 
-| 순위 | 위치 |
-|---|---|
-| 1 | `~/.claude/zulgap/channels/<채널>.md` |
-| 2 | `<jedi-youtube-channel 스킬 폴더>/channels/<채널>.md` |
+**`~/.claude/zulgap/channels/<채널>.md`** — 여기 한 곳이다.
 
-**둘 다 없으면 여기서 멈춘다.** *"이 채널의 정본이 아직 없습니다. `/유튜브채널` 로 먼저 만들어 주세요."*
+**없으면 여기서 멈춘다.** *"이 채널의 정본이 아직 없습니다. `/유튜브채널` 로 먼저 만들어 주세요."*
+
+> 🔴 플러그인 폴더에서 찾지 말 것 — 정본에는 전략이 들어가고 팩 레포는 **공개**라, 정본은 각자 PC에만 둔다.
 
 🔴 **정본을 대신 만들어 주지 않는다.** 그건 `/유튜브채널`의 일이고, 사람이 확정할 자리다.
 
