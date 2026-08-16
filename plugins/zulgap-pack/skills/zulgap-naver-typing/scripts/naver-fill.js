@@ -323,13 +323,7 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
 
   // ⑤ 결과 검증
   const end = await readBody(frame);
-  if (end.externalImages > 0) problems.push(`외부 주소 이미지가 ${end.externalImages}장 남았습니다`);
-  if (uploaded !== parsed.images) problems.push(`이미지 ${uploaded}/${parsed.images}장만 올라갔습니다`);
-  // @AI:CONSTRAINT 이게 남아 있으면 «깨진 이미지가 발행된다». 개수만 세고 넘어가면
-  //   화면에는 그림이 있어 보여서 사람도 못 알아챈다(2026-08-16 실측 사고).
-  if (end.placeholders > 0) {
-    problems.push(`업로드 실패 자리가 ${end.placeholders}개 남았습니다 — 이대로 등록하면 그 자리가 깨진 채 발행됩니다`);
-  }
+  problems.push(...verifyFilled({ start, end, expected: parsed.images, uploaded }));
 
   const okAll = problems.length === 0;
   return {
@@ -337,7 +331,8 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
     checkpoint: okAll ? 'ready_to_register' : checkpoint,
     filled: { chars: end.chars, naverImages: end.naverImages, externalImages: end.externalImages,
               placeholders: end.placeholders,
-              images_expected: parsed.images, images_uploaded: uploaded },
+              images_expected: parsed.images, images_uploaded: uploaded,
+              images_on_screen: end.naverImages - start.naverImages },
     problems,
     notes,
     // @AI:CONSTRAINT 여기서 끝. 등록은 사람이 누른다.
@@ -345,5 +340,40 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   };
 }
 
+/**
+ * 채운 결과가 「올려도 되는 상태」인가 — 판정은 «화면에 실제로 있는 것»으로만 한다.
+ *
+ * @AI:CONSTRAINT 내부 카운터(uploaded)로 판정하지 말 것. uploadOnce 는 «네이버 이미지 수가
+ *   늘었나»로 성공을 재는데, 앞선 시도가 뒤늦게 도착해도 늘어난다 — 그래서 재시도가 섞이면
+ *   uploaded 는 10 인데 화면에는 9 장인 상태가 만들어진다(2026-08-16 마미사 1편 실측).
+ *   그때 problems 가 비어 status=ready_to_register 가 되고, 사람이 그대로 등록하면
+ *   «그림이 빠진 채 발행된다». 화면 개수를 진실로 삼아야 그 사고가 막힌다.
+ * @AI:INTENT 순수 함수로 뽑아 둔 이유 = 브라우저 없이 시험할 수 있게. e2e 로만 덮으면
+ *   이 판정은 실전에서만 깨지고, 실전에서 깨지면 이미 발행된 뒤다.
+ */
+function verifyFilled({ start, end, expected, uploaded }) {
+  const problems = [];
+  const before = (start && start.naverImages) || 0;
+  const onScreen = ((end && end.naverImages) || 0) - before;
+
+  if (end.externalImages > 0) problems.push(`외부 주소 이미지가 ${end.externalImages}장 남았습니다`);
+
+  if (onScreen !== expected) {
+    problems.push(
+      `화면에 이미지가 ${onScreen}/${expected}장 있습니다` +
+      (uploaded !== undefined && uploaded !== onScreen
+        ? ` (올렸다고 센 것은 ${uploaded}장 — 재시도가 겹쳐 실제와 어긋났습니다)`
+        : ''),
+    );
+  }
+
+  // @AI:CONSTRAINT 이게 남아 있으면 «깨진 이미지가 발행된다». 개수만 세고 넘어가면
+  //   화면에는 그림이 있어 보여서 사람도 못 알아챈다(2026-08-16 실측 사고).
+  if (end.placeholders > 0) {
+    problems.push(`업로드 실패 자리가 ${end.placeholders}개 남았습니다 — 이대로 등록하면 그 자리가 깨진 채 발행됩니다`);
+  }
+  return problems;
+}
+
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
-                   downloadImages, readBody, cursorToEnd, getFrame, BODY, PARA };
+                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, BODY, PARA };
