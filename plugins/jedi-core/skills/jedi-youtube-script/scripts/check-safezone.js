@@ -170,6 +170,39 @@ const PROBE = `
       if (top < minT) { minT = top; highest = name; }
     });
 
+    // ── 화면에 실제로 보이는 글자만 모은다 (data-* 속성·주석은 안 들어온다)
+    var vis = (s.innerText || '').replace(/\\s+/g, ' ').trim();
+
+    // ── ① 지시문 누수 — data-note 와 화면의 «공통 문장»
+    //    @AI:INTENT 리터럴 목록 대신 이 대조를 쓰는 이유: 연출 지시는 이미 data-note 에
+    //      선언돼 있다. 그 문장이 화면에도 있으면 «샌 것»이고, 이 판정은 오탐이 0이다.
+    //      (리터럴 목록은 "여러분 ~하십시오" 같은 정당한 대사를 잡아 신호를 죽인다)
+    var note = (s.getAttribute('data-note') || '').replace(/\\s+/g, ' ').trim();
+    var leak = '';
+    if (note.length >= 12 && vis.length >= 12) {
+      // 12자 이상 겹치는 가장 긴 조각을 찾는다 — 우연히 겹칠 길이가 아니다
+      for (var L = Math.min(note.length, 80); L >= 12 && !leak; L--) {
+        for (var st = 0; st + L <= note.length; st++) {
+          var frag = note.substr(st, L);
+          if (vis.indexOf(frag) !== -1) { leak = frag; break; }
+        }
+      }
+    }
+
+    // ── ② 플레이스홀더 잔존 — 채우지 않고 찍으면 화면에 빈칸이 나간다
+    var ph = (vis.match(/__+%?|<[A-Z][A-Z0-9_]{2,}>|\\bTODO\\b|\\bFIXME\\b/g) || []);
+
+    // ── ③ 이미지 로드 실패 — 🔴 «측정 자체가 틀렸다»는 신호다
+    //    @AI:INTENT 자리표시자일 때 통과하고 진짜 이미지에서 침범하는 사고가 실재했다
+    //      (2026-08-16: 캡처를 넣자 bottom 715→735, 15px 침범). 안 실린 이미지는
+    //      높이 0으로 재지므로 «통과»가 나오는데 그 통과는 거짓이다.
+    var badImg = [];
+    [].slice.call(s.querySelectorAll('img')).forEach(function (im) {
+      if (!im.complete || im.naturalWidth === 0) {
+        badImg.push((im.getAttribute('src') || '(src 없음)').split('/').pop());
+      }
+    });
+
     out.push({
       n: i + 1,
       top: Math.round(minT),
@@ -178,7 +211,10 @@ const PROBE = `
       overBy: Math.max(0, Math.round(maxB - LIMIT)),
       above: minT < 0,
       lowest: lowest,
-      highest: highest
+      highest: highest,
+      leak: leak,
+      placeholders: ph,
+      badImg: badImg
     });
   });
 
@@ -289,6 +325,39 @@ if (tight.length) {
   tight.forEach((r) => console.log('     ' + r.n + '장: bottom ' + r.bottom + 'px · ' + r.lowest));
 }
 
+// ─────────────────────────────────────────── 촬영 전 3종 (세이프존과 «같은 렌더»로 함께 잰다)
+// @AI:INTENT 스크립트를 둘로 나누면 사람이 두 번 돌려야 하고, 한 번은 빠뜨린다.
+//   입력·도구·시점이 같으므로 한 번에 낸다.
+
+const leaked = rows.filter((r) => r.leak);
+const holed = rows.filter((r) => r.placeholders && r.placeholders.length);
+const imgBad = rows.filter((r) => r.badImg && r.badImg.length);
+
 console.log('');
-// 침범·잘림이 있으면 실패로 끝낸다 — 스크립트를 게이트로 쓸 수 있게
-process.exit(over.length || above.length ? 1 : 0);
+if (leaked.length) {
+  console.log('  🔴 촬영 지시가 화면에 보입니다 ' + leaked.length + '장 — 시청자가 그대로 봅니다');
+  leaked.forEach((r) => console.log('     ' + r.n + '장: "' + r.leak + '"'));
+  console.log('     → 연출 지시는 data-note 에만 씁니다. 화면 요소(.note 등)에서 지우세요');
+} else {
+  console.log('  ✅ 화면에 샌 촬영 지시 0장');
+}
+
+if (holed.length) {
+  console.log('  🔴 안 채운 자리 ' + holed.length + '장 — 빈칸이 그대로 나갑니다');
+  holed.forEach((r) => console.log('     ' + r.n + '장: ' + r.placeholders.join(' , ')));
+} else {
+  console.log('  ✅ 안 채운 자리 0장');
+}
+
+// 🔴 이미지 미로드는 «측정이 틀렸다»는 뜻이므로 통과/실패와 별도로 가장 시끄럽게 알린다
+if (imgBad.length) {
+  console.log('');
+  console.log('  🔴🔴 이미지가 안 실린 장이 ' + imgBad.length + '장 있습니다 — 위 세이프존 값은 «틀렸습니다»');
+  imgBad.forEach((r) => console.log('     ' + r.n + '장: ' + r.badImg.join(' , ')));
+  console.log('     안 실린 이미지는 높이 0으로 재집니다. 파일을 넣고 «반드시 다시 재세요».');
+  console.log('     (2026-08-16 실측: 자리표시자일 땐 통과 → 진짜 캡처를 넣자 15px 침범)');
+}
+
+console.log('');
+// 침범·잘림·지시문누수·빈칸·이미지미로드 중 하나라도 있으면 실패로 끝낸다 — 게이트로 쓸 수 있게
+process.exit(over.length || above.length || leaked.length || holed.length || imgBad.length ? 1 : 0);
