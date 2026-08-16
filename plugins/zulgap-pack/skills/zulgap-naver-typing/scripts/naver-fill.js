@@ -165,6 +165,27 @@ async function handleStartupPopup(page, frame, timeoutMs = 5000) {
   return results;
 }
 
+/**
+ * 팝업이 «늦게» 떠서 클릭을 가로챌 때 한 번 치우고 다시 해 본다.
+ *
+ * @AI:INTENT 시작 팝업은 창을 연 직후가 아니라 «몇 초 뒤»에 뜨기도 한다(2026-08-16 실측:
+ *   3편 첫 실행이 제목 클릭에서 멈췄고, 화면에는 「작성 중인 글이 있습니다」가 떠 있었다).
+ *   그때 dim 이 화면을 덮어 Playwright 가 「다른 요소가 가로챈다」로 거부한다.
+ * @AI:CONSTRAINT 팝업이 «실제로 있었을 때»만 재시도한다. 없었으면 원래 오류를 그대로 올린다 —
+ *   아무 실패나 두 번씩 시도하면 진짜 고장을 늦게 알게 된다.
+ */
+async function withPopupGuard(page, frame, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (!/intercept|Timeout|not stable/i.test(e.message || '')) throw e;
+    const handled = await handleStartupPopup(page, frame, 6000);
+    if (!handled.length) throw e;
+    await page.waitForTimeout(600);
+    return fn();
+  }
+}
+
 /** 커서를 본문 «맨 끝»에 둔다 — 문단 중간에 박히는 사고 방지(2026-08-15 실측) */
 async function cursorToEnd(page, frame) {
   const paras = frame.locator(PARA);
@@ -180,7 +201,7 @@ async function cursorToEnd(page, frame) {
 
 /** 클립보드를 쓰지 않는 붙여넣기 */
 async function pasteHtml(page, frame, html) {
-  await cursorToEnd(page, frame);
+  await withPopupGuard(page, frame, () => cursorToEnd(page, frame));
   const res = await frame.evaluate((h) => {
     const el = document.activeElement?.isContentEditable
       ? document.activeElement : document.querySelector('[contenteditable="true"]');
@@ -294,7 +315,7 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   // ③ 제목
   if (parsed.title) {
     const t = frame.locator('.se-documentTitle .se-text-paragraph, .se-title-text .se-text-paragraph').first();
-    await t.click({ timeout: 10000 });
+    await withPopupGuard(page, frame, () => t.click({ timeout: 10000 }));
     await page.keyboard.type(parsed.title, { delay: 12 });
     await page.waitForTimeout(300);
   }
@@ -389,4 +410,4 @@ function verifyFilled({ start, end, expected, uploaded }) {
 }
 
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
-                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, BODY, PARA };
+                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard, BODY, PARA };

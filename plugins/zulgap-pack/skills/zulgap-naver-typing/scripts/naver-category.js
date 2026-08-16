@@ -203,8 +203,25 @@ async function selectCategory(page, frame, want) {
   return { ok: true, no: m.no, name: m.name };
 }
 
+/**
+ * 등록 «직전»에 카테고리가 아직 맞는지 다시 본다.
+ *
+ * 🔴 **고른 뒤에도 바뀐다.** 2026-08-16 실측: 마미사 3편을 연달아 채운 뒤 확인했더니
+ *   세 창 중 둘이 「줄갭이 뭐죠?」로 돌아가 있었다 — 고를 때는 분명 ok 였고 화면 반영까지 봤다.
+ *   창을 여러 개 열어 두면 네이버가 계정 단위로 기억하는 «직전 카테고리»가 되살아난다.
+ *   그대로 등록하면 **마미사 글이 줄갭 자리에 발행된다**(되돌릴 수 없다).
+ * @AI:CONSTRAINT 그래서 «고르는 것»과 «등록 직전 확인»은 다른 일이다. 둘 다 해야 한다.
+ *   여러 편을 연달아 채웠다면 사람에게 넘기기 전에 편마다 이걸 부른다.
+ * @returns {{ok:boolean, actual:string|null, expected:string}}
+ */
+async function assertCategory(frame, { name }) {
+  const actual = await currentCategory(frame).catch(() => null);
+  const ok = actual != null && normalize(actual) === normalize(name);
+  return { ok, actual, expected: name };
+}
+
 module.exports = {
   openPublishPanel, closePublishPanel, isPanelOpen, isDropdownOpen,
-  listCategories, selectCategory, currentCategory,
+  listCategories, selectCategory, currentCategory, assertCategory,
   matchCategory, normalize, PUBLISH_BTN, CATEGORY_BTN, PANEL, ITEM,
 };
