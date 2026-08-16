@@ -305,9 +305,22 @@ if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMP
     warn "[warn] claude not found on PATH — plugin install skipped"
   else
     echo "Installing Zulgap plugins (may take a while)..."
-    "$CLAUDE_BIN" plugin marketplace add zulgap/claude-team-pack >/dev/null 2>&1 || true
+    # @AI:INTENT 🔴 실패를 «버리지» 않는다. 예전에는 >/dev/null 2>&1 || true 로 출력과 실패를 모두
+    #   지워서 인증·네트워크 실패가 한 줄도 안 떴다 — 증상이 «설치는 끝났는데 스킬이 0개» 였고
+    #   직원 화면만으로는 원인을 알 수 없었다. 레포가 private 로 바뀌면 여기가 첫 실패 지점이다.
+    # @AI:CONSTRAINT 실패해도 **멈추지 않는다** — 이미 등록된 마켓은 add 가 비0을 낼 수 있고,
+    #   그 경우 아래 install 이 정상 동작한다. 보여주되 진행한다.
+    mp_report() {  # $1=label  $2=exit  $3=output
+      [ "$2" = "0" ] && return 0
+      case "$3" in *이미*|*already*|*exists*) return 0 ;; esac   # 이미 등록됨 = 정상
+      warn "[warn] $1 실패 — $(printf '%s' "$3" | head -1)"
+      warn "       레포가 private 이면 인증이 필요합니다: gh auth login"
+    }
+    mp_out=$("$CLAUDE_BIN" plugin marketplace add zulgap/claude-team-pack 2>&1); mp_rc=$?
+    mp_report "marketplace add" "$mp_rc" "$mp_out"
     # @AI:INTENT add는 이미 등록된 마켓의 카탈로그를 새로 받지 않는다 — 낡은 카탈로그로 install하면 구 sha가 박힌다.
-    "$CLAUDE_BIN" plugin marketplace update zulgap-team-pack >/dev/null 2>&1 || true
+    mp_out=$("$CLAUDE_BIN" plugin marketplace update zulgap-team-pack 2>&1); mp_rc=$?
+    mp_report "marketplace update" "$mp_rc" "$mp_out"
     for P in $WANT_PLUGINS; do
       if "$CLAUDE_BIN" plugin install "$P@zulgap-team-pack" --scope user >/dev/null 2>&1; then
         # @AI:INTENT install은 '이미 설치됨'이면 갱신하지 않는다. 이 스크립트 재실행이 기존 직원의 수동 복구
