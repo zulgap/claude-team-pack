@@ -15,6 +15,7 @@
 //   Tier G — 되돌릴 수 없는 외부 행위를 스킬이 직접 호출하지 않는다
 //   Tier H — 설치 stub 신선도: 갱신 안 가는 문서에 낡을 값(주기·간격 숫자) 0
 //   Tier I — 스킬 상속: extends 실재성 · 본문만으로 따르는 선언 0 · 부모 변경 미반영 0 [spec §4⑩]
+//   Tier K — 유출 패턴: 계좌·사업자번호·chat_id·UNC·개인경로를 «모양»으로 (scripts/leak-scan.js)
 //   Tier J — 게이트↔문서 커버리지: 이 목록이 문서 3벌에 실렸나 (아래 «함께 갱신» 을 코드가 강제) [spec §4⑪]
 // 🔴 개수("검사 N단")를 쓰지 않는다 — F·G 가 추가될 때 이 목록이 함께 갱신되지 않아
 //    "5단"이 오래 거짓이었다(그 규칙을 적어둔 줄 바로 위에서 벌어졌다).
@@ -685,6 +686,7 @@ if (failI) fail = 1;
 const TIERS = {
   A: '활성화집합', B: '레거시잔존', C: '스킬이름', D: 'tier·A급', E: '형제폴더명',
   F: '이식성', G: '되돌릴수없음', H: 'stub신선도', I: '상속', J: '문서커버리지',
+  K: '유출패턴',
 };
 // 이 게이트를 «설명하는» 문서. 늘어나면 여기 1줄 추가한다(부재 = FAIL 이라 조용히 빠지지 않는다).
 const TIER_DOCS = [
@@ -770,5 +772,33 @@ if (failJ === 0) {
   console.log(`  PASS [J 문서커버리지] Tier ${tierKeys.length}종 — 목록 3자 일치 / 정본·전달 누락 0`);
 }
 if (failJ) fail = 1;
+
+// ── Tier K — 유출 패턴 (「이름」이 아니라 「모양」으로) ────────────────────────
+// @AI:INTENT D-3 는 고객사 **이름** 목록으로만 잡는데, 2026-08-16 하루에 같은 클래스가 세 번 났고
+//   샌 것은 전부 이름이 아니었다 — 계좌번호·계정 ID·공유폴더 경로. 목록에 없으면 못 잡는 구조였다.
+// @AI:DEPENDS 스캔은 scripts/leak-scan.js, **판정·출력은 여기**. 라벨을 이 파일에서 내야
+//   J-0(TIERS == 출력라벨 == 주석, 3자 일치)이 성립한다 — 스캐너에서 출력하면 어긋나 J 가 FAIL 한다.
+{
+  const leak = require('./leak-scan');
+  const { violations, cleared } = leak.diff(leak.scan(), leak.loadBaseline());
+  const frozenTotal = Object.values(leak.loadBaseline())
+    .reduce((s, p) => s + Object.values(p).reduce((a, b) => a + b, 0), 0);
+
+  if (cleared.length) {
+    console.log(`  ℹ [K 유출패턴] 줄어든 것 ${cleared.length}건 — \`node scripts/leak-scan.js --update-baseline\` 로 동결을 조일 것`);
+  }
+  if (violations.length) {
+    console.error(`  FAIL [K 유출패턴] 신규 ${violations.length}건 — 이 레포는 **PUBLIC** 이다. 커밋하면 인터넷에 공개된다.`);
+    for (const v of violations) {
+      const why = (leak.PATTERNS.find((p) => p.name === v.name) || {}).why || v.name;
+      console.error(`       ${v.file} [${v.name}] ${v.was} → ${v.now}  (${why})`);
+    }
+    console.error(`       고치는 법: 값을 ~/.claude/zulgap/ 로 옮기고 문서에는 「그 파일의 어느 값」이라고만 적을 것`);
+    console.error(`       자리표시자로 바꾼 것이라면 USERNAME · <블로그ID> 처럼 **실값이 아님이 드러나는** 형태로`);
+    fail = 1;
+  } else {
+    console.log(`  PASS [K 유출패턴] 신규 0건 (동결 ${frozenTotal}건은 기존 부채 — 해소 시 --update-baseline)`);
+  }
+}
 
 process.exit(fail);

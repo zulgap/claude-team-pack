@@ -1,0 +1,35 @@
+{
+  "note": [
+    "이 레포는 PUBLIC 이다. leak-scan.js 가 「값이 아니라 모양」으로 잡은 기존 위반의 동결분.",
+    "🔴 값은 적지 않는다 — 파일·패턴이름·건수만. 값을 적으면 이 파일이 또 유출이 된다.",
+    "늘면 FAIL, 줄면 --update-baseline 으로 조인다. 넓히기 금지 ratchet."
+  ],
+  "frozen": {
+    ".github/workflows/pr-notify.yml": {
+      "telegram_chat_id": 1
+    },
+    ".github/workflows/skill-ownership.yml": {
+      "telegram_chat_id": 1
+    },
+    "CHANGELOG.md": {
+      "telegram_chat_id": 1,
+      "personal_path": 2
+    },
+    "plugins/zulgap-pack/skills/zulgap-finance-close/SKILL.md": {
+      "biz_no": 4
+    },
+    "plugins/zulgap-pack/skills/zulgap-gaon-report/SKILL.md": {
+      "telegram_chat_id": 1,
+      "personal_path": 2
+    },
+    "plugins/zulgap-pack/skills/zulgap-make-skill/SKILL.md": {
+      "unc_path": 1
+    },
+    "plugins/zulgap-pack/skills/zulgap-noblenyang/SKILL.md": {
+      "unc_path": 4
+    },
+    "plugins/zulgap-pack/skills/zulgap-pr-review/SKILL.md": {
+      "unc_path": 1
+    }
+  }
+}
