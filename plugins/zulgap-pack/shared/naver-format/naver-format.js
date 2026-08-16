@@ -15,6 +15,10 @@
 // ─────────────────────────────────────────────────────────────
 const TABLE_HEADER_BG = 'rgb(0,78,130)';   // 기존 발행글 표 머리 행 배경
 const TABLE_HEADER_FG = '#ffffff';         // 🔴 td 가 아니라 span 에 준다 (td 는 안 먹는다)
+// @AI:INTENT 셀 테두리. 기존 발행글은 «선이 없고» 색으로만 갈랐는데(2026-08-16 실측),
+//   사장님이 검수하시고 선을 넣기로 하셨다(2026-08-16). 그래서 여기서만 다르다 —
+//   기존 글과 모양이 갈리는 지점이니 되돌릴 때도 이 상수 하나만 보면 된다.
+const TABLE_BORDER = '1px solid #d5d5d5';
 const SPACER = '<p><br></p>';              // 문단 사이 여백. 기존 글은 문단의 56~61% 가 빈 문단
 
 /**
@@ -86,9 +90,12 @@ function tableCell(line, { isHeaderRow = false } = {}) {
   if (!m) return line;
   const [, open, innerText, close] = m;
   const html = inline(innerText);
-  if (!isHeaderRow) return `${open}${html}${close}`;
-  const openWithBg = open.replace(/^(<t[dh])/i, `$1 style="background-color:${TABLE_HEADER_BG}"`);
-  return `${openWithBg}<span style="color:${TABLE_HEADER_FG};">${html}</span>${close}`;
+  const style = isHeaderRow
+    ? `border:${TABLE_BORDER};background-color:${TABLE_HEADER_BG}`
+    : `border:${TABLE_BORDER}`;
+  const openWithStyle = open.replace(/^(<t[dh])/i, `$1 style="${style}"`);
+  if (!isHeaderRow) return `${openWithStyle}${html}${close}`;
+  return `${openWithStyle}<span style="color:${TABLE_HEADER_FG};">${html}</span>${close}`;
 }
 
 /**
@@ -132,5 +139,5 @@ function createTableCollector() {
 module.exports = {
   inline, subheading, quote, paragraph, divider, list, emphasis,
   table, tableCell, tableWantsHeader, createTableCollector,
-  TABLE_HEADER_BG, TABLE_HEADER_FG, SPACER,
+  TABLE_HEADER_BG, TABLE_HEADER_FG, TABLE_BORDER, SPACER,
 };
