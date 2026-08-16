@@ -34,6 +34,19 @@ const MINUTE_STEP = 10;
 // @AI:CONSTRAINT 노션은 UTC 로 준다 — 네이버 예약칸은 KST. 이 값을 빼면 9시간 어긋난다.
 const KST_OFFSET_HOURS = 9;
 
+// 예약 «날짜» 달력 (2026-08-16 실측 — 그 전까지 「미실측」이라 사람이 눌렀다)
+// 날짜칸을 클릭하면 표준 jQuery UI datepicker 가 열린다.
+const CAL_ROOT = '.ui-datepicker';
+const CAL_YEAR = '.ui-datepicker-year';
+const CAL_MONTH = '.ui-datepicker-month';
+const CAL_PREV = '.ui-datepicker-prev';
+const CAL_NEXT = '.ui-datepicker-next';
+// @AI:FRAGILE 🔴 `.ui-datepicker-month` 의 텍스트는 `"8"` 이 아니라 **`"8월"`** 이다.
+//   `Number("8월")` 은 NaN 이고, NaN 비교는 무조건 거짓이라 «목표 월에 도달했는지» 판정이
+//   영원히 실패한다 → «다음 달»만 계속 눌린다(실측 2026-08-16: 8월에서 11월까지 밀려갔다).
+//   반드시 `parseInt` 로 읽을 것. 연도는 `"2026"` 이라 문제없지만 같이 parseInt 로 통일한다.
+const CAL_MONTH_MAX_MOVE = 6;   // 이보다 멀면 사람이 본다(월 이동을 무한히 누르지 않는다)
+
 /**
  * 목록 텍스트 정규화.
  * @AI:FRAGILE 네이버는 카테고리 이름의 공백을 `&nbsp;`(U+00A0)로 넣는다 —
@@ -246,13 +259,97 @@ function parseScheduleAt(iso) {
 }
 
 /**
+ * 달력 헤더에서 목표 연·월까지 몇 달 떨어졌나. 양수면 다음 달 쪽, 음수면 이전 달 쪽.
+ *
+ * @AI:FRAGILE 🔴 **`parseInt` 를 `Number` 로 바꾸지 말 것.** 헤더 월은 `"8"` 이 아니라 `"8월"` 이라
+ *   `Number("8월") === NaN` 이 되고, NaN 이 섞이면 «도달했나» 비교가 영원히 거짓이라 달력이
+ *   한 방향으로만 계속 넘어간다(실측 2026-08-16: 8월 → 11월). 이 함수가 그 함정의 유일한 자리다.
+ * @returns {number|null} 읽지 못하면 null — 호출자는 «모른다»로 다뤄 멈춘다
+ */
+function monthDistance(head, y, mo) {
+  const cur = parseInt(head && head.y, 10) * 12 + parseInt(head && head.m, 10);
+  if (!Number.isFinite(cur)) return null;
+  return (Number(y) * 12 + Number(mo)) - cur;
+}
+
+/**
+ * 예약 «날짜»를 달력에서 고른다.
+ *
+ * @AI:INTENT 2026-08-16 이전에는 이 자리가 「미실측」이라 사람이 창마다 달력을 눌렀다.
+ *   3편이면 3번, 남은 23편이면 23번이다. 실측해 보니 표준 jQuery UI datepicker 였다.
+ * @AI:CONSTRAINT 🔴 **못 고르면 거짓을 돌려주고 멈춘다.** 모르는 UI 를 더듬어 누르는 것이
+ *   이 스킬에서 가장 위험한 동작이라는 원칙은 그대로다 — 달라진 것은 «이제 안다»는 것뿐이다.
+ *   달이 멀거나(6개월 초과) 이동이 막히거나 그 날짜 칸이 없으면 사람에게 넘긴다.
+ */
+async function pickDate(page, frame, { y, mo, d }) {
+  await frame.evaluate((sel) => { const el = document.querySelector(sel); if (el) el.click(); }, DATE_INPUT);
+  await page.waitForTimeout(900);
+
+  let head = null;
+  for (let i = 0; i <= CAL_MONTH_MAX_MOVE; i += 1) {
+    head = await frame.evaluate((s) => {
+      const root = [...document.querySelectorAll(s.root)].find((e) => e.offsetParent !== null);
+      if (!root) return null;
+      return {
+        y: (root.querySelector(s.year) || {}).textContent || '',
+        m: (root.querySelector(s.month) || {}).textContent || '',
+      };
+    }, { root: CAL_ROOT, year: CAL_YEAR, month: CAL_MONTH });
+    if (!head) return { ok: false, code: 'CAL_NOT_OPEN', reason: '날짜 달력이 열리지 않았습니다' };
+
+    const diff = monthDistance(head, y, mo);
+    if (diff === null) {
+      return { ok: false, code: 'CAL_HEAD_UNREADABLE',
+               reason: `달력 헤더를 읽지 못했습니다 (${JSON.stringify(head)})`, shown: head };
+    }
+    if (diff === 0) break;
+    if (i === CAL_MONTH_MAX_MOVE) {
+      return { ok: false, code: 'CAL_MONTH_FAR',
+               reason: `달력이 ${head.y}년 ${head.m} 에 있는데 예약일은 ${y}-${mo} 입니다 (${CAL_MONTH_MAX_MOVE}달 넘게 떨어져 있어 멈춥니다)`, shown: head };
+    }
+    const moved = await frame.evaluate((s) => {
+      const root = [...document.querySelectorAll(s.root)].find((e) => e.offsetParent !== null);
+      const btn = root && root.querySelector(s.fwd ? s.next : s.prev);
+      if (!btn || btn.classList.contains('ui-state-disabled')) return false;
+      btn.click();
+      return true;
+    }, { root: CAL_ROOT, next: CAL_NEXT, prev: CAL_PREV, fwd: diff > 0 });
+    if (!moved) {
+      return { ok: false, code: 'CAL_MOVE_BLOCKED',
+               reason: `달력을 ${diff > 0 ? '다음' : '이전'} 달로 옮길 수 없습니다 (${head.y}년 ${head.m})`, shown: head };
+    }
+    await page.waitForTimeout(600);
+  }
+
+  // 그 달의 해당 일. 앞뒤 달에서 넘어온 칸(other-month)과 못 고르는 칸은 건너뛴다.
+  const picked = await frame.evaluate((s) => {
+    const root = [...document.querySelectorAll(s.root)].find((e) => e.offsetParent !== null);
+    if (!root) return false;
+    for (const td of root.querySelectorAll('td')) {
+      if (/other-month|unselectable/.test(td.className)) continue;
+      const el = td.querySelector('button, a');
+      if (!el || el.offsetParent === null || el.disabled) continue;
+      if ((el.textContent || '').trim() !== s.d) continue;
+      el.click();
+      return true;
+    }
+    return false;
+  }, { root: CAL_ROOT, d: String(Number(d)) });
+  if (!picked) return { ok: false, code: 'CAL_DAY_NOT_FOUND', reason: `달력에서 ${Number(d)}일 칸을 찾지 못했습니다` };
+
+  await page.waitForTimeout(700);
+  return { ok: true, head };
+}
+
+/**
  * 예약발행 시각을 넣는다. 🔴 발행 버튼은 누르지 않는다 — 넣기만 하고 멈춘다.
  *
  * @AI:INTENT 시각의 정본은 **노션 「예상 발행일」**이다. 여기서 정하지 않는다 — 옮길 뿐이다.
  * @AI:FRAGILE 예약 라디오는 요소에 직접 이벤트를 보낸다. 좌표 클릭은 쓰지 말 것 —
  *   발행 버튼 바로 옆이라 빗나가면 그대로 게시된다(selectCategory 와 같은 이유).
- * @AI:CONSTRAINT 날짜가 화면 값과 다르면 «멈춘다». 날짜 입력은 캘린더 위젯이라 아직 실측하지 않았고,
- *   모르는 UI 를 더듬어 누르는 것이 이 스킬에서 가장 위험한 동작이다.
+ * @AI:CONSTRAINT 날짜가 화면 값과 다르면 **달력에서 고른다**(2026-08-16 실측 — 그 전에는
+ *   「미실측」이라 사람이 창마다 눌렀다). 고르지 못하면 여전히 «멈춘다» — 모르는 UI 를 더듬어
+ *   누르지 않는다는 원칙은 그대로고, 달라진 것은 이제 그 UI 를 안다는 것뿐이다. → pickDate()
  */
 async function setSchedule(page, frame, { at }) {
   const p = parseScheduleAt(at);
@@ -264,11 +361,20 @@ async function setSchedule(page, frame, { at }) {
   await frame.evaluate((sel) => { const r = document.querySelector(sel); if (r) r.click(); }, TIME_PRE);
   await page.waitForTimeout(1000);
 
+  const same = (a, b) => String(a).replace(/\s/g, '') === String(b).replace(/\s/g, '');
   const shownDate = await frame.evaluate((sel) => (document.querySelector(sel) || {}).value || '', DATE_INPUT);
-  if (shownDate.replace(/\s/g, '') !== p.date.replace(/\s/g, '')) {
-    return { ok: false, code: 'DATE_MISMATCH',
-             reason: `화면 날짜가 ${shownDate} 인데 예약일은 ${p.date} 입니다. 날짜는 사람이 골라 주세요.`,
-             shown: shownDate, wanted: p.date };
+  if (!same(shownDate, p.date)) {
+    // 화면은 «오늘»을 기본으로 연다 — 내일 이후로 미루면 항상 여기로 온다(실측 2026-08-16).
+    const [py, pmo, pd] = p.ymd.split('-');
+    const r = await pickDate(page, frame, { y: py, mo: pmo, d: pd });
+    const after = r.ok
+      ? await frame.evaluate((sel) => (document.querySelector(sel) || {}).value || '', DATE_INPUT)
+      : shownDate;
+    if (!r.ok || !same(after, p.date)) {
+      return { ok: false, code: 'DATE_MISMATCH',
+               reason: `${r.ok ? `날짜를 골랐는데 화면이 ${after} 입니다` : r.reason} (예약일 ${p.date}). 날짜는 사람이 골라 주세요.`,
+               shown: after, wanted: p.date, cause: r.code || 'NOT_APPLIED' };
+    }
   }
 
   await frame.locator(HOUR_SEL).selectOption(p.hour);
@@ -311,7 +417,8 @@ async function assertCategory(frame, { name }) {
 module.exports = {
   openPublishPanel, closePublishPanel, isPanelOpen, isDropdownOpen,
   listCategories, selectCategory, currentCategory, assertCategory,
-  setSchedule, parseScheduleAt,
+  setSchedule, parseScheduleAt, pickDate, monthDistance,
   matchCategory, normalize, PUBLISH_BTN, CATEGORY_BTN, PANEL, ITEM,
   TIME_NOW, TIME_PRE, DATE_INPUT, HOUR_SEL, MINUTE_SEL, MINUTE_STEP,
+  CAL_ROOT, CAL_YEAR, CAL_MONTH, CAL_PREV, CAL_NEXT, CAL_MONTH_MAX_MOVE,
 };

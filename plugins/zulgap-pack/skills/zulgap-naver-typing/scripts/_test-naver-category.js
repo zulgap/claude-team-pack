@@ -101,5 +101,34 @@ console.log('\n[6] 예약 시각 — 노션 「예상 발행일」을 그대로 
   ok('  오프셋이 없으면 «이미 현지시각»으로 그대로 둔다', local.ok && local.hour === '19', JSON.stringify(local));
 }
 
+// ── 예약 «날짜» 달력 — 2026-08-16 실측으로 「미실측」이 풀린 자리
+{
+  const { monthDistance } = require('./naver-category');
+  console.log('\n[달력 월 거리]');
+
+  // 🔴 이 한 줄이 이 절의 존재 이유다. Number("8월") 은 NaN 이고,
+  //    NaN 이 섞이면 «도달했나» 가 영원히 거짓이라 달력이 한 방향으로만 계속 넘어간다.
+  ok('🔴 헤더가 "8월" 이어도 같은 달로 읽는다 (Number 로 바꾸면 깨진다)',
+     monthDistance({ y: '2026', m: '8월' }, '2026', '08') === 0,
+     JSON.stringify(monthDistance({ y: '2026', m: '8월' }, '2026', '08')));
+
+  ok('  다음 달은 +1', monthDistance({ y: '2026', m: '8월' }, '2026', '09') === 1);
+  ok('  이전 달은 -1', monthDistance({ y: '2026', m: '8월' }, '2026', '07') === -1);
+  ok('  해를 넘겨도 센다 (2026-12 → 2027-01 = +1)',
+     monthDistance({ y: '2026', m: '12월' }, '2027', '01') === 1);
+  ok('  8월에서 11월은 +3 (밀려갔던 그 거리)',
+     monthDistance({ y: '2026', m: '8월' }, '2026', '11') === 3);
+
+  // @AI:CONSTRAINT 읽지 못하면 0(=도달)이 아니라 null 이어야 한다. 0을 돌려주면
+  //   «엉뚱한 달에서 날짜를 누르는» 최악의 동작이 된다.
+  ok('🔴 헤더를 못 읽으면 null (0 이 아니다)',
+     monthDistance({ y: '', m: '' }, '2026', '08') === null
+     && monthDistance(null, '2026', '08') === null,
+     JSON.stringify(monthDistance({ y: '', m: '' }, '2026', '08')));
+
+  ok('  이름만 있는 달(영문 로케일)도 못 읽으면 null',
+     monthDistance({ y: '2026', m: 'August' }, '2026', '08') === null);
+}
+
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAIL'}  ${pass}/${pass + fail}\n`);
 process.exit(fail === 0 ? 0 : 1);
