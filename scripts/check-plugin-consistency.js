@@ -272,13 +272,61 @@ for (const { where, raw } of skillFiles) {
     tenantOnlyHits += hits.length;
   }
 }
+// D-3 공용 팩 전 파일에 고객사 이름 0건 (2026-08-16 신설)
+// @AI:INTENT D-1·D-2 가 PASS 인데도 공용 팩에 고객사 실명 22건 + 그 회사 A/B 149건 실측 파일이
+//   살아 있었다. 놓친 이유가 둘이다 — (a) skillFiles 가 **SKILL.md 만** 모아서 channels/·.mjs·CSS·
+//   템플릿은 검사 대상이 아니었고 (b) A_GRADE 에 **이름**이 없다(ID·UUID·경로만).
+//   공용 팩은 남의 회사 PC 에 통째로 깔리므로 이름 한 줄이 곧 유출이다.
+// @AI:DEPENDS 대상 팩은 resolve-packs.js 의 BASE_PLUGINS — 「모두에게 깔리는 팩」의 SSOT 다.
+//   여기에 목록을 다시 적으면 2026-08-16 이전처럼 판정이 두 벌이 된다.
+const TENANT_NAMES = JSON.parse(fs.readFileSync(path.join(__dirname, '_tenant-names.json'), 'utf8'));
+const BANNED = Object.entries(TENANT_NAMES.customers)
+  .flatMap(([tenant, lits]) => lits.map((lit) => ({ tenant, lit })));
+
+let failD3 = 0;
+let scannedD3 = 0;
+for (const plug of resolver.BASE_PLUGINS) {
+  const dir = path.join(ROOT, 'plugins', plug);
+  if (!fs.existsSync(dir)) continue;
+  for (const f of walkFiles(dir)) {
+    // @AI:DEPENDS Tier F 의 FONT_EXT 를 재사용하지 말 것 — 그건 아래에서 const 로 선언돼 TDZ 에 걸린다
+    if (/\.(ttf|otf|ttc|woff2?|png|jpe?g|gif|webp|pdf|zip|ico)$/i.test(f)) continue;
+    scannedD3++;
+    let raw;
+    try { raw = fs.readFileSync(f, 'utf8'); } catch (_) { continue; }
+    const hits = BANNED.filter(({ lit }) => raw.includes(lit));
+    if (!hits.length) continue;
+    const where = path.relative(ROOT, f).replace(/\\/g, '/');
+    const which = [...new Set(hits.map((h) => `${h.tenant}("${h.lit}")`))].join(' · ');
+    console.error(`  FAIL [D-3 공용팩고객사명] ${where}: ${which} — 공용 팩(${plug})은 전 고객사 PC 에 깔린다. 값은 그 회사 전용 팩(zulgap-pack/shared/channels/)으로, 근거는 성격 표현으로("고객사 채널")`);
+    failD3 = 1;
+  }
+}
+
+// D-3b 목록 신선도 — 채널 파일을 만들었는데 금지 목록에 없으면 게이트가 조용히 통과한다
+const CH_DIR = path.join(ROOT, 'plugins', 'zulgap-pack', 'shared', 'channels');
+if (fs.existsSync(CH_DIR)) {
+  for (const f of fs.readdirSync(CH_DIR)) {
+    if (!f.endsWith('.md') || f === 'README.md' || f.startsWith('_')) continue;
+    const ch = f.replace(/\.md$/, '');
+    const known = BANNED.some(({ tenant, lit }) => tenant === ch || lit === ch);
+    if (!known) {
+      console.error(`  FAIL [D-3b 목록낡음] shared/channels/${f}: '${ch}' 가 scripts/_tenant-names.json 에 없다 — 추가하지 않으면 이 이름이 공용 팩에 들어가도 D-3 가 못 잡는다`);
+      failD3 = 1;
+    }
+  }
+}
+
 if (failD === 0) {
   console.log(`  PASS [D tier·A급] ${skillFiles.length}개 — tier 미선언 0 / shared A급 리터럴 0`);
   if (tenantOnlyHits) {
     console.log(`       ℹ tenant-only 스킬의 A급 ${tenantOnlyHits}건은 정보성(FAIL 아님) — 해법은 리터럴 제거가 아니라 해당 테넌트 전용 활성화`);
   }
 }
-if (failD) fail = 1;
+if (failD3 === 0) {
+  console.log(`  PASS [D-3 공용팩고객사명] ${resolver.BASE_PLUGINS.join('·')} ${scannedD3}개 파일 — 고객사 이름 0건 / 목록 신선도 OK`);
+}
+if (failD || failD3) fail = 1;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tier E — 형제 스킬 폴더명 하드코딩 금지 (2026-07-30 신설)

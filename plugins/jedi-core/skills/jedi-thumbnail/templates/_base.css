@@ -1,6 +1,6 @@
 /* ============================================================
    썸네일 공유 base CSS — 모든 레이아웃(A/B/C) 공통 SSOT
-   실측 근거: 엔노블 7 + 한방언니 5 + 가연 2 (2026-07-14)
+   실측 근거: 고객사 채널 7 + 한방언니 5 + 가연 2 (2026-07-14)
    @AI:INTENT 레이아웃마다 CSS 복제 금지 → 부품(강조색/외곽선/라벨/말풍선)은 여기 1곳
    compose-thumbnail.mjs가 이 파일을 레이아웃 HTML의 BASE_CSS 자리에 주입한다.
    ⚠️ 이 주석에 플레이스홀더 리터럴(중괄호 2겹)을 쓰지 말 것 — 주입 후에도 남아
@@ -58,8 +58,8 @@
 /* ---- 강조색 팔레트 (실측 채널색 3종) ----
    .acc = 강조. 줄 전체 또는 핵심 명사에 감싼다. 기본 노랑, 프리셋이 덮어씀 */
 .title em, .title .acc, .subtitle em, .subtitle .acc { font-style: normal; }
-.acc-yellow .title em, .acc-yellow .title .acc { color: #ffd400; }  /* 한방언니·엔노블 자막 */
-.acc-red    .title em, .acc-red    .title .acc { color: #ff3b30; }  /* 엔노블 강조어 */
+.acc-yellow .title em, .acc-yellow .title .acc { color: #ffd400; }  /* 한방언니풍 자막 */
+.acc-red    .title em, .acc-red    .title .acc { color: #ff3b30; }  /* 고객사 채널 강조어 */
 .acc-pink   .title em, .acc-pink   .title .acc { color: #ff2d78; }  /* 가연 */
 /* 서브카피는 통째 강조색이 표준(실측: 하단 자막 = 노랑 한 줄) */
 .acc-yellow .subtitle { color: #ffd400; }
@@ -78,7 +78,7 @@
    공유 부품 (레이아웃 무관, 대본 성격 따라 on/off)
    ============================================================ */
 
-/* ① 역할 라벨 — 우상단 괄호 (실측: 엔노블·한방언니 "(결혼전문가)") */
+/* ① 역할 라벨 — 우상단 괄호 (실측: 한방언니 등 "(결혼전문가)") */
 .role-label {
   position: absolute; right: 34px; top: 30px;
   font-family: 'Noto Sans KR', sans-serif; font-weight: 800;
