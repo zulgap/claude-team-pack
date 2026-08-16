@@ -12,6 +12,7 @@
 // @AI:CONSTRAINT staff 경로(team-guide.md + 캐시 team-guide.cache.md)는 기존 설치 PC와 동일 유지 — 기존 직원 회귀 0.
 //   기존 직원 토큰 role=PM/MEMBER → staff 매핑 (2026-07-12 실측: 발급 role은 --role 인자 > 배정 role > 'USER').
 const https = require('https');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -23,18 +24,30 @@ function b64urlJson(seg) {
 }
 
 // 제디 토큰 위치: Claude Code(~/.claude.json) 우선, 데스크탑앱 config 폴백 (Windows/macOS 양쪽)
-function tokenClaims() {
+// @AI:INTENT 2026-08-17 — 클레임뿐 아니라 **원본 토큰과 서버 주소**도 함께 돌려준다.
+//   회사별 안내문을 인증 경로(GET /mcp/ext/team-guide)로 받으려면 Bearer 가 필요하고,
+//   같은 파일을 두 번 읽지 않으려고 여기서 한 번에 꺼낸다(teampack-config.js 와 같은 탐색 순서).
+// @AI:CONSTRAINT 🔴 여기의 base64 디코드는 **서명 검증이 아니다.** 검증은 서버가 한다
+//   (`shared/mcp-ext-auth.js` — Bearer 검증 + tenant 강제 + IDOR 차단). 그래서 클레임은
+//   「어느 캐시 파일을 쓸까」를 정하는 **로컬 힌트**로만 쓰고, 무엇을 받을지는 서버가 정한다.
+//   토큰을 위조해도 서버가 그 토큰의 tenant 안내문만 주므로 남의 것을 못 받는다.
+function readCreds() {
   const candidates = [path.join(os.homedir(), '.claude.json')];
   if (process.env.APPDATA) candidates.push(path.join(process.env.APPDATA, 'Claude', 'claude_desktop_config.json'));
   candidates.push(path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json'));
   for (const f of candidates) {
     try {
       const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-      const t = j && j.mcpServers && j.mcpServers.jedi && j.mcpServers.jedi.env && j.mcpServers.jedi.env.JUDGMENTOS_TOKEN;
+      const env = j && j.mcpServers && j.mcpServers.jedi && j.mcpServers.jedi.env;
+      const t = env && env.JUDGMENTOS_TOKEN;
       if (!t) continue;
       const c = b64urlJson(String(t).split('.')[1]) || {};
       if (!c.role && !c.tenant_id) continue;
-      return c;
+      return {
+        claims: c,
+        token: String(t),
+        url: (env.JUDGMENTOS_URL || 'https://judgmentos-unified-agent-production.up.railway.app').replace(/\/+$/, ''),
+      };
     } catch (_) { /* 파일 없음/파싱 실패 → 다음 후보 */ }
   }
   return null; // 토큰 기반 판정 불가 → 폴백으로
@@ -59,10 +72,10 @@ function resolveRole(claims) {
 }
 
 // ── 외부 테넌트 안내문 격리 ────────────────────────────────────────────────
-// @AI:CONSTRAINT 🔴 `team-guide.md` 에는 줄갭 고객사 실명이 들어 있다(실측 2026-08-16:
-//   「엔노블」·「검단가온치과」·「노블냥」). 이 훅은 그전까지 role 만 분기해서, 외부 고객사
-//   직원도 role=staff 로 떨어져 **같은 파일을 매 세션 읽었다.** 팩·레포를 나눠도 이 경로는
-//   raw fetch 라 안 없어진다 — 격리는 여기서 한 번 더 서야 한다.
+// @AI:CONSTRAINT 🔴 내부용 `team-guide.md` 에는 **밖에 나가면 안 되는 내용**이 들어 있다.
+//   이 훅은 그전까지 role 만 분기해서, 외부 회사 직원도 role=staff 로 떨어져 **같은 파일을
+//   매 세션 읽었다.** 팩·저장소를 나눠도 이 경로는 남으므로 격리는 여기서 한 번 더 서야 한다.
+//   ⚠️ 이 주석에 구체적인 회사 이름을 다시 적지 말 것 — 이 파일은 공개된다.
 // @AI:TENANT 판정축 = JWT `tenant_id` 클레임. role 과 같은 토큰에서 나온다
 //   (`unified-agent/scripts/issue-mcp-token.js` payload = {actor_id, tenant_id, role}).
 // @AI:CONSTRAINT 🔴 **fail-closed** — 줄갭이 아닌 테넌트는 전용 안내문을 못 받으면
@@ -217,7 +230,8 @@ function checkClaudeInstall() {
   } catch (_) { /* 기동 실패해도 안내문 주입은 계속 — 세션 절대 차단 X */ }
 })();
 
-const CLAIMS = tokenClaims();
+const CREDS = readCreds();
+const CLAIMS = CREDS && CREDS.claims;
 const role = resolveRole(CLAIMS);
 const tenant = tenantFromClaims(CLAIMS);
 
@@ -225,8 +239,19 @@ const tenant = tenantFromClaims(CLAIMS);
 // @AI:FRAGILE 캐시 파일명도 테넌트별로 갈라야 한다 — 이름을 공유하면 한 PC에서 줄갭 캐시를
 //   외부 테넌트가 읽어(네트워크 실패 시) 격리가 캐시로 새어나간다.
 const external = !!tenant && !INTERNAL_TENANTS.has(tenant);
+
+// @AI:INTENT 2026-08-17 — 회사별 안내문은 **인증 경로**로 받는다.
+// @AI:CONSTRAINT 🔴 주소에 회사 식별자를 넣지 말 것. 받을 대상은 **서버가 토큰에서 정한다**
+//   (`shared/mcp-ext-auth.js` 가 Bearer 검증 + tenant 강제 + IDOR 차단). 식별자를 URL 에 두면
+//   그 주소를 아는 것만으로 접근이 되고, 우리 저장소 밖의 자산 주소와도 모양이 겹친다.
+// @AI:CONSTRAINT 🔴 내부(줄갭) 경로는 이번에 **건드리지 않는다** — 전 직원 세션에 닿아
+//   위험도가 다르다. 같은 방식으로 옮기는 것은 별도 단계.
+// ⚠️ 남는 것 — 내부/외부 갈림은 **검증 안 된 클레임**으로 하므로 클라가 내부를 자칭할 수 있다.
+//   내부 경로까지 서버가 주게 되면 판정이 서버로 넘어가 이 여지가 사라진다.
+// @AI:DEPENDS external 이 참이면 CREDS 는 반드시 있다 — tenant 는 CREDS.claims 에서만 나오고,
+//   CREDS 가 없으면 tenant='' 이라 external 이 false 가 된다. 그래서 여기 null 분기를 두지 않는다.
 const URL = external
-  ? RAW + 'guides/' + tenant + '.md'
+  ? CREDS.url + '/mcp/ext/team-guide'
   : (role === 'dev' ? RAW + 'docs/dev-guide-en.md' : RAW + 'team-guide.md');
 const CACHE = path.join(
   ZULGAP_DIR,
@@ -255,10 +280,58 @@ function emit(text) {
 //   여기서는 그 정의에 맞춰 「내 테넌트가 아닌 곳의 ADMIN」만 조기 종료에서 뺀다.
 //   조기 종료의 의도(사장님 개인 컨텍스트 보존)는 외부 테넌트에 해당하지 않는다.
 if (role === 'master' && !external) { emit(''); }
-function cache() { try { return fs.readFileSync(CACHE, 'utf8'); } catch { return ''; } }
 
-const req = https.get(URL, { timeout: 4000 }, (res) => {
-  if (res.statusCode !== 200) { res.resume(); return emit(cache()); }
+// ── 캐시 신선도 ────────────────────────────────────────────────────────────
+// @AI:CONSTRAINT 🔴 캐시에 나이 제한이 없으면 **구독이 끝난 뒤에도 마지막 안내문이 영구히 남는다.**
+//   서버가 「이제 주지 않는다」고 답해도 화면은 옛 내용을 계속 띄우게 된다.
+// @AI:CONSTRAINT 🔴 제한은 **인증 경로에만** 건다 — 내부 경로는 이번 범위 밖이고,
+//   전 직원 세션에 닿는 변경을 같은 PR 에 섞지 않는다. `Infinity` = 현행 유지.
+const STALE_DAYS = external ? 7 : Infinity;
+function cache() {
+  try {
+    const txt = fs.readFileSync(CACHE, 'utf8');
+    const ageDays = (Date.now() - fs.statSync(CACHE).mtimeMs) / 86400000;
+    if (ageDays > STALE_DAYS) {
+      // fail-loud — 옛 안내문을 조용히 쓰지 않고, 대신 사람이 볼 수 있게 사유를 띄운다.
+      return '🔴 팀 안내문을 ' + Math.floor(ageDays) + '일째 받지 못했습니다 (허용 ' + STALE_DAYS + '일).\n'
+        + '옛 안내문은 쓰지 않습니다 — 인터넷 연결과 제디 토큰을 확인하시거나 담당자에게 문의하세요.';
+    }
+    return txt;
+  } catch { return ''; }
+}
+
+// @AI:CONSTRAINT 🔴 인증 실패·미등록을 **조용히 넘기지 않는다** (A2 「조용한 실패 제거」의 연장).
+//   private 전환 후 첫 실패 지점이 여기라, 화면에 안 뜨면 「설치는 됐는데 안내가 없다」로만 보인다.
+function authHint(status) {
+  if (status === 404) {
+    return '🔴 이 회사(테넌트)의 팀 안내문이 서버에 등록돼 있지 않습니다.\n담당자에게 안내문 등록을 요청하세요.';
+  }
+  if (status === 401 || status === 403) {
+    return '🔴 제디 토큰이 만료되었거나 거부되었습니다 (HTTP ' + status + ').\n담당자에게 토큰 재발급을 요청하세요.';
+  }
+  return '';
+}
+
+// @AI:INTENT 외부 경로만 Bearer 를 붙인다. 내부 경로는 공개 raw 라 헤더가 없어야 한다
+//   (GitHub raw 에 Authorization 을 보내면 요청이 거부될 수 있다).
+const REQ_OPTS = external
+  ? { timeout: 4000, headers: { Authorization: 'Bearer ' + CREDS.token } }
+  : { timeout: 4000 };
+
+// @AI:INTENT 프로토콜로 모듈을 고른다 — 형제 파일 `teampack-config.js` 와 같은 형태.
+//   운영은 언제나 https 이고, 이 분기는 **로컬 테스트가 실제 요청을 받아볼 수 있게** 한다
+//   (그전에는 https 고정이라 훅의 실패 표시를 사람 눈으로만 확인할 수 있었다).
+const get = (u, o, cb) => (String(u).startsWith('http://') ? http : https).get(u, o, cb);
+
+const req = get(URL, REQ_OPTS, (res) => {
+  if (res.statusCode !== 200) {
+    res.resume();
+    // 404 는 서버의 **확정 답변**이라 캐시로 덮지 않는다 — 해지가 곧 배달 중단이 되게.
+    if (external && res.statusCode === 404) return emit(authHint(404));
+    const hint = external ? authHint(res.statusCode) : '';
+    const body = cache();
+    return emit(hint ? (hint + (body ? '\n\n---\n\n' + body : '')) : body);
+  }
   let data = '';
   res.on('data', (d) => { data += d; });
   res.on('end', () => {
