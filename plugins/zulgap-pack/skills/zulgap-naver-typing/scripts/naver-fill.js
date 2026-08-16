@@ -118,15 +118,17 @@ async function removePlaceholder(page, frame) {
   await page.keyboard.press('Delete');
   await page.waitForTimeout(900);
 
-  // @AI:CONSTRAINT 「지웠다」고 믿지 않는다 — 엉뚱한 것을 지웠으면 «올라간 이미지가 줄어든다».
-  //   그때는 실패로 돌려 사람이 화면을 보게 한다. 조용히 넘어가면 그림 빠진 글이 발행된다.
+  // @AI:CONSTRAINT 「지웠다」고 믿지 않는다 — «자리 수»로 확인한다.
+  //   naverImages 로 재지 말 것: 화면 표시는 글을 붙일 때마다 흔들려서, 엉뚱한 것을 지워도
+  //   안 줄어 보이거나 멀쩡한데도 줄어 보인다(2026-08-16 실측). 자리 수는 지운 만큼만 줄어든다.
   const after = await readBody(frame);
-  if (after.naverImages < before.naverImages) {
-    const e = new Error(`실패 자리를 지우려다 «올라간 이미지»가 줄었습니다 (${before.naverImages} → ${after.naverImages}). 화면을 확인해 주세요.`);
+  const removed = before.slots - after.slots;
+  if (removed > 1 || removed < 0) {
+    const e = new Error(`한 자리만 지우려 했는데 이미지 자리가 ${removed}개 줄었습니다 (${before.slots} → ${after.slots}). 화면을 확인해 주세요.`);
     e.code = 'DELETED_WRONG_IMAGE';
     throw e;
   }
-  return after.placeholders < before.placeholders;
+  return removed === 1;
 }
 
 /**
