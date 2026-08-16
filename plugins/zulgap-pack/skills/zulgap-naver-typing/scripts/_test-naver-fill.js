@@ -10,7 +10,7 @@
  *   → 판정축은 «이미지 자리 수(slots)»다. 표시 상태와 무관하게 늘기만 하므로 흔들리지 않는다.
  */
 const path = require('path');
-const { verifyFilled } = require(path.join(__dirname, 'naver-fill.js'));
+const { verifyFilled, describeImageFailure } = require(path.join(__dirname, 'naver-fill.js'));
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => {
@@ -70,6 +70,24 @@ console.log('\n[8] uploaded 를 안 넘겨도 판정한다(호출부가 늘어�
 {
   const p = verifyFilled({ start: EMPTY, end: body({ slots: 9 }), expected: 10 });
   ok('자리 수로 잡는다', p.some((x) => /9\/10/.test(x)), JSON.stringify(p));
+}
+
+console.log('\n[9] 🔴 썸네일 주소는 «5분»이면 죽는다 — 실패 이유가 사람 말로 나와야 한다');
+{
+  // 2026-08-16 실측: 노션 첨부는 `X-Amz-Expires=300` 서명 URL. 카드를 받아 두고 몇 분 뒤
+  // 파싱하면 «썸네일만» 403 이 되는데, 그전엔 「이미지 1장 실패」로만 떠서 원인이 안 보였다.
+  const S3 = 'https://prod-files-secure.s3.us-west-2.amazonaws.com/63008774/thumb.png?X-Amz-Expires=300&X-Amz-Signature=abc';
+  const SUPA = 'https://ex.supabase.co/storage/v1/object/public/media-assets/a/generated/1.png';
+
+  ok('만료를 만료라고 말한다', /만료/.test(describeImageFailure(S3, 403)), describeImageFailure(S3, 403));
+  ok('🔴 회수 방법까지 알려준다 (카드를 다시 받기)', /다시 받아/.test(describeImageFailure(S3, 403)));
+  ok('400 도 만료로 본다', /만료/.test(describeImageFailure(S3, 400)));
+  ok('지워진 것은 «만료»라고 하지 않는다', /지워졌/.test(describeImageFailure(S3, 404)), describeImageFailure(S3, 404));
+  ok('영구 주소의 403 은 만료라고 하지 않는다', !/만료/.test(describeImageFailure(SUPA, 403)), describeImageFailure(SUPA, 403));
+  ok('모르는 코드는 숫자를 그대로 보여준다', /HTTP 500/.test(describeImageFailure(SUPA, 500)));
+  // @AI:CONSTRAINT 도메인만으로도 잡는다 — 서명 파라미터 이름이 바뀌어도 노션 첨부는 걸린다
+  ok('서명 파라미터가 없어도 노션 첨부면 잡는다',
+     /만료/.test(describeImageFailure('https://prod-files-secure.s3.amazonaws.com/x/thumb.png', 403)));
 }
 
 console.log('\n──────────────────────────────────────────────');

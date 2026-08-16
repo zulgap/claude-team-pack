@@ -328,6 +328,28 @@ async function setRepImage(page, frame, index = 0) {
   return { ok: true, index, total: after.total, moved_from: before.index };
 }
 
+/**
+ * 이미지 내려받기가 실패했을 때 «왜인지»를 사람 말로.
+ *
+ * @AI:INTENT 🔴 2026-08-16 실측 — 카드 그림의 «호스팅이 두 계열»이고 수명이 다르다:
+ *     본문 AI 그림   supabase `media-assets/…`      → 영구 public
+ *     썸네일·실사진   노션 `prod-files-secure…`      → AWS 서명 URL, `X-Amz-Expires=300` (**5분**)
+ *   그래서 카드를 받아 두고 몇 분 뒤에 파싱하면 «썸네일만» 죽는다. 그런데 증상은
+ *   「이미지 1장 다운로드 실패」로만 떠서 원인이 안 보이고, 사람은 네트워크를 의심한다.
+ *   회수 경로는 하나뿐이다 — «노션에서 카드를 다시 받는 것»(URL 을 손으로 이어붙일 수 없다).
+ * @AI:INTENT 순수 함수로 뽑은 이유 = 망 없이 시험할 수 있게. 만료는 실전에서만 나는데,
+ *   실전에서 나면 이미 사람이 창 앞에 앉아 있다.
+ */
+function describeImageFailure(url, status) {
+  const u = String(url || '');
+  const signed = /[?&]X-Amz-(Expires|Signature)=/i.test(u) || u.includes('prod-files-secure');
+  if (signed && (status === 403 || status === 400)) {
+    return '노션 이미지 주소가 만료됐습니다(서명 URL 5분). 노션에서 카드를 «다시 받아» 주세요';
+  }
+  if (status === 404) return '이미지가 지워졌습니다 (원본 카드 확인 필요)';
+  return `내려받기 실패 (HTTP ${status})`;
+}
+
 /** 이미지 URL → 로컬 파일 (순서 보존 이름) */
 async function downloadImages(blocks, dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -339,7 +361,10 @@ async function downloadImages(blocks, dir) {
     const ext = (b.url.match(/\.(png|jpe?g|webp|gif)(\?|$)/i) || [null, 'png'])[1].toLowerCase();
     const file = path.join(dir, `${String(i).padStart(2, '0')}_.${ext}`);
     const res = await fetch(b.url);
-    if (!res.ok) { out.push({ index: i, url: b.url, ok: false, status: res.status }); continue; }
+    if (!res.ok) {
+      out.push({ index: i, url: b.url, ok: false, status: res.status, reason: describeImageFailure(b.url, res.status) });
+      continue;
+    }
     fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
     out.push({ index: i, url: b.url, ok: true, file, bytes: fs.statSync(file).size });
   }
@@ -375,7 +400,16 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   // ② 이미지 미리 받기 — 중간에 받으면 실패 시 반쪽 글이 남는다
   const files = await downloadImages(parsed.blocks, imageDir);
   const failed = files.filter((f) => !f.ok);
-  if (failed.length) problems.push(`이미지 ${failed.length}장 다운로드 실패 (${failed.map((f) => f.index).join(',')})`);
+  // @AI:INTENT 번호만 적으면 사람이 원인을 못 찾는다 — «왜»를 함께 적는다(만료 vs 삭제 vs 망).
+  if (failed.length) {
+    problems.push(`이미지 ${failed.length}장 다운로드 실패 — ` +
+      failed.map((f) => `${f.index}번: ${f.reason || `HTTP ${f.status}`}`).join(' / '));
+  }
+  // 🔴 썸네일은 «맨 끝 한 장»이라 실패해도 본문은 멀쩡하다 — 그래서 조용히 얼굴만 빠진다. 따로 말한다.
+  if (parsed.thumbnailIndex !== null && parsed.thumbnailIndex !== undefined
+      && failed.some((f) => f.index === parsed.thumbnailIndex + 1)) {
+    problems.push('썸네일을 받지 못해 «대표 이미지를 지정할 수 없습니다» (검색결과에 본문 첫 그림이 나갑니다)');
+  }
   if (files.length && failed.length === files.length) {
     return { status: 'failed', checkpoint, reason: '이미지를 하나도 받지 못했습니다', problems };
   }
@@ -417,6 +451,26 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   //   (임시저장분 서버 응답 RabbitTempPostRead: 이미지 URL 10 / SVG 0 — PROVENANCE 참조).
   //   고칠 것이 없으므로 아무것도 하지 않는다.
 
+  // ④-c 대표 이미지 = 썸네일 (2026-08-16)
+  // @AI:INTENT 네이버는 대표를 «본문에 있는 그림 중에서만» 고르고, 지정이 없으면 «첫 장»을 쓴다.
+  //   그래서 지정을 안 하면 정성껏 만든 얼굴 대신 «본문 첫 도식»이 검색결과에 나갔다.
+  //   파서가 썸네일을 맨 끝에 얹고(card-parser), 그 자리를 여기서 대표로 세운다.
+  // @AI:CONSTRAINT 🔴 setRepImage 를 직접 클릭으로 대체하지 말 것 — 버튼이 «토글»이라
+  //   이미 대표인 것을 또 누르면 풀리고, 네이버가 다시 첫 장을 쓴다. 그 판정은 setRepImage 안에 있다.
+  // @AI:CONSTRAINT 썸네일이 «없는» 카드(엔노블·검단가온)는 건드리지 않는다 — 네이버 기본(첫 장)이 맞다.
+  let rep = null;
+  if (parsed.thumbnailIndex !== null && parsed.thumbnailIndex !== undefined) {
+    rep = await setRepImage(page, frame, parsed.thumbnailIndex);
+    if (rep.ok) {
+      notes.push(`대표 이미지 = 썸네일(${parsed.thumbnailIndex + 1}번째)${rep.already ? ' — 이미 지정돼 있었습니다' : ''}`);
+    } else {
+      // @AI:INTENT 문제로 올린다. 얼굴은 검색결과에 그대로 노출되므로 «아마 됐을 것»으로 넘기면
+      //   틀린 얼굴로 발행되고, 발행 뒤에는 알아채기 어렵다.
+      problems.push(`대표 이미지를 썸네일로 지정하지 못했습니다 (${rep.reason})`);
+    }
+    await page.waitForTimeout(400);
+  }
+
   // ⑤ 결과 검증 — 판정은 «화면»이 한다
   const end = await readBody(frame);
   const verdict = verifyFilled({ start, end, expected: parsed.images, uploaded });
@@ -438,7 +492,8 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
               images_uploaded: uploaded,
               externalImages: end.externalImages,
               // 참고값 — 화면 표시 상태일 뿐이다(문서에는 이미지가 온전히 들어 있다)
-              화면표시: `URL ${end.naverImages}장 · 그림자리 ${end.placeholders}장` },
+              화면표시: `URL ${end.naverImages}장 · 그림자리 ${end.placeholders}장`,
+              대표이미지: rep ? (rep.ok ? `썸네일(${rep.index + 1}번째)` : `실패 — ${rep.code}`) : '지정 안 함 (썸네일 없는 카드)' },
     problems,
     notes,
     // @AI:CONSTRAINT 여기서 끝. 등록은 사람이 누른다.
@@ -478,5 +533,5 @@ function verifyFilled({ start, end, expected, uploaded }) {
 }
 
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
-                   downloadImages, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard,
+                   downloadImages, describeImageFailure, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard,
                    readRepImage, setRepImage, REP_BTN, REP_ON, IMG_COMPONENT, BODY, PARA };
