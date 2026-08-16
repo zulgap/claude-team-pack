@@ -90,6 +90,24 @@ console.log('\n[9] 🔴 썸네일 주소는 «5분»이면 죽는다 — 실패 
      /만료/.test(describeImageFailure('https://prod-files-secure.s3.amazonaws.com/x/thumb.png', 403)));
 }
 
+console.log('\n[10] 🔴 대표 지정은 «검증 뒤»에 온다 — 그림이 덜 들어가면 세우지 않는다');
+{
+  // 2026-08-16 사슬 분석에서 나온 위험 — 파서는 썸네일을 «맨 끝»에 얹으므로 앞의 그림이 하나라도
+  // 빠지면 thumbnailIndex 가 «다른 그림»을 가리킨다. 그때 세우면 엉뚱한 도식이 검색결과 얼굴이 된다.
+  // 그래서 fillCard 는 verifyFilled 가 깨끗할 때만 손댄다. 여기서는 그 «전제»(자리 수 판정)를 잠근다.
+  const p = verifyFilled({ start: EMPTY, end: body({ slots: 5, naverImages: 5 }), expected: 6, uploaded: 5 });
+  ok('🔴 6장 중 5장만 들어가면 «문제»로 잡힌다 = 대표를 세우지 않는 조건', p.length > 0, JSON.stringify(p));
+  const clean = verifyFilled({ start: EMPTY, end: body({ slots: 6, naverImages: 6 }), expected: 6, uploaded: 6 });
+  ok('  6/6 이면 깨끗하다 = 대표를 세우는 조건', clean.length === 0, JSON.stringify(clean));
+
+  // @AI:CONSTRAINT 소스 배치 자체를 잠근다 — 주석 규칙만으로는 다시 앞으로 옮겨진다.
+  const src = require('fs').readFileSync(path.join(__dirname, 'naver-fill.js'), 'utf8');
+  const iVerify = src.indexOf('const verdict = verifyFilled(');
+  const iRep = src.indexOf('await setRepImage(page, frame, parsed.thumbnailIndex)');
+  ok('🔴 setRepImage 호출이 verifyFilled «뒤»에 있다', iVerify > 0 && iRep > iVerify, `verify@${iVerify} rep@${iRep}`);
+  ok('🔴 verdict 가 깨끗할 때만 세운다', /verdict\.length === 0/.test(src.slice(iVerify, iRep + 200)));
+}
+
 console.log('\n──────────────────────────────────────────────');
 console.log(fail === 0 ? `✅ ALL PASS  ${pass}/${pass + fail}` : `❌ FAIL  ${pass}/${pass + fail}`);
 process.exit(fail === 0 ? 0 : 1);

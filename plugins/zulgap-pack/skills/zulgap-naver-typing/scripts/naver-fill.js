@@ -451,15 +451,30 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   //   (임시저장분 서버 응답 RabbitTempPostRead: 이미지 URL 10 / SVG 0 — PROVENANCE 참조).
   //   고칠 것이 없으므로 아무것도 하지 않는다.
 
-  // ④-c 대표 이미지 = 썸네일 (2026-08-16)
+  // ⑤ 결과 검증 — 판정은 «화면»이 한다
+  const end = await readBody(frame);
+  const verdict = verifyFilled({ start, end, expected: parsed.images, uploaded });
+  problems.push(...verdict);
+  // 중간에 「안 늘었다」고 본 것들은, 화면이 온전하면 문제가 아니다 — 기록만 남긴다
+  if (unsureUploads.length) {
+    if (verdict.length) problems.push(`업로드 확인이 어긋난 이미지: ${unsureUploads.join(', ')}번`);
+    else notes.push(`이미지 ${unsureUploads.join(', ')}번은 중간 확인이 어긋났으나 화면은 온전합니다`);
+  }
+
+  // ⑥ 대표 이미지 = 썸네일 (2026-08-16)
   // @AI:INTENT 네이버는 대표를 «본문에 있는 그림 중에서만» 고르고, 지정이 없으면 «첫 장»을 쓴다.
   //   그래서 지정을 안 하면 정성껏 만든 얼굴 대신 «본문 첫 도식»이 검색결과에 나갔다.
   //   파서가 썸네일을 맨 끝에 얹고(card-parser), 그 자리를 여기서 대표로 세운다.
+  //
+  // @AI:CONSTRAINT 🔴 «검증(⑤) 뒤»에 둔다. 앞에 두면 그림이 덜 들어간 상태에서 자리를 세게 되고,
+  //   그때 thumbnailIndex 는 «다른 그림»을 가리킬 수 있다 — 얼굴이 엉뚱한 도식이 되어 검색결과에 나간다.
+  //   지금은 셈이 맞을 때만 손대므로, 틀릴 바에는 «안 세운다»(네이버 기본 = 첫 장).
   // @AI:CONSTRAINT 🔴 setRepImage 를 직접 클릭으로 대체하지 말 것 — 버튼이 «토글»이라
   //   이미 대표인 것을 또 누르면 풀리고, 네이버가 다시 첫 장을 쓴다. 그 판정은 setRepImage 안에 있다.
-  // @AI:CONSTRAINT 썸네일이 «없는» 카드(엔노블·검단가온)는 건드리지 않는다 — 네이버 기본(첫 장)이 맞다.
+  // @AI:CONSTRAINT 썸네일이 «없는» 카드(엔노블·검단가온)는 건드리지 않는다 — 네이버 기본이 맞다.
   let rep = null;
-  if (parsed.thumbnailIndex !== null && parsed.thumbnailIndex !== undefined) {
+  const hasThumb = parsed.thumbnailIndex !== null && parsed.thumbnailIndex !== undefined;
+  if (hasThumb && verdict.length === 0) {
     rep = await setRepImage(page, frame, parsed.thumbnailIndex);
     if (rep.ok) {
       notes.push(`대표 이미지 = 썸네일(${parsed.thumbnailIndex + 1}번째)${rep.already ? ' — 이미 지정돼 있었습니다' : ''}`);
@@ -469,16 +484,8 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
       problems.push(`대표 이미지를 썸네일로 지정하지 못했습니다 (${rep.reason})`);
     }
     await page.waitForTimeout(400);
-  }
-
-  // ⑤ 결과 검증 — 판정은 «화면»이 한다
-  const end = await readBody(frame);
-  const verdict = verifyFilled({ start, end, expected: parsed.images, uploaded });
-  problems.push(...verdict);
-  // 중간에 「안 늘었다」고 본 것들은, 화면이 온전하면 문제가 아니다 — 기록만 남긴다
-  if (unsureUploads.length) {
-    if (verdict.length) problems.push(`업로드 확인이 어긋난 이미지: ${unsureUploads.join(', ')}번`);
-    else notes.push(`이미지 ${unsureUploads.join(', ')}번은 중간 확인이 어긋났으나 화면은 온전합니다`);
+  } else if (hasThumb) {
+    problems.push('그림이 덜 들어가 대표 이미지를 세우지 않았습니다 (틀린 얼굴로 나가는 것보다 안전합니다)');
   }
 
   const okAll = problems.length === 0;
