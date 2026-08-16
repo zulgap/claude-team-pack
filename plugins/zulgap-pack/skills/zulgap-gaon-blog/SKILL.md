@@ -5,7 +5,7 @@ version: 1.1.0
 origin: teampack
 tier: tenant-only
 extends: zulgap-blog
-parent-checksum: c504856b
+parent-checksum: 9e8e4042
 ---
 
 # 검단가온치과 블로그 초안 (네이버블로그)
