@@ -809,26 +809,39 @@ python scripts/check-references.py --selftest    # 12건
 **네이버는 대표 이미지를 «본문에 있는 그림 중에서만» 고른다.** 카드에 썸네일이 없으면
 타이핑 도구가 만들어낼 수 없고, 검색결과에는 **본문 첫 도식**이 얼굴로 나간다.
 
-#### 동료사별 생성기 — 인자 이름이 갈리니 확인하고 부를 것
+#### 🔴 만드는 법 = **HTML → `ext_render_html`** (사장님 확정 2026-08-16)
 
-| 동료사 | 스킬 | 인자 | 줄 규격 |
-|---|---|---|---|
-| 댕묘 | (자체) `zulgap-dangmyo-naver/scripts/make_thumbnail.py` | `--title` | 3줄 · **줄당 6자** |
-| RPG | `zulgap-rpg-thumbnail` | `--title` | 2줄 |
-| 엔노블 | `zulgap-ennoble-thumbnail` | `--lines` | 2~3줄 |
-| 검단가온 | `zulgap-gaon-thumbnail` | `--lines` | 4줄 이내 |
+도식과 **같은 경로**다(위 「시각물」 소싱 2번). 썸네일은 도형+글자라 그림 실력이 필요 없다.
 
-🔴 **`--title` 과 `--lines` 를 혼동하지 말 것** — 「썸네일 만들어라」만 보고 부르면 절반이 틀린 인자로 죽는다.
-줄 구분은 공통으로 `|` 다.
+```js
+// 1080×1080 한 장. CSS 는 <style> 로 «인라인» (외부 stylesheet 는 로드되지 않는다)
+ext_render_html({ html, format: 'png', width: 1080, height: 1080 })
+//   → { file_urls: [...] }   ← Storage «영구» URL
+```
+
+🔴 **`tenant_id` 를 넣지 말 것** — 넣으면 `tenant_mismatch` 로 차단된다(토큰에서 자동으로 들어간다).
+
+**왜 HTML인가** — 파이썬 생성기(`make_thumbnail.py`)가 동료사마다 있지만, 그건 **직원 PC에 Python + Pillow가 있어야** 돌고 (`No module named PIL` 함정이 스킬마다 적혀 있다) 결과가 **로컬 PNG**라 따로 올려야 한다.
+`ext_render_html` 은 설치가 필요 없고 **Storage 영구 URL** 을 바로 준다 —
+노션 업로드 URL의 **5분 만료** 문제가 애초에 생기지 않는다(2026-08-16 실측으로 데인 자리).
+
+⚠️ **파이썬 생성기는 브랜드 «규격의 정본»으로 남는다** — 배경·색·서체·줄 수 규격은 거기에 실측으로 박혀 있다.
+HTML 로 옮길 때 **그 값을 그대로 가져다 쓴다**(눈으로 새로 정하지 말 것).
+
+| 동료사 | 규격 정본 | 줄 규격 |
+|---|---|---|
+| 댕묘 | `zulgap-dangmyo-naver/scripts/make_thumbnail.py` | 3줄 · **줄당 6자** |
+| RPG | `zulgap-rpg-thumbnail` | 2줄 |
+| 엔노블 | `zulgap-ennoble-thumbnail` | 2~3줄 |
+| 검단가온 | `zulgap-gaon-thumbnail` | 4줄 이내 |
 
 #### 카드에 넣는 법
 
 ```
 ## 썸네일 (1080 x 1080)
-![](<노션에 파일 업로드한 주소>)
+![](<ext_render_html 이 준 Storage URL>)
 ```
 
-노션에 **파일로 업로드**해 카드 안에서 바로 보이게 한다(file upload → `markdown_source`).
 🔴 **헤딩만 만들고 `⬜ 미제작` 으로 두지 말 것** — 검사는 «그림이 있나»를 보므로 그대로 막힌다
 (실측: RPG 16편 중 3편이 이 상태였다).
 

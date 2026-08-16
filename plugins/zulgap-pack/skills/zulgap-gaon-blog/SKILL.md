@@ -5,7 +5,7 @@ version: 1.1.0
 origin: teampack
 tier: tenant-only
 extends: zulgap-blog
-parent-checksum: 42267499
+parent-checksum: a4f03063
 ---
 
 # 검단가온치과 블로그 초안 (네이버블로그)
@@ -212,18 +212,20 @@ Do NOT translate them into English.
 
 **빼먹으면 타이핑이 막힌다.** `zulgap-naver-typing` 의 `validateCard` 가 차단한다(경고 아님).
 
-```bash
-python <zulgap-gaon-thumbnail 경로>/scripts/make_thumbnail.py \
-  --lines "잇몸 절개|얼마나 하나요|뼈 상태가|정합니다" --out ./썸네일.png
+**만드는 법 = HTML → `ext_render_html`** (부모 스킬 「썸네일은 필수다」 절과 동일 경로).
+
+```js
+ext_render_html({ html, format: 'png', width: 1080, height: 1080 })  // → Storage 영구 URL
 ```
 
-🔴 **인자는 `--lines` 다** (`--title` 아님 — RPG·댕묘가 `--title` 이라 헷갈린다). 줄 구분은 `|`, **4줄 이내**.
+🔴 `tenant_id` 를 넣지 말 것(차단된다). CSS 는 `<style>` 로 인라인.
 
-만든 PNG를 노션에 **파일로 업로드**해 카드에 넣는다:
+**규격은 `zulgap-gaon-thumbnail` 이 정본** — 배경·색·서체가 거기 실측으로 박혀 있다.
+카피는 **4줄 이내**. 그 값을 그대로 HTML 로 옮긴다(눈으로 새로 정하지 말 것).
 
 ```
 ## 썸네일 (1080 x 1080)
-![](<업로드 주소>)
+![](<Storage URL>)
 ```
 
 🔴 **헤딩만 만들고 `⬜ 미제작` 으로 두지 말 것** — 검사는 «그림이 있나»를 본다.
