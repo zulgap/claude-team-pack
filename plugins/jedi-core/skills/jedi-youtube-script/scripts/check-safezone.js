@@ -41,6 +41,10 @@ if (!fs.existsSync(SRC)) {
   process.exit(2);
 }
 
+// @AI:CONSTRAINT 세이프존 높이는 «채널마다 다르다»(PiP 크기·마진이 다르므로).
+//   기본값을 조용히 쓰면 다른 채널에서 «잘못된 PASS»가 나오는데, 그건 이 스크립트가 막으려던 것과
+//   정확히 같은 사고다(조용한 실패). 그래서 기본값을 쓸 때는 반드시 경고를 낸다.
+const SAFE_EXPLICIT = argv.includes('--safe');
 const SAFE = Number(opt('safe', 360));                 // 하단 세이프존 높이(px) — 정본 production 값
 const MARGIN = Number(opt('margin', 60));              // 이 값 미만으로 붙으면 «통과지만 경고»
 const [STAGE_W, STAGE_H] = String(opt('stage', '1920x1080')).split('x').map(Number);
@@ -257,6 +261,11 @@ console.log('━━━━━ ' + path.basename(SRC) + ' · 슬라이드 ' + rows
 console.log('  무대 ' + STAGE_W + '×' + STAGE_H + ' · 세이프존 하단 ' + SAFE + 'px → 기준선 bottom ≤ ' + LIMIT + 'px');
 // 어느 브라우저로 쟀는지 남긴다 — 렌더러가 다르면 값이 미세하게 다를 수 있다
 console.log('  렌더: ' + path.basename(chrome) + (/msedge/i.test(chrome) ? ' (Chrome 대체본)' : ''));
+if (!SAFE_EXPLICIT) {
+  console.log('  ⚠️ --safe 를 안 주셔서 기본 ' + SAFE + 'px 로 쟀습니다.');
+  console.log('     세이프존은 채널마다 다릅니다 — 정본 production 값을 확인해 --safe 로 주세요.');
+  console.log('     값이 다르면 이 «통과» 는 틀린 것입니다.');
+}
 console.log('  가장 아래까지 간 장: ' + Math.max(...rows.map((r) => r.bottom)) + 'px');
 console.log('  가장 위로 간 장:     ' + Math.min(...rows.map((r) => r.top)) + 'px (0 미만이면 위로 잘림)');
 console.log('');
