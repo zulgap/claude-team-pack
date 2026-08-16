@@ -12,7 +12,7 @@ const { getFrame, readBody, handleStartupPopup } = require('./naver-fill');
 const cat = require('./naver-category');
 
 const PORT = process.argv[2] || '9223';
-// 기본 대상 = ff1030 세 동료사 (channels/*.md 와 같은 값)
+// 기본 대상 = 한 계정을 공유하는 세 동료사 (채널 파일과 같은 값)
 const TARGETS = [
   { who: '마미사', no: '112', name: '마미사_ai로 회사 굴립니다' },
   { who: 'RPG',   no: '111', name: 'RPG_수출입 어디까지 해봤니' },

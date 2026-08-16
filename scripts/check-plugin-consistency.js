@@ -21,6 +21,7 @@
 //    개수·범위 표기는 항목이 늘 때마다 낡으므로 목록만 유지한다.
 // 불일치 = exit 1 (CI/심사 게이트용). usage: node scripts/check-plugin-consistency.js
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -279,7 +280,29 @@ for (const { where, raw } of skillFiles) {
 //   공용 팩은 남의 회사 PC 에 통째로 깔리므로 이름 한 줄이 곧 유출이다.
 // @AI:DEPENDS 대상 팩은 resolve-packs.js 의 BASE_PLUGINS — 「모두에게 깔리는 팩」의 SSOT 다.
 //   여기에 목록을 다시 적으면 2026-08-16 이전처럼 판정이 두 벌이 된다.
-const TENANT_NAMES = JSON.parse(fs.readFileSync(path.join(__dirname, '_tenant-names.json'), 'utf8'));
+// @AI:CONSTRAINT 🔴 이 목록은 **레포에 두지 않는다** — 이 레포는 PUBLIC 이라
+//   「공용 팩에 들어가면 안 되는 이름 목록」이 곧 고객 명부가 된다(게이트가 유출이 되는 역설).
+//   2026-08-16: 게이트용으로 추가한 scripts/_tenant-names.json 이 고객 7사 + 경쟁사 인식까지
+//   기계가독 한 장으로 공개돼 있던 것을 발견하고 이 자리로 옮겼다.
+// @AI:DEPENDS 두 곳에서만 읽는다 — CI 는 env(TENANT_NAMES_JSON secret), 로컬은 ~/.claude/zulgap/.
+//   🔴 **둘 다 없으면 skip 이 아니라 FAIL 이다.** 재료가 없으면 게이트는 「조용히 통과」하는데,
+//   그게 정확히 이 게이트가 막으려던 사고(2026-08-16 D-3b 신설 사유)와 같은 클래스다.
+function loadTenantNames() {
+  if (process.env.TENANT_NAMES_JSON) {
+    try { return JSON.parse(process.env.TENANT_NAMES_JSON); }
+    catch (e) { console.error(`  FAIL [D-3 재료손상] env TENANT_NAMES_JSON 파싱 실패: ${e.message}`); process.exit(1); }
+  }
+  const local = path.join(os.homedir(), '.claude', 'zulgap', 'tenant-names.json');
+  if (fs.existsSync(local)) {
+    try { return JSON.parse(fs.readFileSync(local, 'utf8')); }
+    catch (e) { console.error(`  FAIL [D-3 재료손상] ${local} 파싱 실패: ${e.message}`); process.exit(1); }
+  }
+  console.error('  FAIL [D-3 재료없음] 고객사 이름 목록을 찾지 못했다 — 이 게이트는 재료 없이 통과하지 않는다.');
+  console.error('    CI  : 저장소 secret `TENANT_NAMES_JSON` 에 목록 JSON 을 넣고 워크플로 env 로 주입할 것');
+  console.error('    로컬: ~/.claude/zulgap/tenant-names.json (레포가 아닌 경로로 전달받아 둘 것)');
+  process.exit(1);
+}
+const TENANT_NAMES = loadTenantNames();
 const BANNED = Object.entries(TENANT_NAMES.customers)
   .flatMap(([tenant, lits]) => lits.map((lit) => ({ tenant, lit })));
 

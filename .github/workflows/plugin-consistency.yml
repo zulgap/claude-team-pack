@@ -49,6 +49,10 @@ jobs:
           node-version: '20'
       - name: 플러그인·스킬 일관성 게이트 (전체 Tier)
         shell: bash
+        # 🔴 D-3(공용 팩 고객사 이름 0건) 의 재료. 레포에 두면 그 목록이 곧 고객 명부라 secret 으로 넣는다.
+        #    없으면 게이트가 FAIL 한다 — 조용히 통과시키지 않는다(check-plugin-consistency.js loadTenantNames).
+        env:
+          TENANT_NAMES_JSON: ${{ secrets.TENANT_NAMES_JSON }}
         run: |
           set -o pipefail
           if node scripts/check-plugin-consistency.js; then

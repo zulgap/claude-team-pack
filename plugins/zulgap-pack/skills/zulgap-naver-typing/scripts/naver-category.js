@@ -9,7 +9,7 @@
  *   이름만 맞으면 같은 이름이 여럿일 수 있다. 한쪽이라도 어긋나면 멈춘다 —
  *   글이 남의 자리에 올라가면 되돌릴 수 없다.
  *
- * 실측으로 확정된 구조 (2026-08-16 · ff1030 발행 패널)
+ * 실측으로 확정된 구조 (2026-08-16 · 대상 블로그 발행 패널)
  *   패널 열기   : [data-click-area="tpb.publish"]      (패널 존재 = [class*="layer_publish"])
  *   드롭다운    : [data-click-area="tpb*i.category"]    ← 버튼 텍스트가 «현재 선택값». 누를 때마다 «토글»
  *   목록 항목   : [data-testid="categoryBtn_<번호>"]    ← input. 그 li 안의 label[for] 이 클릭 대상
