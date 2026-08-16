@@ -40,6 +40,18 @@
     flex-direction:column; justify-content:center; }
   .slide.on{ display:flex; }
 
+  /* ════ F = 얼굴 없음 모드 ════
+     @AI:INTENT 웹캠 없이 찍으면 비워둔 하단이 «검은 여백»으로 남는다(세이프존 360이면 화면의 34%).
+       그때만 여백을 걷어 내용을 화면 가운데로 돌린다. 슬라이드 내용은 건드리지 않는다.
+     🔴 기본값은 PiP 모드다. localStorage 에 저장하지 않는다 — 새로 열면 «항상» PiP 로
+       시작해야 설계가 조용히 바뀌지 않는다. */
+  body.noface .slide{ padding-bottom:96px; }
+  #modetoast{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    background:#141417; border:2px solid var(--accent); border-radius:16px;
+    padding:28px 44px; font-size:38px; font-weight:800; color:var(--fg);
+    opacity:0; pointer-events:none; transition:opacity .18s; z-index:50; }
+  #modetoast.on{ opacity:1; }
+
   /* ── 타이포 (세이프존에 맞춘 값 — 키우기 전에 반드시 재측정) ── */
   .kicker{ font-size:32px; color:var(--accent); font-weight:800; margin-bottom:28px; }
   h1{ font-size:98px; font-weight:900; line-height:1.16; letter-spacing:-.02em; }
@@ -129,6 +141,7 @@
 <div id="guide"></div>
 <div id="bar"></div>
 <div id="idx">1 / 1</div>
+<div id="modetoast"></div>
 
 <script>
   const slides = [...document.querySelectorAll('.slide')];
@@ -156,6 +169,16 @@
     if (e.key === 'Home') show(0);
     if (e.key === 'End') show(slides.length - 1);
     if (e.key === 'g' || e.key === 'G') { guide.classList.toggle('on'); pip.classList.toggle('on'); }
+    // F = 얼굴 없음 모드. 🔴 기본은 PiP — 저장하지 않으므로 새로 열면 항상 PiP 로 돌아온다.
+    //    토스트는 1.2초 뒤 사라진다(상시 표시하면 녹화에 그대로 찍힌다).
+    if (e.key === 'f' || e.key === 'F') {
+      var off = document.body.classList.toggle('noface');
+      var t = document.getElementById('modetoast');
+      t.textContent = off ? '얼굴 없음 모드 — 하단 여백 없음' : 'PiP 모드 — 하단 비움';
+      t.classList.add('on');
+      clearTimeout(window.__mt); window.__mt = setTimeout(function(){ t.classList.remove('on'); }, 1200);
+      fit();
+    }
   });
   fit(); show(0);
 </script>
