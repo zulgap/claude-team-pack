@@ -68,9 +68,20 @@ ok('「키워드를 바꾼 이유」가 본문에 없다', !plain.includes('키�
 ok('내부 표(항목/홈페이지 원문)가 본문에 없다', !plain.includes('홈페이지 원문'));
 ok('버려진 줄이 실제로 있다 (경계가 작동했다)', P.dropped > 10, `dropped=${P.dropped}`);
 
-console.log('\n[3] 🔴 썸네일 이미지가 본문 이미지로 섞이지 않았다');
-ok('본문 이미지 2장만 (썸네일 제외)', P.images === 2, `${P.images}장`);
-ok('S3 썸네일 URL 미포함', !P.blocks.some(b => b.kind === 'image' && b.url.includes('amazonaws')));
+console.log('\n[3] 🔴 썸네일은 «맨 끝 한 장»이고 본문 사이에 섞이지 않았다');
+// 🔴 2026-08-16 계약 변경 — 그전까지는 썸네일을 «통째로 버렸다»(`images === 2` · amazonaws 미포함).
+//   그래서 정성껏 만든 얼굴이 본문에 없었고, 네이버는 «본문에 있는 그림 중에서만» 대표를 고르므로
+//   검색결과에는 본문 첫 도식이 나갔다. 사장님 결정(2026-08-16): «본문 맨 끝»에 넣고 대표로 지정한다.
+// @AI:CONSTRAINT 원래 [3]의 뜻(=본문 «사이»에 끼지 않는다)은 그대로 지킨다. 아래 3·4번이 그 자리다.
+const imgs = P.blocks.filter(b => b.kind === 'image');
+ok('본문 2장 + 썸네일 1장 = 3장', P.images === 3, `${P.images}장`);
+ok('썸네일이 «맨 끝» 한 장이다', imgs[imgs.length - 1].url.includes('amazonaws'), imgs[imgs.length - 1].url);
+ok('🔴 본문 사이 이미지에는 썸네일이 안 섞였다',
+   imgs.slice(0, -1).every(b => !b.url.includes('amazonaws')));
+ok('thumbnail 을 따로 알려준다', P.thumbnail && P.thumbnail.url.includes('rpg7-thumbnail.png'), JSON.stringify(P.thumbnail));
+ok('🔴 대표로 지정할 자리를 알려준다 (0부터)', P.thumbnailIndex === 2, String(P.thumbnailIndex));
+ok('썸네일 «카피 메모»는 본문에 안 들어갔다', !plain.includes('서류하자로 / 대금이'));
+ok('네이버 업로드 주의문도 안 들어갔다', !plain.includes('내려받기용'));
 
 console.log('\n[4] 조각 교대 순서');
 const order = P.blocks.map(b => b.kind).join(',');
@@ -90,7 +101,9 @@ ok('🔴 표 머리 행에 색 (header-row 속성은 네이버가 무시한다)'
 ok('🔴 표 셀 안 마크다운이 풀린다 (별표가 글자로 안 나간다)',
    allHtml.includes('<b>지급한다</b>') && !allHtml.includes('**지급한다**'));
 ok('머리 행 셀은 색을 입는다', allHtml.includes('<span style="color:#ffffff;">상황</span>'));
-ok('본문 행 셀에는 색이 없다', allHtml.includes('<td>물건에 문제, 서류는 완벽</td>'));
+// 본문 셀은 «선은 있고 배경색은 없다» (선은 2026-08-16 사장님 결정으로 추가)
+ok('본문 행 셀에 선이 있다', /<td style="border:[^";]*">물건에 문제, 서류는 완벽<\/td>/.test(allHtml));
+ok('본문 행 셀에는 배경색이 없다', !/<td[^>]*background-color[^>]*>물건에 문제/.test(allHtml));
 ok('리스트가 ul/li 로', allHtml.includes('<ul>') && allHtml.includes('<li>선적기일'));
 ok('링크가 a 태그로', /<a href="http:\/\/redpassportglobal\.com/.test(allHtml));
 ok('해시태그 줄 보존', allHtml.includes('#신용장서류하자'));
@@ -225,6 +238,87 @@ const leaked = validateCard(parseCard(`# 제목\n${'정상 본문입니다. '.re
 ok('도구 이름이 본문에 있으면 실패', leaked.ok === false && leaked.problems.some(p => p.includes('validate_blog_draft')));
 const leaked2 = validateCard(parseCard(`# 제목\n${'정상 본문입니다. '.repeat(40)}\n메타 설명 이라는 말이 본문에`));
 ok('머리말 이름이 본문에 있으면 실패', leaked2.ok === false);
+
+console.log('\n[11] 강조 밀도 — «세기만» 한다 (넣지 않는다)');
+{
+  const IMG_LINE = '![설명](https://example.com/a.png)';          // 이미지 0장은 «다른 이유»로 막히므로 넣는다
+  const long = '충분히 긴 본문 문장입니다. '.repeat(40);          // 500자 이상
+  const bare = validateCard(parseCard(`# 제목\n${long}\n${IMG_LINE}`));
+  ok('강조가 없으면 알린다', bare.warnings.some((w) => w.includes('강조가 0개')));
+  ok('🔴 그래도 «막지는» 않는다', bare.ok === true);
+  ok('몇 개가 어울리는지 숫자로 알려준다', /\d+개 안팎/.test(bare.warnings[0] || ''));
+
+  // 문장 «일부» 볼드를 촘촘히 — 기존 글 밀도(73자당 1개)를 넘어서면 조용해야 한다
+  const dense = '이것은 **핵심**이고 저것도 **중요**합니다. '.repeat(30);
+  const rich = validateCard(parseCard(`# 제목\n${dense}`));
+  ok('강조가 충분하면 알림이 없다', rich.warnings.length === 0, JSON.stringify(rich.warnings).slice(0, 90));
+  ok('볼드 개수를 센다', rich.bolds === 60, String(rich.bolds));
+  ok('밀도(자/볼드)를 준다', typeof rich.chars_per_bold === 'number');
+
+  // @AI:CONSTRAINT 파서가 볼드를 «넣지» 않는다 — 세기만 한다
+  const untouched = parseCard(`# 제목\n${long}`).blocks.map((b) => b.html || '').join('');
+  ok('🔴 파서가 볼드를 만들어 넣지 않는다', !untouched.includes('<b>'));
+}
+
+// ─────────────────────────────────────────────────────────────
+// [12] 썸네일 회수 — 🔴 «자리가 동료사마다 다르다» (2026-08-16 카드 4장 실측)
+//   댕묘  해시태그 → `### 썸네일` → 그림 → `---` → `## 재가공 내역`   ← 이 헤딩이 «경계를 켠다»
+//   RPG   … → `## 재가공 내역` → `## 썸네일` → 그림 → `## 발행 전 체크`  ← «경계 너머»에 있다
+//   엔노블·검단가온  썸네일 섹션 자체가 «없다»
+// @AI:CONSTRAINT 두 방향 다 잡아야 한다. [3]이 RPG(너머)를, 여기가 댕묘(경계선)를 덮는다.
+// ─────────────────────────────────────────────────────────────
+console.log('\n[12] 🔴 썸네일 회수 — 댕묘형(썸네일 헤딩이 «경계를 켠다»)');
+{
+  const DANGMYO = `> **붙여넣기 안내**
+> 1. 제목 끝 괄호 **(8/13)은 떼고** 붙여넣으세요.
+---
+## 본문
+## 고양이 빗질 주기, 단모종도 주 1~2회는 해주셔야 합니다
+${'빗에 딸려 나온 털 뭉텅이를 보고 놀라셨다면 절반만 맞습니다. '.repeat(8)}
+![그루밍으로 삼킨 털이 지나는 경로 (댕묘 작성)](https://ex.supabase.co/a/generated/1786544657332.png)
+### 왜 청소가 아니라 소화기 관리인가
+${'고양이 혀 표면에는 뒤쪽으로 누운 딱딱한 돌기가 있습니다. '.repeat(6)}
+### 참고 자료
+- 「Cornell Feline Health Center」 코넬대학교 고양이건강센터
+#고양이빗질주기 #고양이빗질 #댕묘
+### 썸네일 (1080 x 1080)
+![](https://prod-files-secure.s3.us-west-2.amazonaws.com/63008774/dangmyo-cat-brushing-thumb.png?X-Amz-Expires=300&X-Amz-Signature=abc)
+---
+## 재가공 내역 (홈페이지 원문과 달라진 것)
+- **문장 전면 재작성** — 검사기 판정 원문 재사용 0건.
+## 발행 전 체크
+- [ ] 썸네일 PNG 내려받아 대표 이미지로 지정`;
+  const D = parseCard(DANGMYO);
+  const dPlain = D.blocks.filter(b => b.kind === 'html').map(b => b.html).join('\n').replace(/<[^>]+>/g, '');
+  const dImgs = D.blocks.filter(b => b.kind === 'image');
+
+  ok('🔴 썸네일을 회수했다 (경계를 켜는 헤딩이어도)', !!D.thumbnail, JSON.stringify(D.thumbnail));
+  ok('회수한 것이 S3 썸네일이다', D.thumbnail && D.thumbnail.url.includes('dangmyo-cat-brushing-thumb'));
+  ok('본문 1장 + 썸네일 1장 = 2장', D.images === 2, `${D.images}장`);
+  ok('썸네일이 «맨 끝»이다', dImgs[dImgs.length - 1].url.includes('amazonaws'));
+  ok('🔴 대표 지정 자리 = 마지막', D.thumbnailIndex === D.images - 1, String(D.thumbnailIndex));
+  // 경계는 여전히 살아 있어야 한다 — 썸네일을 살린다고 내부 메모까지 딸려오면 최악이다
+  ok('🔴 「재가공 내역」은 그대로 버린다', !dPlain.includes('재가공 내역') && !dPlain.includes('재사용 0건'));
+  ok('🔴 「발행 전 체크」도 그대로 버린다', !dPlain.includes('발행 전 체크'));
+  ok('🔴 「썸네일」 헤딩 글자가 본문에 안 남는다', !dPlain.includes('썸네일'));
+  ok('본문 소제목은 살아 있다', dPlain.includes('왜 청소가 아니라 소화기 관리인가'));
+
+  // 🔴 2026-08-16 실측 결함 — 「참고 자료」가 끝 경계에 들어 있어 «출처와 해시태그가 함께» 잘렸다.
+  //   원 목록(PR #191)이 RPG 카드 한 장만 보고 지어진 탓이고, 잘린 뒤라 «유출 지문에도 안 걸려»
+  //   검증은 초록이었다. 출처 표기는 저작권법상 필수라 조용한 손실 중 가장 나쁜 쪽이다.
+  ok('🔴 「참고 자료」 절이 살아 있다 (출처 표기 — 저작권)', dPlain.includes('Cornell Feline Health Center'));
+  ok('🔴 그 뒤 해시태그 10개도 살아 있다', dPlain.includes('#고양이빗질주기') && dPlain.includes('#댕묘'));
+  ok('  「참고 자료」 소제목 자체도 보인다', dPlain.includes('참고 자료'));
+
+  console.log('\n[12-1] 썸네일이 «없는» 카드는 없다고 말한다');
+  // @AI:CONSTRAINT 🔴 URL 로 판정하지 말 것 — 검단가온 본문 «첫» 사진이 amazonaws 다.
+  //   URL 을 축으로 삼으면 본문 사진이 대표로 둔갑한다. 축은 «썸네일 헤딩»이다.
+  ok('🔴 검단가온: amazonaws 본문 사진이 있어도 썸네일은 없음', G.thumbnail === null, JSON.stringify(G.thumbnail));
+  ok('  자리도 null 이다', G.thumbnailIndex === null, String(G.thumbnailIndex));
+  ok('  본문 사진은 그대로 살아 있다', G.images === 1, `${G.images}장`);
+  ok('엔노블: 썸네일 없음', E.thumbnail === null && E.thumbnailIndex === null);
+  ok('마미사: 썸네일 없음', M.thumbnail === null && M.thumbnailIndex === null);
+}
 
 console.log(`\n${'─'.repeat(46)}\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail === 0 ? 0 : 1);

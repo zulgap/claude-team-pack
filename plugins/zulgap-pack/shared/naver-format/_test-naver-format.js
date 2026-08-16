@@ -43,7 +43,8 @@ const TABLE = [
   '</table>',
 ];
 const out = F.table(TABLE);
-ok('머리 행에 배경색', out.includes(`style="background-color:${F.TABLE_HEADER_BG}"`));
+ok('머리 행에 배경색', out.includes(`background-color:${F.TABLE_HEADER_BG}"`));
+ok('머리 행에 셀 테두리', out.includes(`border:${F.TABLE_BORDER}`));
 ok('🔴 글자색은 span 에 (td 는 안 먹는다)', out.includes(`<span style="color:${F.TABLE_HEADER_FG};">항목</span>`));
 ok('머리 행 셀 마크다운도 푼다', out.includes('<b>THC</b>'));
 ok('본문 행에는 배경색이 없다', !out.split('</tr>')[1].includes('background-color'));
@@ -58,7 +59,8 @@ ok('tableWantsHeader 판정', F.tableWantsHeader('<table header-row="true">') ==
 
 console.log('\n[8] tableCell — 단독 호출');
 ok('머리 셀', F.tableCell('<td>값</td>', { isHeaderRow: true }).includes('background-color'));
-ok('본문 셀', F.tableCell('<td>값</td>') === '<td>값</td>');
+ok('본문 셀에도 테두리', F.tableCell('<td>값</td>') === `<td style="border:${F.TABLE_BORDER}">값</td>`);
+ok('본문 셀엔 배경색이 없다', !F.tableCell('<td>값</td>').includes('background-color'));
 ok('th 도 처리', F.tableCell('<th>값</th>', { isHeaderRow: true }).includes('<th style='));
 ok('셀이 아니면 그대로', F.tableCell('<tr>') === '<tr>');
 

@@ -26,10 +26,27 @@ const BODY_START_HEADINGS = ['네이버 게시용 원고', '게시용 원고'];
 const FRONT_MATTER_HEADINGS = ['SEO 제목', '메타 설명', '황금키워드 분석', '재가공 안내'];
 
 // ③ 본문이 «끝»나는 지점 — 이 헤딩을 만나면 이후는 전부 내부 메모다 (RPG형)
+// @AI:CONSTRAINT 🔴 「참고 자료」를 이 목록에 «되돌리지 말 것» (2026-08-16 제거).
+//   원 목록은 RPG 카드 «한 장»만 보고 지은 것이라 «독자에게 보여야 할» 출처 절까지 잘랐다.
+//   댕묘 카드는 `### 참고 자료`(기관명·법령명) 다음에 «해시태그 10개»가 오는 구조라,
+//   여기서 끊으면 출처와 해시태그가 «둘 다» 조용히 사라진다 — 그런데 검증은 통과한다
+//   (끊긴 뒤라 유출 지문에도 안 걸린다). 실측: 댕묘형 카드에서 해시태그 유입 0건.
+//   출처 표기는 저작권법상 필수이기도 하다(CLAUDE.md 「외부 자료 인용 하드리밋」).
+//   전수 실측(2026-08-16, 카드 4장) 결과 이것을 «내부 메모»로 쓰는 동료사는 없었다.
 const BODY_END_HEADINGS = [
   '재가공 내역', '썸네일', '발행 전 체크', '검수 결과', '키워드를 바꾼 이유',
-  '내부 메모', '작업 메모', '참고 자료',
+  '내부 메모', '작업 메모',
 ];
+
+// ⑥ 썸네일 — 검색결과·블로그 목록에 뜨는 «얼굴». 본문 이미지가 아니라 «따로» 회수한다.
+// @AI:INTENT 네이버는 대표 이미지를 «본문에 있는 그림 중에서만» 고른다. 그래서 버리면
+//   아무리 정성껏 만들어도 얼굴로 못 쓴다 — 본문 «맨 끝»에 한 장 얹는다(2026-08-16 사장님 결정).
+// @AI:FRAGILE 🔴 자리가 동료사마다 다르다 (카드 4장 실측):
+//   댕묘  해시태그 → `### 썸네일` → 그림 → `---` → `## 재가공 내역`   ← 이 헤딩이 «경계를 켠다»
+//   RPG   … → `## 재가공 내역` → `## 썸네일` → 그림                  ← 경계 «너머»에 있다
+//   엔노블·검단가온  섹션 자체가 «없다»
+//   그래서 본문 파싱과 «별개의 훑기»로 뽑는다. 경계 상태에 얽히면 한쪽을 반드시 놓친다.
+const THUMBNAIL_HEADINGS = ['썸네일'];
 
 // ④ 헤딩만 버리고 «내용은 남기는» 것 — 원고 안의 구획 표시 (마미사형)
 const LABEL_HEADINGS = ['본문', '해시태그', '원문'];
@@ -41,6 +58,11 @@ const LEAK_FINGERPRINTS = [
   'validate_blog_draft', '--ar ', '--style raw', 'SEO 제목', '메타 설명',
   '삽입 위치', '담당자 피드백', '도구 검수', '오검출', '유사문서',
 ];
+
+// 강조 밀도 기준 — 2026-08-16 실측(발행글 「원산지증명서」 편: 2,698자에 볼드 37개 ≈ 73자당 1개)
+// @AI:INTENT 알림용 잣대일 뿐 차단선이 아니다. 근거는 shared/naver-format/FORMAT.md 「강조」 절.
+const EMPHASIS_REF_CHARS_PER_BOLD = 73;   // 기존 글이 이만큼마다 하나씩 굵게 한다
+const EMPHASIS_MAX_CHARS_PER_BOLD = 200;  // 이보다 드물면 「강조가 거의 없다」로 보고 알린다
 
 // @AI:INTENT 「무엇인가」(경계 판정)는 이 파일, 「어떻게 보이나」(포맷)는 공용 정본.
 //   경로가 pack root 기준이라 스킬 폴더 이름이 설치마다 달라도 같은 곳을 가리킨다.
@@ -69,6 +91,32 @@ function isBodyEndHeading(text) { return startsWithAny(text, BODY_END_HEADINGS);
 function isBodyStartHeading(text) { return startsWithAny(text, BODY_START_HEADINGS); }
 function isFrontMatterHeading(text) { return startsWithAny(text, FRONT_MATTER_HEADINGS); }
 function isLabelHeading(text) { return startsWithAny(text, LABEL_HEADINGS); }
+function isThumbnailHeading(text) { return startsWithAny(text, THUMBNAIL_HEADINGS); }
+
+/**
+ * 「썸네일」 절의 그림 한 장을 뽑는다 — 본문 경계와 «무관하게» 훑는다.
+ *
+ * @AI:CONSTRAINT 🔴 URL 로 판정하지 말 것. 검단가온 카드는 «본문 첫 사진»이 노션 S3
+ *   (`prod-files-secure…amazonaws`)라, URL 을 축으로 삼으면 본문 사진이 대표로 둔갑한다.
+ *   축은 «썸네일 헤딩»이고, 그 다음 «헤딩 전까지»에서 첫 그림만 가져온다.
+ * @AI:CONSTRAINT 그림 «한 장»만이다. 카피 메모(`카피 : …`)와 업로드 주의문은 그 절에 같이
+ *   들어 있는 내부 메모라 절대 본문으로 넘기지 않는다 — 여기서 그림만 집으면 자동으로 지켜진다.
+ * @returns {{url:string, caption:string}|null}
+ */
+function extractThumbnail(lines) {
+  const at = lines.findIndex((l) => {
+    const h = l.match(HEADING_RE);
+    return h && isThumbnailHeading(h[2]);
+  });
+  if (at < 0) return null;
+  for (let j = at + 1; j < lines.length; j++) {
+    const l = lines[j].trimEnd();
+    if (HEADING_RE.test(l)) break;               // 다음 절로 넘어갔다 — 없는 것이다
+    const m = l.match(IMG_RE);
+    if (m) return { url: m[2].trim(), caption: m[1].trim() };
+  }
+  return null;
+}
 function isTitleLabelHeading(text) { return startsWithAny(text, TITLE_LABEL_HEADINGS); }
 
 /**
@@ -213,11 +261,24 @@ function parseCard(md) {
   }
 
   flushText();
+
+  // 썸네일은 «본문 맨 끝»에 한 장 얹는다 (2026-08-16 사장님 결정).
+  // @AI:INTENT blocks 에 «넣는» 이유 = 다운로드·업로드·개수검증이 전부 blocks 를 돈다
+  //   (naver-fill: downloadImages → 채우기 루프 → verifyFilled). 따로 들고 있으면
+  //   그 세 곳에 배선을 새로 내야 하고, 한 곳만 빠져도 «얼굴 없이» 나간다.
+  // @AI:INTENT thumbnailIndex 를 «따로» 주는 이유 = 대표로 지정할 자리를 채우는 쪽이
+  //   세지 않아도 되게. 「마지막이 썸네일」은 썸네일이 있을 때만 참이라 셈으로 알면 틀린다.
+  const thumbnail = extractThumbnail(lines);
+  if (thumbnail) blocks.push({ kind: 'image', url: thumbnail.url, caption: thumbnail.caption });
+
+  const images = blocks.filter((b) => b.kind === 'image').length;
   return {
     title,
     blocks,
     dropped,
-    images: blocks.filter((b) => b.kind === 'image').length,
+    images,
+    thumbnail,
+    thumbnailIndex: thumbnail ? images - 1 : null,
   };
 }
 
@@ -246,7 +307,28 @@ function validateCard(parsed, opts = {}) {
   if (/\[이미지\s*\d+/.test(plain)) problems.push('이미지 마커가 남아 있습니다');
   if (/TODO|FIXME|<[A-Z_]{3,}>/.test(plain)) problems.push('플레이스홀더가 남아 있습니다');
 
-  return { ok: problems.length === 0, problems, body_chars: plain.length, title: effectiveTitle || null };
+  // 강조 밀도 — «세기만» 한다
+  // @AI:CONSTRAINT 여기서 볼드를 «넣지» 말 것. 어디를 굵게 할지는 「작성」의 판단이고,
+  //   발행이 정하면 원고를 고치는 셈이다(FORMAT.md 「강조」 절). 세는 것은 결정론이라 여기서 한다.
+  // @AI:INTENT 막지 않고 알리기만 한다 — 이미 만들어진 카드 26편이 전부 강조 0 이라
+  //   차단하면 전부 멈춘다. 강조 부족은 «깨짐»이 아니라 «덜 좋음»이다.
+  const warnings = [];
+  const bolds = (textHtml.match(/<b>/g) || []).length;
+  const perBold = bolds ? Math.round(plain.length / bolds) : null;
+  if (plain.length >= 300 && (bolds === 0 || perBold > EMPHASIS_MAX_CHARS_PER_BOLD)) {
+    warnings.push(
+      `문장 안 강조가 ${bolds}개입니다 (본문 ${plain.length}자). ` +
+      `기존 발행글은 ${EMPHASIS_REF_CHARS_PER_BOLD}자당 1개꼴이라 ` +
+      `${Math.round(plain.length / EMPHASIS_REF_CHARS_PER_BOLD)}개 안팎이 어울립니다 — ` +
+      `카드를 만드는 쪽에서 «문장 일부»를 **굵게** 표시해 주세요`,
+    );
+  }
+
+  return {
+    ok: problems.length === 0, problems, warnings,
+    body_chars: plain.length, bolds, chars_per_bold: perBold,
+    title: effectiveTitle || null,
+  };
 }
 
 module.exports = {

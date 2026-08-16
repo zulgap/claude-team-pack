@@ -69,9 +69,15 @@ async function readBody(frame) {
       images: imgs.length,
       naverImages: imgs.filter((i) => /pstatic|naver/.test(srcOf(i))).length,
       externalImages: imgs.filter((i) => !/pstatic|naver/.test(srcOf(i))).length,
-      // @AI:INTENT 업로드가 «실패한 자리»를 센다. 네이버는 실패하면 그 자리에
-      //   data:image/svg+xml 플레이스홀더를 끼워 넣는다(2026-08-16 실측: 10장 중 2장).
-      //   이걸 안 세면 「이미지가 다 있다」로 보여 깨진 채 발행된다.
+      // @AI:INTENT 이미지 «자리» 수 — 플레이스홀더로 그려진 것까지 센다. 이것이 판정축이다.
+      //   2026-08-16 실측: 글을 붙이면 이미 올라간 이미지가 화면에서 SVG 플레이스홀더로 바뀐다.
+      //   그런데 임시저장된 문서를 서버에서 받아 보면 이미지 URL 이 «10개 전부» 들어 있다
+      //   (RabbitTempPostRead 응답: 이미지 10 / SVG 0). 즉 깨진 게 아니라 «표시»만 바뀐 것이다.
+      //   그래서 naverImages(화면에 URL 이 붙은 수)로 성공을 재면 오판하고,
+      //   그 오판이 재시도와 «멀쩡한 이미지 삭제»를 부른다.
+      slots: allImgs.length,
+      // @AI:CONSTRAINT 이 숫자를 「업로드 실패」로 읽지 말 것 — 위 실측이 아니라고 말한다.
+      //   화면 표시 상태일 뿐이라 사람에게 보여 줄 참고값이다.
       placeholders: allImgs.filter((i) => /^data:image\/svg/.test(srcOf(i))).length,
     };
   }, BODY);
@@ -80,7 +86,12 @@ async function readBody(frame) {
 const PLACEHOLDER_IMG = 'img[src^="data:image/svg"]';
 
 /**
- * 업로드 실패 자리(SVG 플레이스홀더) 하나를 지운다.
+ * 플레이스홀더로 «그려진» 이미지 자리 하나를 지운다.
+ *
+ * 🔴 **채우기 경로에서 부르지 말 것.** 플레이스홀더는 「업로드 실패」가 아니라 «화면 표시»다 —
+ *   문서에는 이미지가 온전히 들어 있음을 서버 응답으로 확인했다(2026-08-16, PROVENANCE 참조).
+ *   그걸 모르고 이 함수로 «정리»하다가 멀쩡한 그림을 지웠다(10장 → 9장).
+ *   사람이 「이 그림은 빼 달라」고 지목했을 때를 위해 남겨 둘 뿐이다.
  *
  * @AI:CONSTRAINT DOM 에서 직접 remove 하지 않는다 — 네이버 에디터는 자체 문서 모델을 들고 있어
  *   DOM 만 지우면 저장 때 되살아나거나 문서가 깨진다. 에디터가 스스로 지우게 한다.
@@ -107,15 +118,17 @@ async function removePlaceholder(page, frame) {
   await page.keyboard.press('Delete');
   await page.waitForTimeout(900);
 
-  // @AI:CONSTRAINT 「지웠다」고 믿지 않는다 — 엉뚱한 것을 지웠으면 «올라간 이미지가 줄어든다».
-  //   그때는 실패로 돌려 사람이 화면을 보게 한다. 조용히 넘어가면 그림 빠진 글이 발행된다.
+  // @AI:CONSTRAINT 「지웠다」고 믿지 않는다 — «자리 수»로 확인한다.
+  //   naverImages 로 재지 말 것: 화면 표시는 글을 붙일 때마다 흔들려서, 엉뚱한 것을 지워도
+  //   안 줄어 보이거나 멀쩡한데도 줄어 보인다(2026-08-16 실측). 자리 수는 지운 만큼만 줄어든다.
   const after = await readBody(frame);
-  if (after.naverImages < before.naverImages) {
-    const e = new Error(`실패 자리를 지우려다 «올라간 이미지»가 줄었습니다 (${before.naverImages} → ${after.naverImages}). 화면을 확인해 주세요.`);
+  const removed = before.slots - after.slots;
+  if (removed > 1 || removed < 0) {
+    const e = new Error(`한 자리만 지우려 했는데 이미지 자리가 ${removed}개 줄었습니다 (${before.slots} → ${after.slots}). 화면을 확인해 주세요.`);
     e.code = 'DELETED_WRONG_IMAGE';
     throw e;
   }
-  return after.placeholders < before.placeholders;
+  return removed === 1;
 }
 
 /**
@@ -152,6 +165,27 @@ async function handleStartupPopup(page, frame, timeoutMs = 5000) {
   return results;
 }
 
+/**
+ * 팝업이 «늦게» 떠서 클릭을 가로챌 때 한 번 치우고 다시 해 본다.
+ *
+ * @AI:INTENT 시작 팝업은 창을 연 직후가 아니라 «몇 초 뒤»에 뜨기도 한다(2026-08-16 실측:
+ *   3편 첫 실행이 제목 클릭에서 멈췄고, 화면에는 「작성 중인 글이 있습니다」가 떠 있었다).
+ *   그때 dim 이 화면을 덮어 Playwright 가 「다른 요소가 가로챈다」로 거부한다.
+ * @AI:CONSTRAINT 팝업이 «실제로 있었을 때»만 재시도한다. 없었으면 원래 오류를 그대로 올린다 —
+ *   아무 실패나 두 번씩 시도하면 진짜 고장을 늦게 알게 된다.
+ */
+async function withPopupGuard(page, frame, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (!/intercept|Timeout|not stable/i.test(e.message || '')) throw e;
+    const handled = await handleStartupPopup(page, frame, 6000);
+    if (!handled.length) throw e;
+    await page.waitForTimeout(600);
+    return fn();
+  }
+}
+
 /** 커서를 본문 «맨 끝»에 둔다 — 문단 중간에 박히는 사고 방지(2026-08-15 실측) */
 async function cursorToEnd(page, frame) {
   const paras = frame.locator(PARA);
@@ -167,7 +201,7 @@ async function cursorToEnd(page, frame) {
 
 /** 클립보드를 쓰지 않는 붙여넣기 */
 async function pasteHtml(page, frame, html) {
-  await cursorToEnd(page, frame);
+  await withPopupGuard(page, frame, () => cursorToEnd(page, frame));
   const res = await frame.evaluate((h) => {
     const el = document.activeElement?.isContentEditable
       ? document.activeElement : document.querySelector('[contenteditable="true"]');
@@ -192,41 +226,128 @@ async function uploadOnce(page, frame, filePath, timeoutMs) {
   ]);
   await chooser.setFiles(filePath);
 
-  // 네이버 서버로 올라갈 때까지 대기 (개수 증가로 판정)
+  // @AI:CONSTRAINT 「이미지 자리가 늘었나」로 잰다 — naverImages 로 재지 말 것.
+  //   글을 붙이면 이미 올라간 이미지가 화면에서 플레이스홀더로 바뀌어 naverImages 가 «줄어든다».
+  //   그러면 새 이미지가 들어와도 늘어난 것이 안 보여 «실패»로 오판하고,
+  //   그 오판이 재시도와 멀쩡한 이미지 삭제를 부른다(2026-08-16 실측: 10장 → 9장 유실).
+  //   자리 수는 표시 상태와 무관하게 늘기만 하므로 흔들리지 않는다.
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await page.waitForTimeout(1000);
     const now = await readBody(frame);
-    if (now.naverImages > before.naverImages) return { ok: true, naverImages: now.naverImages };
+    if (now.slots > before.slots) return { ok: true, slots: now.slots };
   }
   const end = await readBody(frame);
   return {
     ok: false,
-    reason: '업로드 후 네이버 서버 이미지가 늘지 않았습니다',
-    before: before.naverImages,
-    placeholders: end.placeholders,
+    reason: '업로드 후 이미지 자리가 늘지 않았습니다',
+    before: before.slots,
+    after: end.slots,
   };
 }
 
 /**
- * 이미지 1장 업로드 — 실패하면 «실패 자리를 지우고» 다시 시도한다.
+ * 이미지 1장 업로드 — «자리는 건드리지 않는다».
  *
- * @AI:FRAGILE 산발적으로 실패한다 — 2026-08-16 실측에서 10장 중 2장(6·10번)이 안 올라갔고
- *   파일은 셋 다 정상 PNG 였다(크기·시그니처 확인). 즉 파일 문제가 아니라 네이버 쪽 지연/거절이다.
- *   ❌ 실패를 problems 에 적고 넘어가지 말 것 — 그 자리에 SVG 플레이스홀더가 남아
- *      「이미지가 다 있다」로 보이고, 사람이 그대로 등록하면 «깨진 이미지가 발행된다».
- *   ✅ 자리를 치우고 다시 올린다. 치우지 않고 재시도하면 플레이스홀더와 새 이미지가 «둘 다» 남는다.
+ * @AI:CONSTRAINT 실패해 보여도 여기서 자리를 지우거나 다시 올리지 말 것.
+ *   2026-08-16 관측: 업로드는 늘 1.1초에 성공하고, «실패»는 대부분 오판이다 —
+ *   다음 텍스트를 붙일 때 이전 이미지가 SVG 자리로 깨지면서 네이버 이미지 수가 «줄어»
+ *   「개수가 늘었나」 판정이 어긋나기 때문이다. 그 상태에서 자리를 지우면
+ *   «멀쩡한 자리에서 깨진 그림»을 위치까지 함께 날린다(1회차에 실제로 그렇게 잃었다).
+ *   복구는 텍스트가 전부 들어간 뒤 repairBrokenImages() 가 «자리를 지키며» 한다.
  */
-async function uploadImage(page, frame, filePath, timeoutMs = 45000, retries = 1) {
-  let last = null;
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    last = await uploadOnce(page, frame, filePath, timeoutMs);
-    if (last.ok) return attempt === 0 ? last : { ...last, retried: attempt };
-    // 실패 — 남은 자리를 치우고 숨을 돌린 뒤 다시
-    await removePlaceholder(page, frame);
-    if (attempt < retries) await page.waitForTimeout(2500);
+async function uploadImage(page, frame, filePath, timeoutMs = 45000) {
+  return uploadOnce(page, frame, filePath, timeoutMs);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 대표 이미지 (썸네일) — 2026-08-16 실측
+//
+// 네이버 검색결과·블로그 목록에 뜨는 «얼굴»이다. 발행 패널에는 이 항목이 **없고**
+// (실측: 카테고리·주제·공개설정·태그·발행시간·공지사항이 전부),
+// 본문 이미지마다 붙은 `.se-set-rep-image-button` 이 그 일을 한다.
+//
+// 실측 4단계 —
+//   ① 그림 2장 업로드 직후: **첫 장이 자동으로 대표**(se-is-selected), 2번은 아님
+//   ② 2번 이미지를 클릭만 해서는 안 바뀐다
+//   ③ 2번의 .se-set-rep-image-button 클릭
+//   ④ 대표가 1번 → 2번으로 «옮겨간다»(배타적)
+// ─────────────────────────────────────────────────────────────
+
+const REP_BTN = '.se-set-rep-image-button';
+const REP_ON = 'se-is-selected';
+const IMG_COMPONENT = '.se-content .se-component.se-image';
+
+/**
+ * 지금 몇 번째 그림이 대표인가.
+ * @AI:INTENT 「지정했다」를 믿지 않고 화면에서 다시 읽으려고 분리했다.
+ * @returns {{index:number|null, total:number}} index 는 0부터. 대표가 없으면 null
+ */
+async function readRepImage(frame) {
+  return frame.evaluate((s) => {
+    const list = [...document.querySelectorAll(s.comp)];
+    let index = null;
+    list.forEach((c, i) => {
+      const b = c.querySelector(s.btn);
+      if (b && b.classList.contains(s.on)) index = i;
+    });
+    return { index, total: list.length };
+  }, { comp: IMG_COMPONENT, btn: REP_BTN, on: REP_ON });
+}
+
+/**
+ * n번째 그림을 대표로 지정한다(0부터).
+ *
+ * @AI:CONSTRAINT 🔴 이미 그 그림이 대표면 **누르지 않는다.** 이 버튼은 토글이라
+ *   한 번 더 누르면 대표가 «풀릴» 수 있고, 그러면 네이버가 다시 첫 장을 쓴다.
+ * @AI:CONSTRAINT 지정 후 화면에서 다시 읽어 확인한다. 안 바뀌었으면 거짓을 돌려주고 멈춘다 —
+ *   대표 이미지는 검색결과에 그대로 노출되므로 «아마 됐을 것»으로 넘기지 않는다.
+ */
+async function setRepImage(page, frame, index = 0) {
+  const before = await readRepImage(frame);
+  if (!before.total) return { ok: false, code: 'NO_IMAGE', reason: '본문에 그림이 없습니다' };
+  if (index < 0 || index >= before.total) {
+    return { ok: false, code: 'OUT_OF_RANGE', reason: `${index + 1}번째 그림이 없습니다 (총 ${before.total}장)`, total: before.total };
   }
-  return { ...last, attempts: retries + 1 };
+  if (before.index === index) return { ok: true, index, total: before.total, already: true };
+
+  const clicked = await frame.evaluate((s) => {
+    const c = [...document.querySelectorAll(s.comp)][s.i];
+    const b = c && c.querySelector(s.btn);
+    if (!b) return false;
+    b.click();
+    return true;
+  }, { comp: IMG_COMPONENT, btn: REP_BTN, i: index });
+  if (!clicked) return { ok: false, code: 'NO_BUTTON', reason: `${index + 1}번째 그림에 대표 버튼이 없습니다` };
+
+  await page.waitForTimeout(1200);
+  const after = await readRepImage(frame);
+  if (after.index !== index) {
+    return { ok: false, code: 'NOT_APPLIED', reason: `대표가 반영되지 않았습니다 (지금 ${after.index === null ? '없음' : after.index + 1}번째)`, actual: after };
+  }
+  return { ok: true, index, total: after.total, moved_from: before.index };
+}
+
+/**
+ * 이미지 내려받기가 실패했을 때 «왜인지»를 사람 말로.
+ *
+ * @AI:INTENT 🔴 2026-08-16 실측 — 카드 그림의 «호스팅이 두 계열»이고 수명이 다르다:
+ *     본문 AI 그림   supabase `media-assets/…`      → 영구 public
+ *     썸네일·실사진   노션 `prod-files-secure…`      → AWS 서명 URL, `X-Amz-Expires=300` (**5분**)
+ *   그래서 카드를 받아 두고 몇 분 뒤에 파싱하면 «썸네일만» 죽는다. 그런데 증상은
+ *   「이미지 1장 다운로드 실패」로만 떠서 원인이 안 보이고, 사람은 네트워크를 의심한다.
+ *   회수 경로는 하나뿐이다 — «노션에서 카드를 다시 받는 것»(URL 을 손으로 이어붙일 수 없다).
+ * @AI:INTENT 순수 함수로 뽑은 이유 = 망 없이 시험할 수 있게. 만료는 실전에서만 나는데,
+ *   실전에서 나면 이미 사람이 창 앞에 앉아 있다.
+ */
+function describeImageFailure(url, status) {
+  const u = String(url || '');
+  const signed = /[?&]X-Amz-(Expires|Signature)=/i.test(u) || u.includes('prod-files-secure');
+  if (signed && (status === 403 || status === 400)) {
+    return '노션 이미지 주소가 만료됐습니다(서명 URL 5분). 노션에서 카드를 «다시 받아» 주세요';
+  }
+  if (status === 404) return '이미지가 지워졌습니다 (원본 카드 확인 필요)';
+  return `내려받기 실패 (HTTP ${status})`;
 }
 
 /** 이미지 URL → 로컬 파일 (순서 보존 이름) */
@@ -240,7 +361,10 @@ async function downloadImages(blocks, dir) {
     const ext = (b.url.match(/\.(png|jpe?g|webp|gif)(\?|$)/i) || [null, 'png'])[1].toLowerCase();
     const file = path.join(dir, `${String(i).padStart(2, '0')}_.${ext}`);
     const res = await fetch(b.url);
-    if (!res.ok) { out.push({ index: i, url: b.url, ok: false, status: res.status }); continue; }
+    if (!res.ok) {
+      out.push({ index: i, url: b.url, ok: false, status: res.status, reason: describeImageFailure(b.url, res.status) });
+      continue;
+    }
     fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
     out.push({ index: i, url: b.url, ok: true, file, bytes: fs.statSync(file).size });
   }
@@ -276,7 +400,16 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   // ② 이미지 미리 받기 — 중간에 받으면 실패 시 반쪽 글이 남는다
   const files = await downloadImages(parsed.blocks, imageDir);
   const failed = files.filter((f) => !f.ok);
-  if (failed.length) problems.push(`이미지 ${failed.length}장 다운로드 실패 (${failed.map((f) => f.index).join(',')})`);
+  // @AI:INTENT 번호만 적으면 사람이 원인을 못 찾는다 — «왜»를 함께 적는다(만료 vs 삭제 vs 망).
+  if (failed.length) {
+    problems.push(`이미지 ${failed.length}장 다운로드 실패 — ` +
+      failed.map((f) => `${f.index}번: ${f.reason || `HTTP ${f.status}`}`).join(' / '));
+  }
+  // 🔴 썸네일은 «맨 끝 한 장»이라 실패해도 본문은 멀쩡하다 — 그래서 조용히 얼굴만 빠진다. 따로 말한다.
+  if (parsed.thumbnailIndex !== null && parsed.thumbnailIndex !== undefined
+      && failed.some((f) => f.index === parsed.thumbnailIndex + 1)) {
+    problems.push('썸네일을 받지 못해 «대표 이미지를 지정할 수 없습니다» (검색결과에 본문 첫 그림이 나갑니다)');
+  }
   if (files.length && failed.length === files.length) {
     return { status: 'failed', checkpoint, reason: '이미지를 하나도 받지 못했습니다', problems };
   }
@@ -284,13 +417,14 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   // ③ 제목
   if (parsed.title) {
     const t = frame.locator('.se-documentTitle .se-text-paragraph, .se-title-text .se-text-paragraph').first();
-    await t.click({ timeout: 10000 });
+    await withPopupGuard(page, frame, () => t.click({ timeout: 10000 }));
     await page.keyboard.type(parsed.title, { delay: 12 });
     await page.waitForTimeout(300);
   }
 
   // ④ 조각 순서대로
   let imgSeq = 0, uploaded = 0;
+  const unsureUploads = [];   // 중간 판정이 「안 늘었다」고 본 것 — 대개 오판이라 ⑤에서 화면으로 가른다
   for (const b of parsed.blocks) {
     if (b.kind === 'html') {
       await pasteHtml(page, frame, b.html);
@@ -300,7 +434,10 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
       const f = files.find((x) => x.index === imgSeq);
       if (!f || !f.ok) { problems.push(`이미지 ${imgSeq} 건너뜀 (파일 없음)`); continue; }
       const r = await uploadImage(page, frame, f.file);
-      if (!r.ok) { problems.push(`이미지 ${imgSeq} 업로드 확인 실패: ${r.reason}`); continue; }
+      // @AI:INTENT 여기서 problems 로 올리지 않는다 — 이 판정은 «개수 증가»라서 자주 오판이다
+      //   (붙여넣기가 이전 이미지를 깨뜨리면 개수가 줄어 늘어난 것이 안 보인다).
+      //   ④-b 가 자리를 되살리므로, 최종 화면이 온전하면 문제가 아니다. ⑤ 가 화면으로 판정한다.
+      if (!r.ok) { unsureUploads.push(imgSeq); continue; }
       uploaded += 1;
       checkpoint = `image_ok(${uploaded}/${parsed.images})`;
     }
@@ -308,36 +445,55 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
     await page.waitForTimeout(opts.gapMs ?? 700);
   }
 
-  // ④-b 남은 실패 자리 정리
-  // @AI:INTENT 재시도로 이미지는 다 올라가도 «실패했던 자리»는 그대로 남는다(2026-08-16 실측).
-  //   그림이 있어 보여서 사람도 못 알아채므로 여기서 치운다. 못 치우면 ⑤에서 problems 로 잡힌다.
-  for (let guard = 0; guard < 6; guard += 1) {
-    const s = await readBody(frame);
-    if (!s.placeholders) break;
-    let removed = false;
-    try { removed = await removePlaceholder(page, frame); }
-    catch (e) { problems.push(e.message); break; }   // 엉뚱한 걸 지웠다 — 더 건드리지 않는다
-    if (!removed) break;
-    notes.push('업로드 실패 자리 1개 정리');
+  // @AI:CONSTRAINT ④-b 「플레이스홀더 정리」를 여기에 되살리지 말 것.
+  //   그것이 «멀쩡한 이미지»를 지워 그림이 사라지게 한 원인이었다(2026-08-16 실측).
+  //   화면의 플레이스홀더는 «표시»일 뿐이고 문서에는 이미지가 온전히 들어 있다
+  //   (임시저장분 서버 응답 RabbitTempPostRead: 이미지 URL 10 / SVG 0 — PROVENANCE 참조).
+  //   고칠 것이 없으므로 아무것도 하지 않는다.
+
+  // ④-c 대표 이미지 = 썸네일 (2026-08-16)
+  // @AI:INTENT 네이버는 대표를 «본문에 있는 그림 중에서만» 고르고, 지정이 없으면 «첫 장»을 쓴다.
+  //   그래서 지정을 안 하면 정성껏 만든 얼굴 대신 «본문 첫 도식»이 검색결과에 나갔다.
+  //   파서가 썸네일을 맨 끝에 얹고(card-parser), 그 자리를 여기서 대표로 세운다.
+  // @AI:CONSTRAINT 🔴 setRepImage 를 직접 클릭으로 대체하지 말 것 — 버튼이 «토글»이라
+  //   이미 대표인 것을 또 누르면 풀리고, 네이버가 다시 첫 장을 쓴다. 그 판정은 setRepImage 안에 있다.
+  // @AI:CONSTRAINT 썸네일이 «없는» 카드(엔노블·검단가온)는 건드리지 않는다 — 네이버 기본(첫 장)이 맞다.
+  let rep = null;
+  if (parsed.thumbnailIndex !== null && parsed.thumbnailIndex !== undefined) {
+    rep = await setRepImage(page, frame, parsed.thumbnailIndex);
+    if (rep.ok) {
+      notes.push(`대표 이미지 = 썸네일(${parsed.thumbnailIndex + 1}번째)${rep.already ? ' — 이미 지정돼 있었습니다' : ''}`);
+    } else {
+      // @AI:INTENT 문제로 올린다. 얼굴은 검색결과에 그대로 노출되므로 «아마 됐을 것»으로 넘기면
+      //   틀린 얼굴로 발행되고, 발행 뒤에는 알아채기 어렵다.
+      problems.push(`대표 이미지를 썸네일로 지정하지 못했습니다 (${rep.reason})`);
+    }
+    await page.waitForTimeout(400);
   }
 
-  // ⑤ 결과 검증
+  // ⑤ 결과 검증 — 판정은 «화면»이 한다
   const end = await readBody(frame);
-  if (end.externalImages > 0) problems.push(`외부 주소 이미지가 ${end.externalImages}장 남았습니다`);
-  if (uploaded !== parsed.images) problems.push(`이미지 ${uploaded}/${parsed.images}장만 올라갔습니다`);
-  // @AI:CONSTRAINT 이게 남아 있으면 «깨진 이미지가 발행된다». 개수만 세고 넘어가면
-  //   화면에는 그림이 있어 보여서 사람도 못 알아챈다(2026-08-16 실측 사고).
-  if (end.placeholders > 0) {
-    problems.push(`업로드 실패 자리가 ${end.placeholders}개 남았습니다 — 이대로 등록하면 그 자리가 깨진 채 발행됩니다`);
+  const verdict = verifyFilled({ start, end, expected: parsed.images, uploaded });
+  problems.push(...verdict);
+  // 중간에 「안 늘었다」고 본 것들은, 화면이 온전하면 문제가 아니다 — 기록만 남긴다
+  if (unsureUploads.length) {
+    if (verdict.length) problems.push(`업로드 확인이 어긋난 이미지: ${unsureUploads.join(', ')}번`);
+    else notes.push(`이미지 ${unsureUploads.join(', ')}번은 중간 확인이 어긋났으나 화면은 온전합니다`);
   }
 
   const okAll = problems.length === 0;
   return {
     status: okAll ? 'ready_to_register' : 'partial',
     checkpoint: okAll ? 'ready_to_register' : checkpoint,
-    filled: { chars: end.chars, naverImages: end.naverImages, externalImages: end.externalImages,
-              placeholders: end.placeholders,
-              images_expected: parsed.images, images_uploaded: uploaded },
+    filled: { chars: end.chars,
+              // 판정에 쓰는 값 — 들어간 이미지 «자리» 수
+              images_expected: parsed.images,
+              images_placed: end.slots - start.slots,
+              images_uploaded: uploaded,
+              externalImages: end.externalImages,
+              // 참고값 — 화면 표시 상태일 뿐이다(문서에는 이미지가 온전히 들어 있다)
+              화면표시: `URL ${end.naverImages}장 · 그림자리 ${end.placeholders}장`,
+              대표이미지: rep ? (rep.ok ? `썸네일(${rep.index + 1}번째)` : `실패 — ${rep.code}`) : '지정 안 함 (썸네일 없는 카드)' },
     problems,
     notes,
     // @AI:CONSTRAINT 여기서 끝. 등록은 사람이 누른다.
@@ -345,5 +501,37 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   };
 }
 
+/**
+ * 채운 결과가 「올려도 되는 상태」인가 — 판정은 «화면에 실제로 있는 것»으로만 한다.
+ *
+ * @AI:CONSTRAINT 내부 카운터(uploaded)로 판정하지 말 것. uploadOnce 는 «네이버 이미지 수가
+ *   늘었나»로 성공을 재는데, 앞선 시도가 뒤늦게 도착해도 늘어난다 — 그래서 재시도가 섞이면
+ *   uploaded 는 10 인데 화면에는 9 장인 상태가 만들어진다(2026-08-16 마미사 1편 실측).
+ *   그때 problems 가 비어 status=ready_to_register 가 되고, 사람이 그대로 등록하면
+ *   «그림이 빠진 채 발행된다». 화면 개수를 진실로 삼아야 그 사고가 막힌다.
+ * @AI:INTENT 순수 함수로 뽑아 둔 이유 = 브라우저 없이 시험할 수 있게. e2e 로만 덮으면
+ *   이 판정은 실전에서만 깨지고, 실전에서 깨지면 이미 발행된 뒤다.
+ */
+function verifyFilled({ start, end, expected, uploaded }) {
+  const problems = [];
+  const before = (start && start.slots) || 0;
+  const placed = ((end && end.slots) || 0) - before;
+
+  if (end.externalImages > 0) problems.push(`외부 주소 이미지가 ${end.externalImages}장 남았습니다`);
+
+  if (placed !== expected) {
+    problems.push(
+      `이미지가 ${placed}/${expected}장 들어갔습니다` +
+      (uploaded !== undefined && uploaded !== placed ? ` (올렸다고 센 것은 ${uploaded}장)` : ''),
+    );
+  }
+
+  // @AI:CONSTRAINT placeholders 를 문제로 올리지 말 것 — 「업로드 실패」가 아니라 «화면 표시»다.
+  //   문서에는 이미지가 온전히 들어 있음을 서버 응답으로 확인했다(2026-08-16, PROVENANCE 참조).
+  //   여기서 문제로 올리면 멀쩡한 글이 partial 로 막히고, 사람이 「고치려고」 지우다 진짜로 잃는다.
+  return problems;
+}
+
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
-                   downloadImages, readBody, cursorToEnd, getFrame, BODY, PARA };
+                   downloadImages, describeImageFailure, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard,
+                   readRepImage, setRepImage, REP_BTN, REP_ON, IMG_COMPONENT, BODY, PARA };

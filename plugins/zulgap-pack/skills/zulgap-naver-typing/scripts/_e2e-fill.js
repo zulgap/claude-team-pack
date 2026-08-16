@@ -4,7 +4,7 @@ const path = require('path');
 const SK = path.resolve(__dirname, '..');
 const { chromium } = require('playwright-core');
 const { parseCard, validateCard } = require(path.join(SK, 'scripts/card-parser.js'));
-const { fillCard, readBody, getFrame } = require(path.join(SK, 'scripts/naver-fill.js'));
+const { fillCard, readBody, getFrame, readRepImage } = require(path.join(SK, 'scripts/naver-fill.js'));
 
 const IMG = 'https://mtnfymojdahnceusnsjh.supabase.co/storage/v1/object/public/media-assets/a0000000-0000-0000-0000-000000000002/generated';
 
@@ -31,16 +31,24 @@ const CARD = `# [시험] 신용장 서류하자, 물건은 갔는데 대금이 �
 통지받은 날 아래를 확인하십시오.
 - 선적기일이 생산 일정 안쪽에 들어오나
 - 요구된 서류를 하나도 빠짐없이 확보할 수 있나
+### 참고 자료
+- 「국제상업회의소」 UCP 600 제5조
 #신용장서류하자 #신용장 #무역실무
 ---
 ## 재가공 내역 (내부 메모 — 절대 올라가면 안 됨)
-이 줄이 네이버에 보이면 경계 판정 실패다.`;
+이 줄이 네이버에 보이면 경계 판정 실패다.
+## 썸네일 (1080 x 1080)
+![](${IMG}/1786544657332-gqxs39.png)
+카피 : 서류하자로 / 대금이 / 멈춥니다   ← 이 줄이 본문에 보이면 실패다
+## 발행 전 체크
+- [ ] 썸네일을 대표 이미지로 지정`;
 
 const BLOG_ID = process.argv[2] || process.env.NAVER_BLOG_ID;
 const PORT = process.argv[3] || process.env.NAVER_CDP_PORT || '9222';
 if (!BLOG_ID) {
-  console.error('사용: node _e2e-fill.js <블로그ID> [CDP포트]
-' +
+  // 🔴 2026-08-16 — 이 줄에 «진짜 줄바꿈»이 박혀 있어 파일이 통째로 SyntaxError 였다.
+  //   그래서 이 e2e 는 커밋된 뒤 «한 번도 돌지 않았다». 여러 줄은 \n 이나 배열+join 으로 쓸 것.
+  console.error('사용: node _e2e-fill.js <블로그ID> [CDP포트]\n' +
                 '  (열려 있는 크롬에 붙어 «빈 글쓰기 창»에 시험 카드 1편을 채운다. 등록은 하지 않는다)');
   process.exit(2);
 }
@@ -49,6 +57,7 @@ if (!BLOG_ID) {
   const parsed = parseCard(CARD);
   const v = validateCard(parsed);
   console.log(`파싱: 제목="${parsed.title}" 조각 ${parsed.blocks.length} 이미지 ${parsed.images} 검증=${v.ok ? 'OK' : v.problems}`);
+  console.log(`썸네일: ${parsed.thumbnail ? `있음 → 대표로 세울 자리 ${parsed.thumbnailIndex + 1}번째` : '없음'}`);
 
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`);
   const ctx = browser.contexts()[0];
@@ -75,10 +84,22 @@ if (!BLOG_ID) {
   // 🔴 내부 메모가 새어 들어갔나 — 최종 확인
   const leak = await frame.evaluate(() => {
     const t = document.querySelector('.se-content')?.innerText || '';
-    return { 재가공내역: t.includes('재가공 내역'), 내부메모: t.includes('내부 메모') };
+    return {
+      재가공내역: t.includes('재가공 내역'), 내부메모: t.includes('내부 메모'),
+      썸네일헤딩: t.includes('썸네일'), 카피메모: t.includes('대금이 / 멈춥니다'),
+      // ✅ 남아야 하는 것 — 「참고 자료」는 독자용 출처 절이다(2026-08-16 경계에서 제외)
+      참고자료: t.includes('국제상업회의소'), 해시태그: t.includes('#신용장서류하자'),
+    };
   });
-  console.log('내부 메모 유입:', JSON.stringify(leak),
-              (!leak.재가공내역 && !leak.내부메모) ? '✅ 없음' : '🔴 새어 들어감');
+  const leakOk = !leak.재가공내역 && !leak.내부메모 && !leak.썸네일헤딩 && !leak.카피메모;
+  console.log('내부 메모 유입:', JSON.stringify(leak), leakOk ? '✅ 없음' : '🔴 새어 들어감');
+  console.log('출처·해시태그 보존:', (leak.참고자료 && leak.해시태그) ? '✅ 남아 있음' : '🔴 사라졌다');
+
+  // 🔴 대표 이미지 = 썸네일인가 (이번 PR 의 본론)
+  const rep = await readRepImage(frame);
+  const want = parsed.thumbnailIndex;
+  console.log(`대표 이미지: ${rep.index === null ? '없음' : rep.index + 1}번째 / 총 ${rep.total}장 · 기대 ${want + 1}번째(썸네일)`,
+              rep.index === want ? '✅ 썸네일이 얼굴이다' : '🔴 어긋남');
   console.log('\n🔴 저장·등록하지 않았습니다. 화면을 확인해 주세요.');
   process.exit(0);
 })().catch(e => { console.error('실패:', e.message); process.exit(1); });
