@@ -1,0 +1,13 @@
+{
+  "_주의": "값(고객사 이름)을 적지 말 것 — 파일과 건수만. 이 레포는 PUBLIC 이다.",
+  "_의미": "공용 팩 밖(레포 루트·hooks·.github)에 남은 고객사명 건수. 늘면 FAIL, 줄면 조인다.",
+  "files": {
+    ".claude-plugin/marketplace.json": 1,
+    ".claude-plugin/plugin.json": 1,
+    ".github/workflows/no-customer-assets.yml": 2,
+    "CHANGELOG.md": 4,
+    "docs/skill-packaging-spec.md": 1,
+    "README.md": 1,
+    "team-guide.md": 3
+  }
+}

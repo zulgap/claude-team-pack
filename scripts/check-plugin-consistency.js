@@ -341,6 +341,86 @@ if (fs.existsSync(CH_DIR)) {
   }
 }
 
+// D-3c 공용 팩 «밖»도 본다 — 레포 루트·hooks/·.github/ (2026-08-17 A3-2d 신설)
+// @AI:INTENT D-3 는 BASE_PLUGINS(=jedi-core) 안만 본다. 그런데 **전 직원 PC 로 배달되는 것은
+//   팩만이 아니다** — hooks/ 는 훅이 스스로 받아가고, 루트 team-guide.md 는 매 세션 주입되며,
+//   README·CHANGELOG 는 저장소를 여는 사람이 바로 본다. 실측 2026-08-17: 그 범위 밖에
+//   고객사 이름 13건이 **게이트 전 Tier PASS 인 채로** 있었다.
+// @AI:CONSTRAINT 🔴 walkFiles 를 재사용하지 말 것 — 그것은 `.` 로 시작하는 디렉토리를 건너뛴다.
+//   `.github/`·`.claude-plugin/` 이 통째로 빠져 4건이 안 보인다(= 게이트가 조용히 통과).
+// @AI:DEPENDS zulgap-pack 은 **일부러 제외**한다 — 거기가 고객사 값의 «정상 거처»이고
+//   (D-3 의 FAIL 안내가 바로 그리로 보낸다), A4 가 그 팩을 통째로 비공개로 가져간다.
+//   여기에 넣으면 95건을 동결해야 하고 A4 뒤엔 그 동결이 통째로 죽은 코드가 된다.
+// @AI:CONSTRAINT 🔴 기존 13건은 **동결(ratchet)** 이다 — 다 고칠 때까지 미루면 그 사이 또 는다.
+//   늘면 FAIL, 줄면 조인다. Tier K 가 같은 이유로 같은 형태를 쓴다(그 선례를 따랐다).
+// @AI:CONSTRAINT 🔴 baseline 에 **값을 적지 말 것** — 파일·건수만. 이름을 적으면 그 목록이
+//   곧 고객 명부가 되고, 이 레포는 PUBLIC 이다(#205 가 게이트용 명부를 공개한 것과 같은 실패).
+const D3C_BASELINE = path.join(__dirname, '_d3-baseline.json');
+{
+  const SKIP = new Set(['.git', 'node_modules', '__pycache__']);
+  const BIN = /\.(ttf|otf|ttc|woff2?|png|jpe?g|gif|webp|pdf|zip|ico|mp4|mp3)$/i;
+  const walkAll = (dir, out = []) => {
+    for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP.has(d.name)) continue;
+      const p = path.join(dir, d.name);
+      if (d.isDirectory()) walkAll(p, out); else out.push(p);
+    }
+    return out;
+  };
+  // 팩은 D-3 가 본다 — 여기서는 팩 «밖»만. zulgap-pack 은 위 사유로 제외.
+  const inPacks = (rel) => rel.startsWith('plugins/');
+
+  const now = {};
+  let scannedD3c = 0;
+  for (const f of walkAll(ROOT)) {
+    if (BIN.test(f)) continue;
+    const rel = path.relative(ROOT, f).replace(/\\/g, '/');
+    if (inPacks(rel)) continue;
+    scannedD3c++;
+    let raw;
+    try { raw = fs.readFileSync(f, 'utf8'); } catch (_) { continue; }
+    const n = BANNED.filter(({ lit }) => raw.includes(lit)).length;
+    if (n > 0) now[rel] = n;
+  }
+
+  let base = {};
+  if (fs.existsSync(D3C_BASELINE)) {
+    try { base = JSON.parse(fs.readFileSync(D3C_BASELINE, 'utf8')).files || {}; }
+    catch (e) {
+      console.error(`  FAIL [D-3c 재료손상] ${path.basename(D3C_BASELINE)} 파싱 실패: ${e.message}`);
+      failD3 = 1;
+    }
+  }
+
+  if (process.argv.includes('--update-d3-baseline')) {
+    fs.writeFileSync(D3C_BASELINE, JSON.stringify({
+      _주의: '값(고객사 이름)을 적지 말 것 — 파일과 건수만. 이 레포는 PUBLIC 이다.',
+      _의미: '공용 팩 밖(레포 루트·hooks·.github)에 남은 고객사명 건수. 늘면 FAIL, 줄면 조인다.',
+      files: now,
+    }, null, 2) + '\n');
+    console.log(`  ℹ [D-3c 공용팩밖고객사명] baseline 갱신 — ${Object.keys(now).length}파일 / ${Object.values(now).reduce((a, b) => a + b, 0)}건`);
+    // @AI:FRAGILE 방금 쓴 것을 기준으로 비교한다 — 안 그러면 갱신 실행이 「옛 base 대비 신규」로
+    //   스스로 FAIL 한다(첫 생성 때 실제로 그랬다).
+    base = now;
+  }
+
+  const grown = Object.entries(now).filter(([f, n]) => n > (base[f] || 0));
+  const shrunk = Object.entries(base).filter(([f, n]) => (now[f] || 0) < n);
+
+  if (grown.length) {
+    console.error(`  FAIL [D-3c 공용팩밖고객사명] 신규 ${grown.length}파일 — 이 레포는 **PUBLIC** 이다. 커밋하면 인터넷에 공개된다.`);
+    for (const [f, n] of grown) console.error(`       ${f}: ${base[f] || 0} → ${n}건`);
+    console.error(`       고치는 법: 이름을 빼고 성격 표현으로("고객사 채널"·"동료사 A"). 값이 꼭 필요하면 zulgap-pack/shared/channels/ 로`);
+    failD3 = 1;
+  } else {
+    const frozen = Object.values(base).reduce((a, b) => a + b, 0);
+    console.log(`  PASS [D-3c 공용팩밖고객사명] 팩 밖 ${scannedD3c}개 파일 — 신규 0건 (동결 ${frozen}건은 기존 부채 — A4 후 해소)`);
+    if (shrunk.length) {
+      console.log(`       ℹ 줄어든 것 ${shrunk.length}파일 — \`node scripts/check-plugin-consistency.js --update-d3-baseline\` 로 동결을 조일 것`);
+    }
+  }
+}
+
 if (failD === 0) {
   console.log(`  PASS [D tier·A급] ${skillFiles.length}개 — tier 미선언 0 / shared A급 리터럴 0`);
   if (tenantOnlyHits) {
