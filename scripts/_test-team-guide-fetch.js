@@ -191,6 +191,19 @@ t('🔴 C1 캐시 8일 경과 — 옛 안내문을 쓰지 않고 경고를 띄�
   assert.ok(/일째 받지 못했습니다/.test(r.text), '경고 문구가 없다: ' + r.text.slice(0, 160));
 });
 
+// @AI:CONSTRAINT 🔴 C1 을 외부로만 돌리면 「내부에서만 TTL 을 끄는」 변경이 안 잡힌다
+//   (mutation M2 실측). 내부에 나이 제한을 준 것이 A3-2b 의 핵심 중 하나이므로 따로 잠근다.
+t('🔴 C1b 내부 테넌트도 캐시 8일이면 경고 (A3-2b — 내부만 예외를 만들지 않는다)', async () => {
+  const home = mkHome(INT, 'USER', 'http://127.0.0.1:1');
+  const f = cachePath(home, INT);
+  fs.writeFileSync(f, '아주오래된내부안내문' + MARKER);
+  const old = new Date(Date.now() - 8 * 86400000);
+  fs.utimesSync(f, old, old);
+  const r = await runHook(home);
+  assert.ok(!r.text.includes(MARKER), '🔴 내부에서 8일 지난 캐시가 그대로 쓰였다 (내부만 TTL 면제)');
+  assert.ok(/일째 받지 못했습니다/.test(r.text), '경고 문구가 없다: ' + r.text.slice(0, 160));
+});
+
 t('C2 캐시 6일 — 아직 쓴다 (경계 아래)', async () => {
   const home = mkHome(EXT, 'USER', 'http://127.0.0.1:1');
   const f = cachePath(home, EXT);
