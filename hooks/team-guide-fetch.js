@@ -6,7 +6,12 @@
 //     토큰 없거나 해석 실패 → role 파일(~/.claude/zulgap/role) 폴백 → staff 기본.
 //     역할 변경 = 토큰 재발급 1곳 (role 파일 drift 원천 제거 — 매 세션 라이브 유도).
 //   v1.21: 축이 하나 더 붙었다 — **tenant**. role 만 보면 외부 고객사 직원도 staff 로 떨어져
-//     줄갭 고객사 실명이 든 team-guide.md 를 매 세션 읽는다(2026-08-16 실측). 아래 INTERNAL_TENANTS 참조.
+//     남의 회사 안내문을 매 세션 읽는다(2026-08-16 실측). 아래 INTERNAL_TENANTS 참조.
+//   v1.22 (2026-08-17, A3-2b): **안내문은 전부 인증 경로로 받는다.** 그전에는 내부만 공개 raw 였다.
+//     갈림의 기준이 「어느 회사인가」에서 **「토큰이 있는가」**로 바뀌었고, tenant·role 판정은
+//     서버로 넘어갔다(`GET /mcp/ext/team-guide`). 여기 남은 tenant·role 은 **캐시 파일명을 고르는
+//     로컬 힌트**일 뿐이라 자칭해도 자기 캐시만 갈린다.
+//     ⚠️ 캐시 이름이 바뀌었다 — 기존 PC 는 첫 세션에 미스 1회(서버에서 다시 받는다).
 // @AI:CONSTRAINT 반드시 standalone 훅(settings.json)으로 등록. 플러그인 번들 훅은 additionalContext
 //   미주입 버그(#16538)로 동작 안 함. 출력은 SessionStart additionalContext 계약을 정확히 따른다.
 // @AI:CONSTRAINT staff 경로(team-guide.md + 캐시 team-guide.cache.md)는 기존 설치 PC와 동일 유지 — 기존 직원 회귀 0.
@@ -235,34 +240,53 @@ const CLAIMS = CREDS && CREDS.claims;
 const role = resolveRole(CLAIMS);
 const tenant = tenantFromClaims(CLAIMS);
 
-// 줄갭(그리고 토큰 없는 설치 초기) = 기존 경로 그대로. 그 외 테넌트 = 전용 안내문만.
-// @AI:FRAGILE 캐시 파일명도 테넌트별로 갈라야 한다 — 이름을 공유하면 한 PC에서 줄갭 캐시를
-//   외부 테넌트가 읽어(네트워크 실패 시) 격리가 캐시로 새어나간다.
-const external = !!tenant && !INTERNAL_TENANTS.has(tenant);
-
-// @AI:INTENT 2026-08-17 — 회사별 안내문은 **인증 경로**로 받는다.
+// @AI:INTENT 2026-08-17 — 안내문은 **인증 경로**로 받는다. A3-1 은 외부 테넌트만 옮겼고
+//   여기서 **내부까지 전부** 옮긴다(A3-2b). 갈림의 기준이 「어느 회사인가」에서
+//   「토큰이 있는가」로 바뀌었다 — 무엇을 받을지는 이제 전적으로 서버가 정한다.
 // @AI:CONSTRAINT 🔴 주소에 회사 식별자를 넣지 말 것. 받을 대상은 **서버가 토큰에서 정한다**
-//   (`shared/mcp-ext-auth.js` 가 Bearer 검증 + tenant 강제 + IDOR 차단). 식별자를 URL 에 두면
-//   그 주소를 아는 것만으로 접근이 되고, 우리 저장소 밖의 자산 주소와도 모양이 겹친다.
-// @AI:CONSTRAINT 🔴 내부(줄갭) 경로는 이번에 **건드리지 않는다** — 전 직원 세션에 닿아
-//   위험도가 다르다. 같은 방식으로 옮기는 것은 별도 단계.
-// ⚠️ 남는 것 — 내부/외부 갈림은 **검증 안 된 클레임**으로 하므로 클라가 내부를 자칭할 수 있다.
-//   내부 경로까지 서버가 주게 되면 판정이 서버로 넘어가 이 여지가 사라진다.
-// @AI:DEPENDS external 이 참이면 CREDS 는 반드시 있다 — tenant 는 CREDS.claims 에서만 나오고,
-//   CREDS 가 없으면 tenant='' 이라 external 이 false 가 된다. 그래서 여기 null 분기를 두지 않는다.
-const URL = external
+//   (`shared/mcp-ext-auth.js` 가 Bearer 검증 + tenant·role 강제 + IDOR 차단). 식별자를 URL 에
+//   두면 그 주소를 아는 것만으로 접근이 되고, 우리 저장소 밖의 자산 주소와도 모양이 겹친다.
+// @AI:TENANT 🔴 그전에는 내부/외부 갈림을 **검증 안 된 클레임**으로 해서 클라가 내부를
+//   자칭할 수 있었다. 이제 판정이 서버에 있어 그 여지가 없다 — 아래 tenant·role 은
+//   「어느 캐시 파일을 쓸까」를 정하는 **로컬 힌트**일 뿐이고, 자칭해도 자기 캐시만 갈린다.
+// @AI:FRAGILE 캐시 파일명은 테넌트·역할별로 갈라야 한다 — 이름을 공유하면 한 PC에서
+//   네트워크 실패 시 남의 캐시를 읽어 격리가 캐시로 새어나간다.
+const useServer = !!CREDS;
+const variantHint = role === 'dev' ? 'dev' : 'staff';
+
+// @AI:CONSTRAINT 🔴 이 판정은 **배달 통로와 무관**해졌다 — 남은 쓰임은 아래 「사장님 조기 종료」
+//   하나뿐이다. 지우지 말 것: 빼면 외부 고객사의 ADMIN 도 master 로 접혀 안내문을 한 줄도
+//   못 받는다(에러 없이 조용히). 토큰이 없는 경우까지 포함해 그전과 같은 값을 유지한다.
+const isOurAdminSeat = !tenant || INTERNAL_TENANTS.has(tenant);
+
+// @AI:CONSTRAINT 🔴 토큰이 없으면 **공개본으로 폴백하되 그 사실을 화면에 띄운다.**
+//   조용히 폴백하면 「나는 왜 남과 다른 안내를 보는가」를 아무도 모르고, 저장소가
+//   비공개로 바뀌는 날 그 PC 들이 **한꺼번에 소리 없이** 안내문을 잃는다.
+//   폴백 자체를 지금 없애지 않는 이유는 회귀 0 — 토큰 발급 전 PC 가 몇 대인지
+//   셀 방법이 없다(그 PC 는 서버에 아무 흔적을 안 남긴다).
+const NO_TOKEN_WARN = useServer ? '' : [
+  '🔴 제디 토큰이 없어 **공개본**을 받았습니다 — 이 회사 전용 안내가 아닙니다.',
+  '담당자에게 토큰 발급을 요청하세요. (등록하면 다음 세션부터 자동으로 전용 안내를 받습니다)',
+].join('\n');
+
+const URL = useServer
   ? CREDS.url + '/mcp/ext/team-guide'
   : (role === 'dev' ? RAW + 'docs/dev-guide-en.md' : RAW + 'team-guide.md');
 const CACHE = path.join(
   ZULGAP_DIR,
-  external ? 'guide.' + tenant + '.cache.md' : (role === 'dev' ? 'dev-guide.cache.md' : 'team-guide.cache.md')
+  useServer
+    ? 'guide.' + (tenant || 'unknown') + '.' + variantHint + '.cache.md'
+    : (role === 'dev' ? 'dev-guide.cache.md' : 'team-guide.cache.md')
 );
 const MAX = 9500; // additionalContext 약 10k자 한도 안전선
 const INSTALL_WARN = checkClaudeInstall(); // '' 이면 정상 — 아래 emit이 알아서 생략
 
 function emit(text) {
-  // 설치 경고가 있으면 안내문보다 **앞에** 붙인다(뒤에 두면 MAX 9500 절단에 잘려 나간다).
-  const body = INSTALL_WARN ? (INSTALL_WARN + (text ? '\n\n---\n\n' + text : '')) : text;
+  // 경고는 안내문보다 **앞에** 붙인다(뒤에 두면 MAX 9500 절단에 잘려 나간다).
+  // @AI:CONSTRAINT 토큰 없음 경고는 **본문이 있을 때만** 붙인다 — 아래 사장님 조기 종료가
+  //   emit('') 로 들어오므로, 무조건 붙이면 개인 컨텍스트 보존이 깨지고 매 세션 경고가 뜬다.
+  const head = [INSTALL_WARN, (text && NO_TOKEN_WARN) || ''].filter(Boolean).join('\n\n---\n\n');
+  const body = head ? (head + (text ? '\n\n---\n\n' + text : '')) : text;
   if (!body) { process.exit(0); } // 줄 게 없으면 조용히 종료 (CLAUDE.md stub가 최소 보장)
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: String(body).slice(0, MAX) }
@@ -273,20 +297,21 @@ function emit(text) {
 // 사장님(admin) — 팀 가이드는 주입 안 함(개인 CLAUDE.md/메모리 보존).
 // 단 설치 경로 문제는 역할과 무관하므로 경고만은 전달한다. emit('')이 경고 유무를 알아서 처리.
 // @AI:FRAGILE 이 분기는 MAX/emit 선언 **뒤에** 있어야 한다 — 앞으로 옮기면 const TDZ로 즉사.
-// @AI:TENANT 🔴 `!external` 를 빼지 말 것 — 이 훅의 role 매핑은 서버보다 거칠어서
+// @AI:TENANT 🔴 `isOurAdminSeat` 를 빼지 말 것 — 이 훅의 role 매핑은 서버보다 거칠어서
 //   **어느 테넌트든** ADMIN 이면 'master' 로 접힌다. 외부 고객사의 관리자도 ADMIN 이라
 //   조건이 없으면 그분들은 안내문을 **한 줄도** 못 받는다(에러 없이 조용히).
 //   서버 SSOT 는 `shared/mcp-permission-resolver.js` — isMaster = **마스터 테넌트의** ADMIN 뿐이다.
 //   여기서는 그 정의에 맞춰 「내 테넌트가 아닌 곳의 ADMIN」만 조기 종료에서 뺀다.
 //   조기 종료의 의도(사장님 개인 컨텍스트 보존)는 외부 테넌트에 해당하지 않는다.
-if (role === 'master' && !external) { emit(''); }
+if (role === 'master' && isOurAdminSeat) { emit(''); }
 
 // ── 캐시 신선도 ────────────────────────────────────────────────────────────
 // @AI:CONSTRAINT 🔴 캐시에 나이 제한이 없으면 **구독이 끝난 뒤에도 마지막 안내문이 영구히 남는다.**
 //   서버가 「이제 주지 않는다」고 답해도 화면은 옛 내용을 계속 띄우게 된다.
-// @AI:CONSTRAINT 🔴 제한은 **인증 경로에만** 건다 — 내부 경로는 이번 범위 밖이고,
-//   전 직원 세션에 닿는 변경을 같은 PR 에 섞지 않는다. `Infinity` = 현행 유지.
-const STALE_DAYS = external ? 7 : Infinity;
+// @AI:INTENT 2026-08-17 A3-2b — 제한을 **인증 경로 전체**로 넓혔다(그전에는 외부만).
+//   내부도 같은 통로가 됐으므로 같은 규칙을 받는다. 공개본 폴백(무토큰)만 `Infinity` 로
+//   남는데, 그쪽은 어차피 매 세션 「토큰이 없다」는 경고를 함께 보고 있다.
+const STALE_DAYS = useServer ? 7 : Infinity;
 function cache() {
   try {
     const txt = fs.readFileSync(CACHE, 'utf8');
@@ -312,9 +337,9 @@ function authHint(status) {
   return '';
 }
 
-// @AI:INTENT 외부 경로만 Bearer 를 붙인다. 내부 경로는 공개 raw 라 헤더가 없어야 한다
+// @AI:INTENT 인증 경로에만 Bearer 를 붙인다. 공개본 폴백(무토큰)은 헤더가 없어야 한다
 //   (GitHub raw 에 Authorization 을 보내면 요청이 거부될 수 있다).
-const REQ_OPTS = external
+const REQ_OPTS = useServer
   ? { timeout: 4000, headers: { Authorization: 'Bearer ' + CREDS.token } }
   : { timeout: 4000 };
 
@@ -327,8 +352,8 @@ const req = get(URL, REQ_OPTS, (res) => {
   if (res.statusCode !== 200) {
     res.resume();
     // 404 는 서버의 **확정 답변**이라 캐시로 덮지 않는다 — 해지가 곧 배달 중단이 되게.
-    if (external && res.statusCode === 404) return emit(authHint(404));
-    const hint = external ? authHint(res.statusCode) : '';
+    if (useServer && res.statusCode === 404) return emit(authHint(404));
+    const hint = useServer ? authHint(res.statusCode) : '';
     const body = cache();
     return emit(hint ? (hint + (body ? '\n\n---\n\n' + body : '')) : body);
   }

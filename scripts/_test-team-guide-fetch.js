@@ -44,8 +44,11 @@ function mkHome(tenantId, role, serverUrl) {
   return home;
 }
 
-const cachePath = (home, tenantId) =>
-  path.join(home, '.claude', 'zulgap', 'guide.' + tenantId + '.cache.md');
+// @AI:DEPENDS 캐시 이름은 테넌트«와» 역할로 갈린다(A3-2b) — 내부가 같은 통로에 합류하면서
+//   한 PC 안에서 개발자본과 일반본이 같은 파일을 쓰면 섞이기 때문이다.
+//   ⚠️ 이름이 바뀌었으므로 기존 PC 는 첫 세션에 캐시 미스가 1회 난다(서버에서 다시 받는다).
+const cachePath = (home, tenantId, variant = 'staff') =>
+  path.join(home, '.claude', 'zulgap', 'guide.' + tenantId + '.' + variant + '.cache.md');
 
 // @AI:CONSTRAINT 🔴 execFileSync 를 쓰지 말 것 — 동기 실행은 **이 프로세스의 이벤트 루프를 막아**
 //   같은 프로세스에 띄운 테스트 서버가 연결을 못 받는다. 그러면 훅은 4초 타임아웃 뒤 캐시로
@@ -102,11 +105,55 @@ t('A3 외부 테넌트의 ADMIN 도 안내문을 받는다 (master 조기종료�
     assert.ok(r.text.includes(MARKER), '외부 ADMIN 이 안내문을 못 받았다');
   }));
 
-t('🔴 A4 내부 경로는 서버로 가지 않는다 — 이번 범위 밖 (회귀 0)', () =>
+// @AI:INTENT A3-2b 에서 계약이 **뒤집혔다** — 그전에는 「내부는 서버로 가지 않는다」가
+//   지켜야 할 것이었고(A3-1 의 범위 한정), 이제는 내부도 같은 통로로 간다.
+//   갈림의 기준이 「어느 회사인가」에서 「토큰이 있는가」로 바뀐 것이 이 단계의 요점이다.
+t('🔴 A4 내부 테넌트도 인증 경로로 간다 (A3-2b — 공개 raw 를 안 쓴다)', () =>
   withServer(reply(200, MARKER), async (url, seen) => {
     const r = await runHook(mkHome(INT, 'USER', url));
-    assert.strictEqual(seen.length, 0, '🔴 내부 경로가 서버를 호출했다 — 범위를 넘었다');
-    assert.ok(!r.text.includes(MARKER), '내부 경로에 서버 본문이 섞였다');
+    assert.strictEqual(seen.length, 1, '🔴 내부가 서버를 안 불렀다 — 공개 raw 로 되돌아갔다');
+    assert.strictEqual(seen[0].url, '/mcp/ext/team-guide', '요청 경로: ' + seen[0].url);
+    assert.ok(/^Bearer .+/.test(seen[0].auth), '🔴 내부 요청에 Bearer 가 없다');
+    assert.ok(r.text.includes(MARKER), '내부에 서버 본문이 주입되지 않았다');
+  }));
+
+t('🔴 A5 개발자도 같은 인증 경로 — 역할별 주소를 만들지 않는다 (판정은 서버)', () =>
+  withServer(reply(200, MARKER), async (url, seen) => {
+    const r = await runHook(mkHome(INT, 'DEV', url));
+    assert.strictEqual(seen.length, 1, '개발자 경로가 서버를 안 불렀다');
+    assert.strictEqual(seen[0].url, '/mcp/ext/team-guide',
+      '🔴 역할이 주소에 드러났다: ' + seen[0].url);
+    assert.ok(r.text.includes(MARKER), '개발자에게 본문이 주입되지 않았다');
+  }));
+
+t('🔴 A6 개발자와 일반의 캐시 파일이 갈린다 (한 PC 에서 섞이지 않게)', () =>
+  withServer(reply(200, MARKER), async (url) => {
+    const home = mkHome(INT, 'DEV', url);
+    await runHook(home);
+    assert.ok(fs.existsSync(cachePath(home, INT, 'dev')),
+      '개발자 캐시가 없다: ' + cachePath(home, INT, 'dev'));
+    assert.ok(!fs.existsSync(cachePath(home, INT, 'staff')),
+      '🔴 개발자가 일반본 캐시 자리에 썼다 — 이름이 안 갈렸다');
+  }));
+
+// @AI:CONSTRAINT 🔴 통로를 바꾸면서 이 분기를 놓치면 사장님 PC 에 팀 안내가 매 세션 주입되고
+//   개인 컨텍스트가 밀린다. 증상이 「조금 길어졌다」뿐이라 아무도 원인을 못 찾는다.
+t('🔴 A8 내부 관리자는 주입 자체를 건너뛴다 (개인 컨텍스트 보존)', () =>
+  withServer(reply(200, MARKER), async (url, seen) => {
+    const r = await runHook(mkHome(INT, 'ADMIN', url));
+    assert.ok(!r.text.includes(MARKER), '🔴 내부 관리자에게 팀 안내문이 주입됐다');
+    assert.strictEqual(seen.length, 0, '조기 종료인데 서버를 불렀다 (불필요한 요청)');
+  }));
+
+t('🔴 A7 토큰이 없으면 공개본으로 폴백하되 그 사실을 화면에 띄운다', () =>
+  withServer(reply(200, MARKER), async (url, seen) => {
+    // 토큰 없는 HOME — .claude.json 자체를 두지 않는다
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tgf-'));
+    fs.mkdirSync(path.join(home, '.claude', 'zulgap'), { recursive: true });
+    const r = await runHook(home);
+    assert.strictEqual(seen.length, 0, '토큰이 없는데 인증 서버를 불렀다');
+    assert.ok(/토큰이 없어/.test(r.text),
+      '🔴 토큰 없음이 화면에 안 떴다 (조용한 폴백): ' + JSON.stringify(r.text.slice(0, 120)));
   }));
 
 // ── #2 실패가 화면에 뜬다 ───────────────────────────────────────────────────
