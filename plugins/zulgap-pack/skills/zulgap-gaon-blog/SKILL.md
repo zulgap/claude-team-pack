@@ -5,7 +5,7 @@ version: 1.1.0
 origin: teampack
 tier: tenant-only
 extends: zulgap-blog
-parent-checksum: a4f03063
+parent-checksum: 37e001db
 ---
 
 # 검단가온치과 블로그 초안 (네이버블로그)
@@ -63,6 +63,7 @@ parent-checksum: a4f03063
 ## STEP 1 — 키워드
 
 범용 블로그 스킬(`/zulgap-blog`)의 키워드 단계를 그대로 따른다. 네이버 채널이므로 `locale='ko'`.
+**그 다음 STEP 1.5(프리퀀시)도 부모 그대로 따른다** — 부모 `references/blog-theory.md` §1.
 
 🔴 **기획단계에서 이미 확정됐으면 재조사하지 않는다.** 카드의 `키워드` 속성이 SSOT다.
 연령대 같은 새 축을 넣고 싶으면 **다음 기획단계에서 황금키워드로 뽑혔을 때** 적용한다.
