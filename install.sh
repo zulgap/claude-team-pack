@@ -45,7 +45,22 @@ ok()    { printf '\033[32m[OK] %s\033[0m\n' "$*"; }
 warn()  { printf '\033[33m%s\033[0m\n' "$*"; }
 fail()  { printf '\033[31m%s\033[0m\n' "$*"; }
 
+# @AI:INTENT 2026-08-19 A3-4b — 저장소를 비공개로 돌리면(A4) raw 주소가 통째로 죽는다. 서버가
+#   대신 읽어 배달하는 창구($JURL/pack/*)를 **먼저** 두드리고, 안 되면 raw 로 떨어진다.
+#   호출부 8곳은 raw 전체 URL 을 그대로 넘긴다 — 여기서 상대경로를 되뽑아 창구 주소로 바꿔 본다.
+#   호출부를 안 고치는 것이 요점이다: 고칠 곳이 한 곳이면 절반만 옮겨간 상태가 생기지 않는다.
+# @AI:CONSTRAINT 🔴 raw 폴백을 지금 지우지 말 것 — 새 주소를 아는 설치기가 퍼지기 «전»에 지우면
+#   그 사이 신규 설치가 통째로 막힌다. A4 로 저장소를 닫는 날 raw 가 저절로 죽어 폴백도 함께 사라진다.
 fetch() { # fetch <url> <dest> — returns non-zero on failure
+  case "$1" in
+    "$RAW"/*)
+      _rel="${1#"$RAW"/}"
+      if curl -fsL --retry 1 --connect-timeout 10 "$JURL/pack/$_rel" -o "$2"; then return 0; fi
+      # @AI:INTENT 조용히 떨어뜨리지 않는다 — 안 알리면 「다 넘어간 줄 알았는데 실은 전부 예비길」인
+      #   상태가 무증상이 되고, 그 상태로 A4 를 실행하면 설치가 한꺼번에 죽는다 (A2 「조용한 실패 제거」).
+      warn "[warn] pack delivery miss -> raw fallback: $_rel"
+      ;;
+  esac
   curl -fsSL --retry 2 --connect-timeout 10 "$1" -o "$2"
 }
 
