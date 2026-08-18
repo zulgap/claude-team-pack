@@ -13,6 +13,10 @@
 #   master = 사장님(어드민 기기): CLAUDE.md 안 건드림 + 훅이 팀 가이드 주입 skip. 개인 설정과 공존.
 param([ValidateSet('staff','dev','master')][string]$Role = 'staff')
 
+# @AI:INTENT 2026-08-19 A3-4b — 서버 주소 SSOT. 종전엔 아래쪽 블록 안에만 있어서 그보다 «앞»에서
+#   조달하는 resolve-packs.js 가 이 주소를 쓸 수 없었다. 두 벌로 두면 한쪽만 바뀌어 조용히 갈린다.
+$JudgmentosUrl = 'https://judgmentos-unified-agent-production.up.railway.app'
+
 $ErrorActionPreference = "Stop"
 Write-Host ""
 Write-Host "=== 줄갭 팀원 셋업 (Claude Code 자동 설정) [role: $Role] ===" -ForegroundColor Cyan
@@ -205,10 +209,21 @@ if ($jediToken -and $jediToken.Length -gt 0) {
 $rpDir = "$env:USERPROFILE\.claude\zulgap"
 New-Item -ItemType Directory -Force -Path $rpDir | Out-Null
 $rpPath = Join-Path $rpDir "resolve-packs.js"
-try {
-  Invoke-WebRequest -Uri "https://raw.githubusercontent.com/zulgap/claude-team-pack/main/resolve-packs.js" `
-    -OutFile $rpPath -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
-} catch {
+# @AI:INTENT 2026-08-19 A3-4b — 창구(서버 배달) → raw → zip 사본 3단. 저장소를 비공개로 돌리면(A4)
+#   raw 가 죽으므로 창구를 «먼저» 두드린다. raw 폴백은 새 주소를 아는 설치기가 퍼질 때까지 남긴다.
+$rpOk = $false
+foreach ($u in @("$JudgmentosUrl/pack/resolve-packs.js",
+                 "https://raw.githubusercontent.com/zulgap/claude-team-pack/main/resolve-packs.js")) {
+  try {
+    Invoke-WebRequest -Uri $u -OutFile $rpPath -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
+    $rpOk = $true; break
+  } catch {
+    # @AI:CONSTRAINT 조용히 넘어가지 않는다 — 안 알리면 「다 넘어간 줄 알았는데 실은 전부 예비길」이
+    #   무증상이 되고, 그 상태로 저장소를 닫으면 설치가 한꺼번에 죽는다.
+    Write-Host "[warn] resolve-packs fetch miss: $u" -ForegroundColor Yellow
+  }
+}
+if (-not $rpOk) {
   $rpLocal = Join-Path $PSScriptRoot "resolve-packs.js"
   if (Test-Path $rpLocal) { Copy-Item $rpLocal $rpPath -Force }
 }
@@ -476,7 +491,7 @@ if ($jediToken -and $jediToken.Length -gt 0) {
     catch { Write-Host "[경고] 제디 브리지 npm install 실패 - Node 설치 후 다시 실행하세요." -ForegroundColor Red }
     Pop-Location
   }
-  $jUrl = "https://judgmentos-unified-agent-production.up.railway.app"
+  $jUrl = $JudgmentosUrl
 
   # (a) Claude Code 표면 등록 (~/.claude.json 최상위 mcpServers) - 터미널/Code탭에서 제디 사용
   # @AI:CONSTRAINT 형식은 사장님 PC .claude.json 실제 작동본과 동일(type=stdio, command/args/env). 쓰기 전 .bak 백업.

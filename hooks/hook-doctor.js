@@ -35,6 +35,13 @@ const ZULGAP_DIR = path.join(os.homedir(), '.claude', 'zulgap');
 const SETTINGS = path.join(os.homedir(), '.claude', 'settings.json');
 const FLAG = path.join(ZULGAP_DIR, '.hook-doctor-v1.done');
 const RAW = 'https://raw.githubusercontent.com/zulgap/claude-team-pack/main/hooks/';
+// @AI:INTENT 2026-08-19 A3-4b — 저장소를 비공개로 돌리면(A4) 위 raw 가 죽는다. 서버가 자기 토큰으로
+//   대신 읽어 배달하는 창구를 **먼저** 두드리고, 안 되면 raw 로 떨어진다. 이 경로는 curl-pipe 계열이라
+//   토큰을 실을 자리가 원리적으로 없어서 창구도 무인증이다(서버가 «배관»만 열어 둔다 — 스킬은 안 연다).
+// @AI:CONSTRAINT 🔴 raw 폴백을 지금 지우지 말 것 — 새 주소를 아는 훅이 퍼지기 «전»에 지우면 그 사이
+//   자가치유가 통째로 멈춘다. 게다가 이 경로는 실패해도 증상이 안 나서 아무도 모른다(무증상 고장).
+const PACK = (process.env.JUDGMENTOS_URL || 'https://judgmentos-unified-agent-production.up.railway.app')
+  .replace(/[/]+$/, '') + '/pack/hooks/';
 
 // [훅 파일, settings.json 이벤트 키, 훅 timeout(초)] — 새 훅은 여기 한 줄만 추가한다
 const TARGETS = [
@@ -43,10 +50,12 @@ const TARGETS = [
   { file: 'precompact-handoff.js', event: 'PreCompact', timeout: 15 },
 ];
 
-// @AI:CONSTRAINT 워치독은 TARGETS 개수 × 다운로드 timeout 보다 커야 한다. 지금 3 × 4s = 12s < 16s.
-//   상위(team-guide-fetch items)가 이 스크립트에 준 실행 timeout 30s 보다는 작아야 한다.
-//   🔴 TARGETS 를 늘리면 이 값도 같이 올릴 것 — 안 올리면 마지막 훅이 워치독에 잘려 조용히 누락된다.
-setTimeout(() => { try { console.log('[hook-doctor] timeout — skip'); } catch (_) {} process.exit(0); }, 16000);
+// @AI:CONSTRAINT 워치독은 TARGETS 개수 × **시도 횟수** × 다운로드 timeout 보다 커야 한다.
+//   2026-08-19 A3-4b 로 시도가 2회(창구 → raw)가 되어 최악이 3 × 2 × 4s = 24s 로 두 배가 됐다.
+//   그래서 16s → 26s. 상위(team-guide-fetch items)가 준 실행 timeout 30s 보다는 여전히 작다(마진 4s).
+//   🔴 TARGETS 를 늘리거나 시도를 하나 더 붙이면 이 값도 같이 올릴 것 — 안 올리면 마지막 훅이
+//   워치독에 잘려 **조용히** 누락된다. 26s 를 넘겨야 할 땐 상위 30s 도 함께 올릴 것.
+setTimeout(() => { try { console.log('[hook-doctor] timeout — skip'); } catch (_) {} process.exit(0); }, 26000);
 
 function done(msg) {
   try { fs.mkdirSync(ZULGAP_DIR, { recursive: true }); fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
@@ -59,17 +68,28 @@ function ensureFile(target, cb) {
   const dst = path.join(ZULGAP_DIR, target.file);
   try { fs.mkdirSync(ZULGAP_DIR, { recursive: true }); } catch (_) {}
   if (fs.existsSync(dst)) return cb(true);
-  const req = https.get(RAW + target.file, { timeout: 4000 }, (res) => {
-    if (res.statusCode !== 200) { res.resume(); console.log('[hook-doctor] ' + target.file + ' 다운로드 실패 — skip'); return cb(false); }
-    let data = '';
-    res.on('data', (d) => { data += d; });
-    res.on('end', () => {
-      try { fs.writeFileSync(dst, data); cb(true); }
-      catch (e) { console.log('[hook-doctor] ' + target.file + ' 쓰기 실패 — skip: ' + e.message); cb(false); }
+  // @AI:INTENT 2026-08-19 A3-4b — 창구 → raw 순으로 한 번씩 두드린다. next() 는 «다음 주소로»,
+  //   cb(false) 는 «둘 다 실패». 쓰기 실패는 next 로 보내지 않는다 — 그건 네트워크 문제가 아니라
+  //   디스크 문제라 주소를 바꿔도 같은 결과이고, 재시도하면 실패 시간만 두 배가 된다.
+  const attempt = (base, next) => {
+    const req = https.get(base + target.file, { timeout: 4000 }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return next('HTTP ' + res.statusCode); }
+      let data = '';
+      res.on('data', (d) => { data += d; });
+      res.on('end', () => {
+        try { fs.writeFileSync(dst, data); cb(true); }
+        catch (e) { console.log('[hook-doctor] ' + target.file + ' 쓰기 실패 — skip: ' + e.message); cb(false); }
+      });
     });
+    req.on('error', (e) => next((e && e.message) || 'network'));
+    req.on('timeout', () => { req.destroy(); next('timeout'); });
+  };
+  // @AI:CONSTRAINT 🔴 폴백을 조용히 하지 말 것 — 안 알리면 「다 넘어간 줄 알았는데 실은 전부
+  //   예비길」인 상태가 무증상이 되고, 그 상태로 저장소를 닫으면(A4) 자가치유가 한꺼번에 죽는다.
+  attempt(PACK, (why) => {
+    console.log('[hook-doctor] ' + target.file + ' 창구 실패(' + why + ') — 예비 주소로 재시도');
+    attempt(RAW, (why2) => { console.log('[hook-doctor] ' + target.file + ' 다운로드 실패(' + why2 + ') — skip'); cb(false); });
   });
-  req.on('error', () => { console.log('[hook-doctor] ' + target.file + ' 네트워크 실패 — skip'); cb(false); });
-  req.on('timeout', () => { req.destroy(); console.log('[hook-doctor] ' + target.file + ' 타임아웃 — skip'); cb(false); });
 }
 
 // 확보된 훅들을 settings.json 에 한 번에 등록한다

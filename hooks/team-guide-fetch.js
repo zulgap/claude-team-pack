@@ -102,6 +102,15 @@ function tenantFromClaims(claims) {
 }
 
 const RAW = 'https://raw.githubusercontent.com/zulgap/claude-team-pack/main/';
+// @AI:INTENT 2026-08-19 A3-4b — 저장소를 비공개로 돌리면(A4) 위 raw 가 죽는다. 서버가 자기 토큰으로
+//   대신 읽어 배달하는 창구를 **먼저** 두드리고, 안 되면 raw 로 떨어진다.
+// @AI:CONSTRAINT 🔴 아래 268행 부근의 «안내문» 주소는 이걸로 바꾸지 말 것 — 창구는 배관만 열고
+//   team-guide.md·docs/** 는 **일부러 404 로 막아 두었다**(A3-1·A3-2 가 인증 경로로 옮긴 것이라
+//   여기로 열면 그 두 단계가 통째로 무효가 된다). 여기서 창구를 쓰는 것은 launchDoctor 의 «배관»뿐이다.
+// @AI:CONSTRAINT 🔴 raw 폴백을 지금 지우지 말 것 — 새 주소를 아는 훅이 퍼지는 통로가 바로 이 raw 다.
+//   먼저 지우면 아직 옛 훅인 PC 가 새 훅을 받을 길이 사라져 «영원히» 고립된다(에러 없이 조용히).
+const PACK = (process.env.JUDGMENTOS_URL || 'https://judgmentos-unified-agent-production.up.railway.app')
+  .replace(/[/]+$/, '') + '/pack/';
 
 // ── Claude Code 설치 경로 점검 ──────────────────────────────────────────────
 // @AI:INTENT 2026-08-03 — install.ps1은 공식 설치기가 실패하면 winget으로 **조용히 폴백**하는데
@@ -220,12 +229,23 @@ function checkClaudeInstall() {
     "  const [name,tmo,sub]=items[i];const d=path.join(dir,name);const rel=(sub===undefined?'hooks/':sub)+name;",
     // 받기 실패해도 로컬 기존본으로 실행 — 네트워크가 갱신을 막을 뿐 실행까지 막지는 않게 한다
     "  const go=()=>{if(tmo>0){try{execFileSync(process.execPath,[d],{stdio:'ignore',timeout:tmo});}catch(_){}}step(i+1);};",
-    "  const r=https.get('" + RAW + "'+rel,{timeout:8000},(res)=>{",
-    "    if(res.statusCode!==200){res.resume();return go();}",
-    "    let s='';res.on('data',(c)=>{s+=c;});",
-    "    res.on('end',()=>{try{fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(d,s);}catch(_){}go();});",
+    // @AI:INTENT 2026-08-19 A3-4b — 창구 → raw 순으로 한 번씩. next() 는 «다음 주소로»,
+    //   go() 는 «둘 다 실패, 로컬 기존본으로 진행». 받기 실패가 실행까지 막지 않는 기존 계약 그대로다.
+    // @AI:CONSTRAINT 🔴 이 스크립트는 detached + stdio:'ignore' 라 **콘솔이 아무 데도 안 나온다.**
+    //   그래서 폴백 사실을 파일 한 줄로 남긴다 — 안 남기면 「다 넘어간 줄 알았는데 실은 전부 예비길」인
+    //   상태가 무증상이 되고, 그대로 저장소를 닫으면 자가치유가 한꺼번에 죽는다.
+    "  const dl=(base,next)=>{",
+    "    const r=https.get(base+rel,{timeout:8000},(res)=>{",
+    "      if(res.statusCode!==200){res.resume();return next();}",
+    "      let s='';res.on('data',(c)=>{s+=c;});",
+    "      res.on('end',()=>{try{fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(d,s);}catch(_){}go();});",
+    "    });",
+    "    r.on('error',next);r.on('timeout',()=>{r.destroy();next();});",
+    "  };",
+    "  dl(" + JSON.stringify(PACK) + ",()=>{",
+    "    try{fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,'.pack-fallback'),new Date().toISOString()+' '+rel);}catch(_){}",
+    "    dl(" + JSON.stringify(RAW) + ",go);",
     "  });",
-    "  r.on('error',go);r.on('timeout',()=>{r.destroy();go();});",
     "}",
     "step(0);",
   ].join('\n');
