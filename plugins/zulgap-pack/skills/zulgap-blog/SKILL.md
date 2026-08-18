@@ -1,7 +1,7 @@
 ---
 name: zulgap-blog
 description: 블로그 글 1편을 조사 → 개요 확정 → 초안 → 도구 검수 → 시각물 → 노션 카드 → 발행 시각 예약까지 만든다. 발행·예약은 사람이 확정할 때만. "/zulgap-blog", "블로그 써줘", "OO 주제로 글 써줘", "블로그 글 만들어줘", "홈페이지에 글 올려줘", "이 글 내일 아침에 나가게 해줘", "발행 예약해줘" 에 호출. (제디 토큰 필요)
-version: 2.16.0
+version: 2.17.0
 origin: teampack
 tier: tenant-only
 ---
@@ -133,7 +133,7 @@ STEP 1.5(프리퀀시) · STEP 2(개요) · STEP 3(초안) · STEP 3.5(리뷰)�
 | 4 | surface_topic | 겉 주제 (독자가 검색하는 것) |
 | 5 | real_topic | 진짜 주제 (우리가 심고 싶은 것) |
 | 6 | keyword_title | 키워드 넣은 제목 |
-| 7 | hook | 후킹 첫 줄 — 🔴 **이론 §3 갭언어 9종 표를 훑고 고른다.** 손이 가는 2종으로 수렴하지 않게 |
+| 7 | hook + **hook_gap_type** 🆕 | 후킹 첫 줄 **과 그것이 어느 갭언어인지** — 🔴 **이론 §3 갭언어 9종 표를 훑고 고른다.** 손이 가는 2종으로 수렴하지 않게<br>🔴 **`hook_gap_type`은 도구가 요구하는 별도 키다** — 안 적으면 검수가 `hook_gap_undeclared`로 막는다 |
 | 8 | intro | 문제해결형 / 통념깨기형 / 가치입증형 — **셋의 「언제 쓰나」는 이론 §4** |
 | 9 | body | 솔루션형 / 통념깨기형 / 개념설명형 — 🔴 **이론 §5-1의 「언제 쓰나」로 고른다.** 감으로 고르면 편중된다 |
 | 10 | conclusion(CTA) | 사회적증거 / 희소성 / 통념깨기 / 행동촉구형 / 영감형 / 허들낮추기형 / 두려움자극형 / 시리즈형 — **8종 예시는 이론 §6** |
@@ -274,6 +274,25 @@ You can get a prepaid SIM with only your passport...
 
 🔴 **3회차 키워드 횟수는 4~6이다** — 이론 원문은 6~7이지만 2026-07-29 확정으로 양 채널 4~6으로 통일했다. **원문을 보고 되돌리지 말 것.**
 
+
+### 후킹 판정 — 이 후킹이 「센가」
+
+리뷰 3회를 끝냈으면 **후킹 하나만 따로** 본다. 규격이 아니라 «세기»라 도구가 못 세고 **사람·LLM이 판정한다.**
+
+판정 모양 — STEP 4에 `outline.hook_verdict`로 넘긴다:
+
+```
+hook_verdict: { gap_type: <갭언어 9종 중 1>, verdict: 'strong' | 'weak', reason: '<한 줄>' }
+```
+
+🔴 **건너뛸 수 없다** — 안 붙이면 검수가 `hook_verdict_missing`으로 막는다. 「가리키기는 자주 무시된다」를 구조로 막은 자리다.
+
+**`weak`이면 고쳐서 다시 쓴다.** 다만 `weak`을 적어 넘기는 것 자체는 위반이 아니다 — **판정을 안 한 것만** 위반이다.
+
+📏 판정 참고로 도구가 `hook_chars_per_sentence`(문장당 길이)를 함께 돌려준다. 발행 코퍼스 p75를 넘으면 경고가 붙지만 **위반은 아니다** — 그 구간에도 정상 후킹이 있어 길이만으로는 못 가른다.
+
+🔴 **임계 수치를 여기 옮겨 적지 않는다** — 도구가 응답(`p75`)에 실어 준다. 문서가 값을 복제하면 한쪽만 바뀌었을 때 **에러 없이 조용히 갈린다.**
+
 ---
 
 ## STEP 4 — 검수 (도구가 센다)
@@ -288,7 +307,7 @@ You can get a prepaid SIM with only your passport...
 //    ⚠️ 15번 english_slug는 **여기 넣지 않는다** — URL이라 원고 검사 축이 아니다(STEP 6에서 도구로 직행).
 outline: {
   doc_type, author_identity, target_reader, surface_topic, real_topic, keyword_title,
-  hook, intro, body, conclusion, faq, visual_facts, references,
+  hook, hook_gap_type, hook_verdict, intro, body, conclusion, faq, visual_facts, references,
   visuals: [ { type: '도식', sourcing: 'AI생성' } ],
 }
 // type: 표 | 도식 | 사진   ·   sourcing: 동료사실사진 | 제디작성 | 공공캡쳐 | AI생성
@@ -991,4 +1010,4 @@ plugins/zulgap-pack/shared/naver-format/FORMAT.md
 
 ## 관련
 
-- 미니앱·텔레그램에서는 백엔드 스킬 `wf_blog_creation`이 같은 도구로 같은 일을 한다. **판정 기준(검수 규칙)은 도구가 한 벌로 갖고 있어** 두 경로가 갈라지지 않는다.
+- 이 스킬이 블로그 1편을 만드는 **유일한 경로**다. 종전엔 미니앱·텔레그램용 백엔드 스킬이 따로 있었으나 **폐기했다**(2026-08-19) — 같은 일을 두 벌로 두면 조용히 갈린다. **판정 기준(검수 규칙)은 도구가 한 벌로 갖고 있어** 어느 입구로 들어와도 같은 잣대다.
