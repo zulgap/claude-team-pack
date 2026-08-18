@@ -22,6 +22,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 # 오타 의심 하한 — 이보다 비슷하면 「같은 문장인데 글자가 틀어졌다」로 본다.
 # 0.80 미만은 다른 문장(정상적 추가/삭제)일 가능성이 커서 별도 항목으로 뺀다.
+NL = '\n'   # 셀프테스트에서 줄바꿈을 리터럴로 조립할 때 쓴다
 TYPO_MIN = 0.80
 TYPO_MAX = 0.999
 
@@ -34,7 +35,12 @@ def normalize(text: str) -> str:
     t = re.sub(r'!\[([^\]]*)\]\([^)]*\)', r' \1 ', t)
     t = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', t)   # 링크 → 표시 텍스트만
     t = re.sub(r'<[^>]+>', ' ', t)                   # HTML/노션 표 태그
-    t = re.sub(r'[#>*`~|\-—–]+', ' ', t)             # 마크다운 기호
+    # 🔴 표 셀 경계(`|`)는 «줄바꿈»으로 바꾼다 — 공백으로 뭉개면 원고의 표 «한 행»이
+    #    한 덩어리가 되는데, 노션 <table>은 셀마다 줄이라 «셀» 단위로 잘린다.
+    #    같은 표인데 자르는 축이 달라 **표가 든 글은 항상 FAIL** 이었다(2026-08-19 재현).
+    #    짧은 셀은 아래 sentences()의 8자 필터가 양쪽에서 똑같이 걸러 대칭이 유지된다.
+    t = t.replace('|', '\n')
+    t = re.sub(r'[#>*`~\-—–]+', ' ', t)             # 마크다운 기호
     t = re.sub(r'\\([~*_])', r'\1', t)               # 이스케이프 해제
     # 🔴 줄바꿈을 살려 둔다. 여기서 `\s+`로 뭉개면 아래 sentences()의 `\n+` 경계가 죽어
     #    마침표로 안 끝나는 줄(제목·이미지 자리·목록)이 **다음 문장에 들러붙는다.**
@@ -161,7 +167,24 @@ def selftest() -> int:
     e = len(marker['typos']) == 0
     print(('✅' if e else '❌') + f" T5 마커→캡션 교체를 오타로 세지 않는다 (실제 {len(marker['typos'])}건)")
 
-    passed = all([a, b, c, d, e])
+
+    # T6 회귀 — 원고의 마크다운 표(한 행 = 한 줄)와 카드의 노션 <table>(셀마다 줄)은
+    #    «같은 표»인데 자르는 축이 다르다. `|` 를 공백으로 뭉개던 시절엔 이 차이만으로
+    #    **표가 든 글이 항상 FAIL** 이었다(2026-08-19 재현). 셀 경계를 줄바꿈으로 맞춰 해소.
+    t_draft = '| 구분 | 내용 |' + NL + '|---|---|' + NL + '| 해상운송 | 부산에서 상해까지 통상 사흘 걸립니다 |'
+    t_card = ('<table>' + NL + '<tr>' + NL + '<td>구분</td>' + NL + '<td>내용</td>' + NL + '</tr>' + NL +
+              '<tr>' + NL + '<td>해상운송</td>' + NL + '<td>부산에서 상해까지 통상 사흘 걸립니다</td>' + NL +
+              '</tr>' + NL + '</table>')
+    tbl = compare(t_draft, t_card)
+    f = len(tbl['typos']) == 0
+    print(('✅' if f else '❌') + f" T6 같은 표를 오타로 세지 않는다 (실제 {len(tbl['typos'])}건)")
+
+    # T7 — 오탐을 없애면서 «검출력»까지 죽이면 더 나쁘다. 표 «안»의 오타는 여전히 잡혀야 한다.
+    tbl_bad = compare(t_draft, t_card.replace('사흘 걸립니다', '사흘 걸림니다'))
+    g = len(tbl_bad['typos']) == 1
+    print(('✅' if g else '❌') + f" T7 표 «안»의 오타는 그대로 잡는다 (실제 {len(tbl_bad['typos'])}건)")
+
+    passed = all([a, b, c, d, e, f, g])
     print('\n셀프테스트: ' + ('PASS' if passed else 'FAIL'))
     return 0 if passed else 1
 
