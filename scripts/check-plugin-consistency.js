@@ -17,6 +17,7 @@
 //   Tier I — 스킬 상속: extends 실재성 · 본문만으로 따르는 선언 0 · 부모 변경 미반영 0 [spec §4⑩]
 //   Tier K — 유출 패턴: 계좌·사업자번호·chat_id·UNC·개인경로를 «모양»으로 (scripts/leak-scan.js)
 //   Tier J — 게이트↔문서 커버리지: 이 목록이 문서 3벌에 실렸나 (아래 «함께 갱신» 을 코드가 강제) [spec §4⑪]
+//   Tier L — raw 참조 ratchet: 공개 raw 주소 참조가 «늘지» 않는다 (A4 저장소 비공개 선행 · scripts/raw-ref-scan.js)
 // 🔴 개수("검사 N단")를 쓰지 않는다 — F·G 가 추가될 때 이 목록이 함께 갱신되지 않아
 //    "5단"이 오래 거짓이었다(그 규칙을 적어둔 줄 바로 위에서 벌어졌다).
 //    개수·범위 표기는 항목이 늘 때마다 낡으므로 목록만 유지한다.
@@ -766,7 +767,7 @@ if (failI) fail = 1;
 const TIERS = {
   A: '활성화집합', B: '레거시잔존', C: '스킬이름', D: 'tier·A급', E: '형제폴더명',
   F: '이식성', G: '되돌릴수없음', H: 'stub신선도', I: '상속', J: '문서커버리지',
-  K: '유출패턴',
+  K: '유출패턴', L: 'raw참조',
 };
 // 이 게이트를 «설명하는» 문서. 늘어나면 여기 1줄 추가한다(부재 = FAIL 이라 조용히 빠지지 않는다).
 const TIER_DOCS = [
@@ -878,6 +879,28 @@ if (failJ) fail = 1;
     fail = 1;
   } else {
     console.log(`  PASS [K 유출패턴] 신규 0건 (동결 ${frozenTotal}건은 기존 부채 — 해소 시 --update-baseline)`);
+  }
+}
+
+// ── Tier L — raw 참조 ratchet (A4 저장소 비공개의 선행조건) ──────────────────────
+// @AI:INTENT 2026-08-19 A3-4c — 저장소를 비공개로 돌리면(A4) raw.githubusercontent 주소가 통째로 죽는다.
+//   A3-4b 가 실행 경로 4곳을 서버 창구(/pack/*)로 옮겼고 raw 는 «폴백»으로만 남았다. 이 게이트는
+//   「누가 raw 참조를 새로 넣었나」를 잡는다 — 남은 것은 동결, 늘면 FAIL. **기준선이 0 이 되는 날이 A4 를 해도 되는 날**이다.
+// @AI:DEPENDS 스캔은 scripts/raw-ref-scan.js, 판정·출력은 여기(J-0 3자 일치). Tier K 와 같은 형태.
+{
+  const rr = require('./raw-ref-scan');
+  const { violations, cleared } = rr.diff(rr.scan(), rr.loadBaseline());
+  const frozenTotal = Object.values(rr.loadBaseline()).reduce((a, b) => a + b, 0);
+  if (cleared.length) {
+    console.log('  ℹ [L raw참조] 줄어든 것 ' + cleared.length + '건 — `node scripts/raw-ref-scan.js --update-baseline` 로 동결을 조일 것');
+  }
+  if (violations.length) {
+    console.error(`  FAIL [L raw참조] 공개 raw 주소 참조 신규 ${violations.length}건 — 저장소를 닫는 날(A4) 그 자리가 죽는다.`);
+    for (const v of violations) console.error(`       ${v.file}  ${v.was} → ${v.now}`);
+    console.error('       고치는 법: 서버 창구 `$JURL/pack/<경로>` 를 먼저 쓰고 raw 는 폴백으로만 (install.sh fetch() · hook-doctor ensureFile() 선례)');
+    fail = 1;
+  } else {
+    console.log(`  PASS [L raw참조] 신규 0건 (동결 ${frozenTotal}건 = A4 전에 0 으로 줄일 자리)`);
   }
 }
 

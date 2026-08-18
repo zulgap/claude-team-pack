@@ -1,0 +1,17 @@
+{
+  "note": [
+    "팀팩 저장소의 공개 raw 주소(raw.githubusercontent.com/zulgap/claude-team-pack) 참조 동결분 — Tier L.",
+    "A3-4b(2026-08-19) 로 실행 경로는 서버 창구(/pack/*)를 먼저 쓰고 raw 는 폴백이다. 늘면 FAIL, 줄면 --update-baseline 으로 조인다.",
+    "🔴 A4(저장소 비공개) 때 이 목록이 0 이 되어야 한다 — 남은 것이 곧 «닫으면 죽는 자리»다."
+  ],
+  "frozen": {
+    "docs/dev-guide-en.md": 1,
+    "hooks/hook-doctor.js": 1,
+    "hooks/team-guide-fetch.js": 1,
+    "install.ps1": 1,
+    "install.sh": 4,
+    "README.md": 2,
+    "team-guide.md": 2
+  },
+  "updated_at": "2026-08-18"
+}
