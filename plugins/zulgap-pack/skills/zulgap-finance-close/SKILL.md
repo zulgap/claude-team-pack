@@ -1,7 +1,7 @@
 ---
 name: zulgap-finance-close
 description: 줄갭 월마감(경리) 실행 — 필수 4종(홈택스 매출·매입, 우리은행, 국민은행) + 선택 1종(KB 카드 명세서)을 받아 재무 원장에 쌓고 마감까지 건다. "/zulgap-finance-close", "/월마감", "월마감 해줘", "6월 마감", "이번 달 마감 시작", "통장 정리", "홈택스 자료 올려야 해", "카드 명세서 올려야 해" 에 호출. 매월 15일(공휴일이면 앞당김) 알림 수신 후 실행. (제디 토큰 필요 · 줄갭 전용)
-version: 1.5.0
+version: 1.6.0
 origin: teampack
 tier: tenant-only
 ---
@@ -348,6 +348,32 @@ mcp__jedi__close_finance_month({ period: "2026-06" })
 - ⚠️ 안내 패널의 기본값은 **전월**인데, 목록에서 고르는 건 **실제로 마감한 달**이다. 둘이 다를 수 있다.
 - ⚠️ 결과가 여러 건이면 같은 달을 여러 번 마감한 것이다(재마감은 멱등이라 노션 행은 안 늘고 실행 기록만 쌓인다). 아무거나 골라도 같은 화면.
 
+### 그래프 말고 그냥 물어봐도 된다 — 원장 조회 (2026-08-18~)
+
+그동안 원장은 **넣는 문만 있고 꺼내 보는 문이 없었다.** 그래서 「8월에 어디에 얼마 썼지?」를 알려면 미니앱에서 결과를 골라 그래프를 봐야 했다. 이제 **제디에게 말로 물으면 된다.**
+
+```
+mcp__jedi__get_finance_ledger({ period: "2026-07" })
+mcp__jedi__get_finance_ledger({ counterparty: "엔노블", direction: "in" })
+mcp__jedi__get_finance_ledger({ months: 3, group_by: "period" })
+```
+
+| 인자 | 뜻 |
+|---|---|
+| `period` | 정산월 한 달 (`2026-07`) |
+| `months` | 최근 N개월 (기본 3, 최대 12) — 🔴 `period`와 **함께 못 쓴다** |
+| `counterparty` | 거래처 **부분검색** (「엔노블」로 「엔노블주식회사」가 잡힌다) |
+| `direction` | `in`=받은 돈 / `out`=쓴 돈 / `both`=둘 다(기본) |
+| `group_by` | `counterparty`(기본) · `source_label` · `period` · `none`(합계만) |
+| `limit` | 묶음 최대 개수 (기본 20, 최대 100) |
+
+- 🔴 **지금 원장에는 2026-06 · 07 두 달치만 있다** (2026-08-18 실측 247건). 그 앞 달을 물어 결과가 비면 **「그런 거래가 없다」가 아니라 「원장에 아직 안 들어왔다」**다. 옛 자료 인입은 별도 작업으로 남아 있다.
+- 🔴 **`period`는 «정산월»이지 거래일이 아니다.** 홈택스(세금계산서) 행에는 거래일이 없어서 그 축으로만 잡힌다.
+- 🔴 **빠진 건 숨기지 않는다.** 상계분·격리된 행은 합계에서 빼되 **몇 건이 왜 빠졌는지 `excluded`로 함께 온다.** 합계만 옮기고 이 줄을 지우지 말 것 — 나중에 「내가 아는 숫자와 다른데?」가 된다.
+- ⚠️ **거래처를 부분검색하면 무엇이 합쳐졌는지 `matched_counterparties`가 함께 온다.** 비슷한 이름 둘이 섞였는지 그걸로 확인한다.
+- ⚠️ **사장님(master 토큰)이 부를 때만** `read_tenant_id: "a0000000-0000-0000-0000-000000000002"` 를 넣는다. 신나래는 넣지 않는다(인입·마감과 같은 규칙).
+- 이 도구는 **읽기만 한다** — 원장을 바꾸지 않는다.
+
 ---
 
 ## 7단계 — 구독 원장 갱신 (매월 필수 · 2026-08-14 사장님 지시)
@@ -487,5 +513,5 @@ gmail_search: 금액("5.50") · 서비스명 · 결제일 전후 3일
 ## 관련
 
 - 도구 위키: `unified-agent/docs/mcp-wiki/finance-tools.md`
-- spec: `~/.claude/specs/2026-07-30-accounting-agent-monthly-close.md` · `2026-08-04-finance-teampack-skills.md`
+- spec: `~/.claude/specs/2026-07-30-accounting-agent-monthly-close.md` · `2026-08-04-finance-teampack-skills.md` · `2026-08-18-finance-ledger-query-tool.md`
 - 선례 패턴: `zulgap-gaon-report` (로그인만 사람 + 표준 안내문)
