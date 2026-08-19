@@ -87,6 +87,15 @@ async function readBody(frame) {
       // @AI:CONSTRAINT 끄는 것(clearFormatting)만으로는 부족하다 — «결과»를 세야 안 나간다.
       //   사장님이 화면을 보고 발견하신 사고다. 사람 눈이 마지막 방어선이면 안 된다.
       struck: c.querySelectorAll('s, del, strike').length,
+
+      // 🔴 굵게 누출 (2026-08-20 실사고 — 나래님이 화면에서 발견)
+      // @AI:INTENT 취소선과 달리 굵게는 «우리도 쓴다». 그래서 「있으면 막는다」로는 못 잡는다.
+      //   재는 축은 «글자 수»다 — 우리가 보낸 <b> 안의 글자보다 화면이 훨씬 많으면 번진 것이다.
+      // @AI:CONSTRAINT 개수(<b> 태그 수)로 재지 말 것 — 에디터가 한 문단을 span 여러 개로 쪼개
+      //   태그 수가 원본과 안 맞는다. 글자 수는 쪼개져도 합이 같아 흔들리지 않는다.
+      boldChars: [...c.querySelectorAll('b, strong')]
+        .map((b) => (b.innerText || '').replace(/\s+/g, '').length)
+        .reduce((a, n) => a + n, 0),
     };
   }, BODY);
 }
@@ -215,6 +224,13 @@ const FORMAT_TOGGLES = [
 ];
 const TOGGLE_ON = 'se-is-selected';
 
+// @AI:INTENT 조각을 붙이기 «직전»에 끄는 것들 — FORMAT_TOGGLES 와 «굵게 하나»가 다르다.
+//   왜 다른지는 clearCaretFormatting 의 주석에 있다. 두 목록을 합치지 말 것.
+const CARET_TOGGLES = [
+  ['굵게',   '.se-bold-toolbar-button'],
+  ...FORMAT_TOGGLES,
+];
+
 /**
  * 켜져 있는 서식 토글을 끈다.
  * @returns {{turnedOff:string[], stillOn:string[]}}
@@ -239,6 +255,90 @@ async function clearFormatting(page, frame) {
   return { turnedOff, stillOn };
 }
 
+// ─────────────────────────────────────────────────────────────
+// 이미지 가로폭 — 「옆트임」 (2026-08-20)
+// ─────────────────────────────────────────────────────────────
+// @AI:INTENT 이 블로그는 본문 그림을 «옆트임»으로 넣는다(2026-08-20 실무 확인).
+//   올린 직후 기본값은 «문서 너비»라, 그냥 두면 그림이 좁게 나간다.
+//
+// 🔴 실측 (2026-08-20 · RPG 9편 · 1080px 원본 7장)
+//
+//   | 설정      | 화면 폭 | 토글 se-is-selected |
+//   |-----------|--------:|---------------------|
+//   | 작게      |   375px | normal              |
+//   | 문서 너비 |   500px | fit    ← 올린 직후 기본값
+//   | 옆트임    |   700px | extend                |
+//
+// @AI:FRAGILE 🔴 «컴포넌트 클래스로 판정하지 말 것.» 세 설정 모두 `se-l-default` 로 «똑같다».
+//   클래스가 안 바뀌는 것을 보고 「안 먹었다」고 오판하기 딱 좋다(2026-08-20에 그렇게 헤맸다).
+//   판정축은 둘 — ① 그 이미지를 «선택한 상태»에서 읽는 토글, ② 화면에서 잰 «폭».
+// @AI:FRAGILE 🔴 토글은 이미지를 «선택하지 않았을 때»도 값이 보인다 — 그건 «다음에 넣을 그림»의
+//   기본값이지 이 그림의 상태가 아니다. 반드시 선택한 «뒤»에 읽는다. 안 그러면 조용한 오답이다.
+const ARRANGE = {
+  작게: '.se-context-toolbar-group-toggle-button.se-object-arrangement-normal-toolbar-button',
+  문서너비: '.se-context-toolbar-group-toggle-button.se-object-arrangement-fit-toolbar-button',
+  옆트임: '.se-context-toolbar-group-toggle-button.se-object-arrangement-extend-toolbar-button',
+};
+
+/** i 번째 이미지를 선택하고, 그 «선택 상태»에서 폭·토글을 읽는다. */
+async function selectImage(page, frame, index) {
+  const img = frame.locator(`${IMG_COMPONENT} img`).nth(index);
+  await img.scrollIntoViewIfNeeded();
+  await img.click({ timeout: 10000 });
+  await page.waitForTimeout(500);
+  return frame.evaluate((a) => {
+    const c = document.querySelectorAll(a.comp)[a.i];
+    const el = c && c.querySelector('img');
+    const read = (sel) => {
+      const b = [...document.querySelectorAll(sel)].find((x) => x.offsetParent !== null);
+      return b ? b.classList.contains('se-is-selected') : null;
+    };
+    return {
+      width: el ? Math.round(el.getBoundingClientRect().width) : null,
+      옆트임: read(a.sel.옆트임), 문서너비: read(a.sel.문서너비), 작게: read(a.sel.작게),
+    };
+  }, { comp: IMG_COMPONENT, i: index, sel: ARRANGE });
+}
+
+/**
+ * i 번째 이미지를 «옆트임»으로 만든다.
+ * @AI:CONSTRAINT 이미 옆트임이면 «누르지 않는다» — 눌러서 나빠질 일만 있고 좋아질 일은 없다.
+ * @AI:CONSTRAINT 「눌렀다」로 끝내지 않는다. 누른 «뒤» 토글과 폭을 다시 읽어 둘 다 맞을 때만 ok.
+ *   폭까지 보는 이유는, 토글만 보면 «선택이 풀린 채» 읽은 기본값을 성공으로 오독할 수 있어서다.
+ */
+async function setImageExtend(page, frame, index) {
+  const before = await selectImage(page, frame, index);
+  if (before.옆트임 === true) return { ok: true, index, already: true, width: before.width };
+  if (before.옆트임 === null) return { ok: false, index, reason: 'NO_BUTTON' };
+
+  await frame.locator(`${ARRANGE.옆트임}:visible`).first().click({ timeout: 8000 });
+  await page.waitForTimeout(700);
+
+  const after = await selectImage(page, frame, index);
+  if (after.옆트임 !== true) return { ok: false, index, reason: 'NOT_APPLIED', width: after.width };
+  if (before.width !== null && after.width !== null && after.width < before.width) {
+    return { ok: false, index, reason: 'WIDTH_SHRANK', from: before.width, to: after.width };
+  }
+  return { ok: true, index, already: false, width: after.width };
+}
+
+/**
+ * 본문 그림 «전부»를 옆트임으로.
+ * @AI:CONSTRAINT 한 장이 실패해도 나머지를 계속한다 — 하나 때문에 멈추면 사람이 여섯 장을 손으로 만진다.
+ *   대신 실패한 번호를 그대로 돌려주어 «무엇이 남았는지» 사람이 알 수 있게 한다.
+ */
+async function extendAllImages(page, frame) {
+  const n = await frame.locator(IMG_COMPONENT).count();
+  const done = [], failed = [];
+  for (let i = 0; i < n; i += 1) {
+    let r;
+    try { r = await setImageExtend(page, frame, i); }
+    catch (e) { r = { ok: false, index: i, reason: e.message.slice(0, 60) }; }
+    (r.ok ? done : failed).push(r);
+  }
+  return { total: n, done, failed };
+}
+
 /** 커서를 본문 «맨 끝»에 둔다 — 문단 중간에 박히는 사고 방지(2026-08-15 실측) */
 async function cursorToEnd(page, frame) {
   const paras = frame.locator(PARA);
@@ -252,9 +352,49 @@ async function cursorToEnd(page, frame) {
   await page.waitForTimeout(200);
 }
 
+/**
+ * 🔴 커서 «자리»의 서식을 끈다 — 조각을 붙이기 직전마다 (2026-08-20 실사고)
+ *
+ * @AI:INTENT ①-b 의 clearFormatting 은 «맨 처음 한 번»이라 이걸 못 막는다.
+ *   앞 조각이 굵게로 «끝나면» 커서가 <b> 안에 남고(빈 문단에 <b></b> 가 남는 것이 그 흔적),
+ *   이미지 업로드를 지나 다음 조각을 붙일 때 그 안으로 딸려 들어간다. 한 번 켜지면 «끝까지» 간다.
+ *   실측(2026-08-20, RPG 9편): 「성수기 항공 건은…」 문단이 굵게로 끝난 뒤
+ *   나머지 글 전체가 굵게가 됐고, 도구는 그대로 ready_to_register 를 냈다.
+ *
+ * @AI:CONSTRAINT 🔴 여기서는 굵게«도» 끈다 — ①-b 가 굵게를 일부러 뺀 것과 다르다.
+ *   ①-b 는 «글 전체»의 서식 상태를 다루므로 굵게를 끄면 안 될 이유가 있었지만(우리가 <b> 로 직접 넣는다),
+ *   조각을 붙이기 «직전»의 커서 자리는 «아무 서식도 안 켜진» 상태여야 한다.
+ *   붙일 HTML 이 자기 <b> 를 들고 오므로, 켜 둘 이유가 없고 켜져 있으면 반드시 번진다.
+ * @AI:CONSTRAINT 커서가 «접혀 있을 때»만 누른다. 선택 영역이 있으면 토글이 그 «선택»에 걸려
+ *   멀쩡한 글을 굵게로 만든다. cursorToEnd 뒤(End 키)라 접혀 있는 것이 정상이지만, 확인하고 누른다.
+ */
+async function clearCaretFormatting(page, frame) {
+  const turnedOff = [];
+  for (const [name, sel] of CARET_TOGGLES) {
+    const state = await frame.evaluate((s2) => {
+      const b = document.querySelector(s2.sel);
+      if (!b) return { on: null };
+      const sel0 = document.getSelection();
+      return { on: b.classList.contains(s2.on), collapsed: !sel0 || sel0.isCollapsed };
+    }, { sel, on: TOGGLE_ON });
+    if (state.on !== true) continue;
+    if (state.collapsed === false) continue;          // 선택이 걸려 있으면 손대지 않는다
+    await frame.evaluate((s2) => { document.querySelector(s2.sel)?.click(); }, { sel });
+    await page.waitForTimeout(150);
+    const after = await frame.evaluate((s2) => {
+      const b = document.querySelector(s2.sel);
+      return b ? b.classList.contains(s2.on) : null;
+    }, { sel, on: TOGGLE_ON });
+    if (after === false) turnedOff.push(name);
+  }
+  return turnedOff;
+}
+
 /** 클립보드를 쓰지 않는 붙여넣기 */
 async function pasteHtml(page, frame, html) {
   await withPopupGuard(page, frame, () => cursorToEnd(page, frame));
+  // 🔴 붙이기 «직전»에 커서 자리의 서식을 끈다 — 안 끄면 앞 조각의 굵게가 이 조각을 통째로 먹는다
+  await clearCaretFormatting(page, frame);
   const res = await frame.evaluate((h) => {
     const el = document.activeElement?.isContentEditable
       ? document.activeElement : document.querySelector('[contenteditable="true"]');
@@ -513,12 +653,31 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
 
   // ⑤ 결과 검증 — 판정은 «화면»이 한다
   const end = await readBody(frame);
-  const verdict = verifyFilled({ start, end, expected: parsed.images, uploaded });
+  // @AI:INTENT 「원고가 굵게로 지정한 글자」 수 — 우리가 보낸 <b> 안의 글자를 그대로 센다.
+  //   화면 값과 견주는 것이 굵게 누출 판정의 축이다(verifyFilled 참조).
+  const expectedBoldChars = countBoldChars(parsed.blocks);
+  const verdict = verifyFilled({ start, end, expected: parsed.images, uploaded, expectedBoldChars });
   problems.push(...verdict);
   // 중간에 「안 늘었다」고 본 것들은, 화면이 온전하면 문제가 아니다 — 기록만 남긴다
   if (unsureUploads.length) {
     if (verdict.length) problems.push(`업로드 확인이 어긋난 이미지: ${unsureUploads.join(', ')}번`);
     else notes.push(`이미지 ${unsureUploads.join(', ')}번은 중간 확인이 어긋났으나 화면은 온전합니다`);
+  }
+
+  // ⑤-b 이미지 «옆트임» (2026-08-20)
+  // @AI:CONSTRAINT 🔴 «검증(⑤) 뒤 · 대표 지정(⑥) 앞»에 둔다.
+  //   앞에 두면 그림이 덜 들어간 상태에서 번호를 세게 되고, 뒤에 두면 이미지를 다시 클릭하면서
+  //   방금 세운 대표가 흔들릴 수 있다. 대표 지정이 «마지막»이라는 성질을 깨지 말 것.
+  // @AI:INTENT 실패해도 글을 막지 않는다 — 폭은 사람이 3초면 고치고, 막으면 다 채운 글이 버려진다.
+  //   대신 «몇 번째가 남았는지»를 problems 로 올려 사람이 그 장만 만지게 한다.
+  if (opts.extendImages !== false) {
+    const ext = await extendAllImages(page, frame);
+    if (ext.failed.length) {
+      problems.push(`옆트임이 안 된 이미지 ${ext.failed.length}장 — ` +
+        ext.failed.map((f) => `${f.index + 1}번(${f.reason})`).join(' / '));
+    } else if (ext.total) {
+      notes.push(`이미지 ${ext.total}장 옆트임 적용`);
+    }
   }
 
   // ⑥ 대표 이미지 = 썸네일 (2026-08-16)
@@ -579,7 +738,25 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
  * @AI:INTENT 순수 함수로 뽑아 둔 이유 = 브라우저 없이 시험할 수 있게. e2e 로만 덮으면
  *   이 판정은 실전에서만 깨지고, 실전에서 깨지면 이미 발행된 뒤다.
  */
-function verifyFilled({ start, end, expected, uploaded }) {
+/**
+ * 원고가 «굵게로 지정한» 글자 수. 화면 값과 견주려고 센다.
+ * @AI:CONSTRAINT 공백을 빼고 센다 — 에디터가 문단을 span 으로 쪼개면서 공백을 다르게 담는다.
+ *   readBody 의 boldChars 도 같은 방식으로 세야 두 값이 비교 가능하다.
+ */
+function countBoldChars(blocks) {
+  const re = /<(b|strong)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let total = 0;
+  for (const b of blocks || []) {
+    if (b.kind !== 'html') continue;
+    let m;
+    while ((m = re.exec(b.html)) !== null) {
+      total += m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, '').length;
+    }
+  }
+  return total;
+}
+
+function verifyFilled({ start, end, expected, uploaded, expectedBoldChars }) {
   const problems = [];
   const before = (start && start.slots) || 0;
   const placed = ((end && end.slots) || 0) - before;
@@ -592,6 +769,19 @@ function verifyFilled({ start, end, expected, uploaded }) {
   //   숫자가 크든 작든 막는다. 한 군데만 그어져도 고객 블로그에 나가는 글이다.
   if (end.struck > 0) {
     problems.push(`글자에 취소선이 ${end.struck}군데 그어졌습니다 — 붙여넣기 전 서식이 켜져 있었습니다 (지우고 다시 채우세요)`);
+  }
+
+  // 🔴 굵게 누출 (2026-08-20) — 끄는 것(clearCaretFormatting)만 두지 않는다. 결과를 «센다».
+  // @AI:INTENT 취소선은 「하나라도 있으면 막는다」로 되지만 굵게는 우리도 쓰므로 «양»으로 잰다.
+  //   번지면 문단 통째로 굵어져 몇 배가 된다 — 애매한 차이가 아니라서 넉넉한 여유를 둬도 잡힌다.
+  // @AI:CONSTRAINT 여유(1.3배 + 40자)를 좁히지 말 것 — 표 셀·링크에서 에디터가 굵게 범위를
+  //   조금 넓게 잡는 일이 있어, 딱 맞추면 «멀쩡한 글»이 막힌다. 번짐은 배수로 벌어진다.
+  if (expectedBoldChars !== undefined && end.boldChars !== undefined
+      && end.boldChars > expectedBoldChars * 1.3 + 40) {
+    problems.push(
+      `굵게가 번졌습니다 — 원고는 ${expectedBoldChars}자인데 화면은 ${end.boldChars}자입니다 ` +
+      '(붙여넣기 직전 굵게가 켜져 있었습니다. 지우고 다시 채우세요)',
+    );
   }
 
   if (placed !== expected) {
@@ -609,5 +799,6 @@ function verifyFilled({ start, end, expected, uploaded }) {
 
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
                    downloadImages, describeImageFailure, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard,
-                   clearFormatting, FORMAT_TOGGLES,
+                   clearFormatting, FORMAT_TOGGLES, clearCaretFormatting, CARET_TOGGLES, countBoldChars,
+                   selectImage, setImageExtend, extendAllImages, ARRANGE,
                    readRepImage, setRepImage, REP_BTN, REP_ON, IMG_COMPONENT, BODY, PARA };

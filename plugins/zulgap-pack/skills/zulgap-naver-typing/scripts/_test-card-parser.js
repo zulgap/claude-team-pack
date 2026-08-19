@@ -424,5 +424,40 @@ console.log('\n[14] 🔴 썸네일이 없으면 막는다');
      JSON.stringify(noImg.problems));
 }
 
+// ─────────────────────────────────────────────────────────────
+// 🔴 여백 정규화 — 이웃이 이미지면 2칸, 아니면 3칸 (2026-08-20)
+//   규칙 자체는 naver-format 이 시험한다. 여기서는 «파서가 이웃을 제대로 보는가»를 본다.
+// ─────────────────────────────────────────────────────────────
+console.log('\n[여백] 조각 양 끝은 이웃이 정한다');
+{
+  const NF = require('../../../shared/naver-format/naver-format.js');
+  const S = NF.SPACER;
+  const CARD = [
+    '# 제목입니다',
+    '첫 문단입니다.',
+    '둘째 문단입니다.',
+    '![설명](https://example.com/a.png)',
+    '셋째 문단입니다.',
+  ].join('\n');
+  const p = parseCard(CARD);
+  const html = p.blocks.filter((b) => b.kind === 'html').map((b) => b.html);
+  const head = (h) => { const L = h.split('\n'); let n = 0;
+    for (let i = 0; i < L.length && L[i].trim() === S; i += 1) n += 1; return n; };
+  const tail = (h) => { const L = h.split('\n'); let n = 0;
+    for (let i = L.length - 1; i >= 0 && L[i].trim() === S; i -= 1) n += 1; return n; };
+  const runAt = (h, from) => { const L = h.split('\n'); let n = 0;
+    for (let i = from; i < L.length && L[i].trim() === S; i += 1) n += 1; return n; };
+
+  ok('조각이 이미지로 갈렸다', html.length === 2 && p.images === 1, `${html.length}/${p.images}`);
+  ok('글 «처음»에는 여백이 없다', head(html[0]) === 0, `${head(html[0])}칸`);
+  ok('🔴 이미지 «앞»은 2칸', tail(html[0]) === 2, `${tail(html[0])}칸`);
+  ok('🔴 이미지 «뒤»는 2칸', head(html[1]) === 2, `${head(html[1])}칸`);
+  ok('문단 «사이»는 3칸', runAt(html[0], 1) === 3, `${runAt(html[0], 1)}칸`);
+  ok('글 «끝»에는 여백이 없다', tail(html[1]) === 0, `${tail(html[1])}칸`);
+  ok('결정론 — 두 번 파싱해도 같다',
+     JSON.stringify(parseCard(CARD).blocks) === JSON.stringify(p.blocks));
+}
+
+
 console.log(`\n${'─'.repeat(46)}\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail === 0 ? 0 : 1);

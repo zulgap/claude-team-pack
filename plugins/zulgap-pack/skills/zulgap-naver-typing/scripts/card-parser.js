@@ -306,6 +306,19 @@ function parseCard(md) {
   const thumbnail = extractThumbnail(lines);
   if (thumbnail) blocks.push({ kind: 'image', url: thumbnail.url, caption: thumbnail.caption });
 
+  // 🔴 여백 정규화 — «조각을 다 만든 뒤» 한 번에 한다 (2026-08-20)
+  // @AI:INTENT 여백 규칙은 이웃을 알아야 정할 수 있다(문단 옆 3칸 / 이미지 옆 2칸).
+  //   파싱 루프 «안»에서는 다음 조각이 무엇인지 모른다 — 그래서 여기서, 앞뒤를 보고 정한다.
+  // @AI:CONSTRAINT 규칙 자체는 naver-format 이 안다. 여기서 칸 수를 세지 말 것 —
+  //   카드를 «만드는» 스킬도 같은 함수를 보므로, 숫자가 두 곳에 있으면 갈라진다.
+  for (let i = 0; i < blocks.length; i += 1) {
+    if (blocks[i].kind !== 'html') continue;
+    blocks[i].html = NF.normalizeGaps(blocks[i].html, {
+      before: blocks[i - 1] && blocks[i - 1].kind === 'image' ? 'image' : 'none',
+      after: blocks[i + 1] && blocks[i + 1].kind === 'image' ? 'image' : 'none',
+    });
+  }
+
   const images = blocks.filter((b) => b.kind === 'image').length;
   return {
     title,

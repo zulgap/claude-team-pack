@@ -75,6 +75,54 @@ const c2 = F.createTableCollector();
 ok('표 밖 줄은 무시', c2.feed('<p>문단</p>') === null && c2.isOpen === false);
 ok('여는 줄만 넣으면 아직 안 닫힘', c2.feed('<table>') === null && c2.isOpen === true);
 
+console.log('\n[9-b] 🔴 여백 칸 수 — 문단 3칸 / 이미지 2칸 (2026-08-20)');
+{
+  const S = F.SPACER;
+  const cnt = (html) => html.split('\n').filter((l) => l.trim() === S).length;
+  const runAt = (html, from) => {
+    const L = html.split('\n'); let n = 0;
+    for (let i = from; i < L.length && L[i].trim() === S; i += 1) n += 1;
+    return n;
+  };
+  const head = (html) => runAt(html, 0);
+  const tail = (html) => { const L = html.split('\n'); let n = 0;
+    for (let i = L.length - 1; i >= 0 && L[i].trim() === S; i -= 1) n += 1; return n; };
+
+  ok('상수가 3칸 / 2칸이다', F.GAP_PARAGRAPH === 3 && F.GAP_IMAGE === 2,
+     `${F.GAP_PARAGRAPH}/${F.GAP_IMAGE}`);
+  ok('spacers(n) 는 빈 문단 n 개', F.spacers(3) === [S, S, S].join('\n'));
+  ok('spacers(0) 는 빈 문자열', F.spacers(0) === '');
+
+  const src = ['<p>A</p>', S, '<p>B</p>'].join('\n');
+  const mid = F.normalizeGaps(src, {});
+  ok('문단 사이는 3칸', runAt(mid, 1) === 3, mid);
+
+  // 🔴 원고가 빈 줄을 몇 개 넣었든 «다시 센다» — 쌓기가 아니다
+  const messy = ['<p>A</p>', S, S, S, S, S, '<p>B</p>'].join('\n');
+  ok('🔴 여백이 쌓이지 않는다 (5칸이 와도 3칸)', runAt(F.normalizeGaps(messy, {}), 1) === 3,
+     F.normalizeGaps(messy, {}));
+
+  const both = F.normalizeGaps(src, { before: 'image', after: 'image' });
+  ok('이미지 앞은 2칸', head(both) === 2, `${head(both)}칸`);
+  ok('이미지 뒤는 2칸', tail(both) === 2, `${tail(both)}칸`);
+  ok('🔴 이미지 옆이 문단 사이보다 «좁다»', F.GAP_IMAGE < F.GAP_PARAGRAPH);
+
+  const edge = F.normalizeGaps(src, {});
+  ok('글의 처음·끝에는 여백을 안 붙인다', head(edge) === 0 && tail(edge) === 0, edge);
+
+  // 🔴 표는 문단이 아니다 — 줄 사이에 빈 문단이 끼면 네이버가 표를 쪼갠다
+  const tbl = ['<p>앞</p>', S, '<table>', '<tr>', '<td>a</td>', '</tr>', '</table>'].join('\n');
+  const out = F.normalizeGaps(tbl, {});
+  ok('🔴 표 «안»에는 여백을 안 넣는다',
+     /<table>\n<tr>\n<td>a<\/td>\n<\/tr>\n<\/table>/.test(out), out);
+  ok('표도 문단처럼 3칸을 받는다', runAt(out, 1) === 3, out);
+
+  ok('빈 입력 안전', F.normalizeGaps('', {}) === '' && F.normalizeGaps(null, {}) === '');
+  ok('여백만 있는 조각은 비워진다', F.normalizeGaps([S, S].join('\n'), {}) === '');
+  ok('결정론 — 두 번 돌려도 같다',
+     F.normalizeGaps(both, { before: 'image', after: 'image' }) === both);
+}
+
 console.log('\n[10] 🔴 FORMAT.md 동기화 — 문서와 코드가 갈라지면 여기서 깨진다');
 const fs = require('fs');
 const path = require('path');
@@ -86,6 +134,13 @@ if (!fs.existsSync(docPath)) {
   ok('표 머리 배경값이 문서와 같다', doc.includes(F.TABLE_HEADER_BG), `코드=${F.TABLE_HEADER_BG}`);
   ok('표 머리 글자색이 문서와 같다', doc.includes(F.TABLE_HEADER_FG), `코드=${F.TABLE_HEADER_FG}`);
   ok('여백 표기가 문서와 같다', doc.includes(F.SPACER), `코드=${F.SPACER}`);
+  // 🔴 칸 수는 «문서와 코드 둘 다»에 있다 — 한쪽만 고치면 작성 스킬이 옛 규칙으로 카드를 만든다
+  ok('문단 여백 칸 수가 문서와 같다', doc.includes(`**${F.GAP_PARAGRAPH}칸**`),
+     `코드=${F.GAP_PARAGRAPH}칸`);
+  ok('이미지 여백 칸 수가 문서와 같다', doc.includes(`**${F.GAP_IMAGE}칸**`),
+     `코드=${F.GAP_IMAGE}칸`);
+  ok('문서가 옆트임을 명시', /옆트임/.test(doc) && /se-object-arrangement-extend/.test(doc));
+  ok('🔴 문서가 «클래스로 판정하지 말라»를 명시', /se-l-default/.test(doc));
   ok('문서가 blockquote 를 소제목으로 명시', /blockquote/.test(doc) && /소제목/.test(doc));
   ok('문서가 h2 금지를 명시', /h2/.test(doc));
 }

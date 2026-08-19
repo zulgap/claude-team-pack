@@ -132,6 +132,70 @@ console.log('\n[11] 🔴 취소선이 그어졌으면 «막는다» (2026-08-16 
   ok('🔴 결과도 «센다» (readBody 가 struck 를 돌려준다)', /struck:\s*c\.querySelectorAll\('s, del, strike'\)/.test(src));
 }
 
+// ─────────────────────────────────────────────────────────────
+// 🔴 굵게 누출 (2026-08-20 실사고 — 담당자가 화면에서 발견)
+//   앞 조각이 굵게로 «끝나면» 커서가 <b> 안에 남고, 다음 조각이 통째로 굵어진다.
+//   실측: RPG 9편에서 「성수기 항공 건은…」 뒤로 «글 전체»가 굵어졌는데
+//   도구는 그대로 ready_to_register 를 냈다. 끄는 것과 «세는 것» 둘 다 필요하다.
+// ─────────────────────────────────────────────────────────────
+console.log('\n[굵게] 조각 경계에서 번지는 것을 막는다');
+{
+  const F = require('./naver-fill.js');
+
+  ok('🔴 커서용 토글 목록에 «굵게»가 있다',
+     F.CARET_TOGGLES.some(([n]) => n === '굵게'),
+     JSON.stringify(F.CARET_TOGGLES.map(([n]) => n)));
+  // @AI:CONSTRAINT ①-b 의 FORMAT_TOGGLES 와 «다른 목록»이다 — 합치면 글 전체 굵게가 꺼진다
+  ok('🔴 글 전체용 목록에는 굵게가 «없다»',
+     !F.FORMAT_TOGGLES.some(([n]) => n === '굵게'),
+     JSON.stringify(F.FORMAT_TOGGLES.map(([n]) => n)));
+
+  const blocks = (h) => [{ kind: 'html', html: h }];
+  ok('원고의 굵게 글자를 센다', F.countBoldChars(blocks('가<b>나다</b>라')) === 2);
+  ok('strong 도 센다', F.countBoldChars(blocks('<strong>가나</strong>')) === 2);
+  ok('공백은 빼고 센다', F.countBoldChars(blocks('<b>가 나</b>')) === 2);
+  ok('중첩 태그 안 글자만 센다', F.countBoldChars(blocks('<b>가<span>나</span></b>')) === 2);
+  ok('이미지 조각은 안 센다', F.countBoldChars([{ kind: 'image', url: 'x' }]) === 0);
+  ok('빈 입력 안전', F.countBoldChars(null) === 0 && F.countBoldChars([]) === 0);
+
+  const V = (expectedBoldChars, boldChars) => F.verifyFilled({
+    start: { slots: 0 }, end: { slots: 2, externalImages: 0, struck: 0, boldChars },
+    expected: 2, uploaded: 2, expectedBoldChars,
+  });
+  ok('🔴 문단이 통째로 굵어지면 막는다', V(400, 2500).some((m) => /굵게가 번졌/.test(m)),
+     JSON.stringify(V(400, 2500)));
+  ok('원고대로면 통과', V(400, 400).length === 0, JSON.stringify(V(400, 400)));
+  // @AI:CONSTRAINT 여유를 좁히지 말 것 — 표 셀·링크에서 에디터가 범위를 조금 넓게 잡는다.
+  //   번짐은 «배수»로 벌어지므로 넉넉해도 잡힌다.
+  ok('약간 넓게 잡힌 것은 «막지 않는다»', V(400, 500).length === 0, JSON.stringify(V(400, 500)));
+  ok('기대값이 없으면 판정하지 않는다',
+     F.verifyFilled({ start: { slots: 0 }, end: { slots: 2, externalImages: 0, struck: 0, boldChars: 9999 },
+                      expected: 2, uploaded: 2 }).length === 0);
+  ok('취소선 판정은 그대로 산다',
+     F.verifyFilled({ start: { slots: 0 }, end: { slots: 2, externalImages: 0, struck: 1, boldChars: 0 },
+                      expected: 2, uploaded: 2, expectedBoldChars: 0 }).some((m) => /취소선/.test(m)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// 🔴 이미지 옆트임 (2026-08-20)
+//   판정축은 «선택 상태의 토글 + 폭». 컴포넌트 클래스는 세 설정 모두 se-l-default 로 같다.
+// ─────────────────────────────────────────────────────────────
+console.log('\n[옆트임] 이미지 폭');
+{
+  const F = require('./naver-fill.js');
+  ok('옆트임 선택자가 extend 다', /object-arrangement-extend/.test(F.ARRANGE.옆트임));
+  ok('문서너비 선택자가 fit 다', /object-arrangement-fit/.test(F.ARRANGE.문서너비));
+  ok('작게 선택자가 normal 이다', /object-arrangement-normal/.test(F.ARRANGE.작게));
+  // @AI:CONSTRAINT 🔴 se-l-* 로 판정하면 세 설정이 구별되지 않는다. 선택자에 들어오면 안 된다.
+  ok('🔴 클래스(se-l-)로 판정하지 않는다',
+     !Object.values(F.ARRANGE).some((v) => /se-l-/.test(v)));
+  ok('전부 «보이는» 컨텍스트 툴바를 쓴다',
+     Object.values(F.ARRANGE).every((v) => v.startsWith('.se-context-toolbar-group-toggle-button')));
+  ok('extendAllImages 가 있다', typeof F.extendAllImages === 'function');
+  ok('setImageExtend 가 있다', typeof F.setImageExtend === 'function');
+}
+
+
 console.log('\n──────────────────────────────────────────────');
 console.log(fail === 0 ? `✅ ALL PASS  ${pass}/${pass + fail}` : `❌ FAIL  ${pass}/${pass + fail}`);
 process.exit(fail === 0 ? 0 : 1);
