@@ -20,7 +20,18 @@ const os = require('os');
 const { execFileSync, spawn } = require('child_process');
 
 const SKILL_DIR = path.resolve(__dirname, '..');
-const PROFILES_DIR = path.join(SKILL_DIR, '.profiles');
+
+// 🔴 크롬 프로필(=로그인)은 «스킬 폴더 밖»에 둔다 (2026-08-20)
+// @AI:INTENT 스킬 폴더는 `~/.claude/plugins/cache/<팩>/<커밋해시>/…` 안이라,
+//   팀팩이 갱신될 때마다 «해시가 바뀐 새 폴더»로 통째로 내려온다. 프로필을 그 안에 두면
+//   갱신 = 로그아웃이다. 담당자는 이유를 모른 채 며칠에 한 번씩 다시 로그인하게 된다.
+// @AI:CONSTRAINT `~/.claude/zulgap/` 아래를 쓴다 — 채널 설정이 이미 사는 자리이고
+//   갱신이 건드리지 않는다(channels/README 와 같은 이유). 새 인프라가 아니다.
+// @AI:CONSTRAINT 옛 자리(.profiles)가 남아 있으면 «그것을 계속 쓴다» — 로그인해 둔 것을
+//   버리지 않기 위해서다. 옮기는 것은 사람이 정할 일이고, 도구가 말없이 지우면 안 된다.
+const HOME_PROFILES = path.join(os.homedir(), '.claude', 'zulgap', 'naver-profiles');
+const LEGACY_PROFILES = path.join(SKILL_DIR, '.profiles');
+const PROFILES_DIR = fs.existsSync(LEGACY_PROFILES) ? LEGACY_PROFILES : HOME_PROFILES;
 const PORT_BASE = 9222;
 const PORT_MAX = 9260;
 
@@ -312,4 +323,5 @@ if (require.main === module) {
 }
 
 module.exports = { resolveChromePath, chromeCandidates, acquireLock, releaseLock, readOwner,
-                   isOurChromeAlive, processInfo, reservePort, cdpAlive, open, status, PROFILES_DIR };
+                   isOurChromeAlive, processInfo, reservePort, cdpAlive, open, status,
+                   PROFILES_DIR, HOME_PROFILES, LEGACY_PROFILES };

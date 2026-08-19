@@ -105,7 +105,16 @@ console.log('\n[10] 🔴 대표 지정은 «검증 뒤»에 온다 — 그림이
   const iVerify = src.indexOf('const verdict = verifyFilled(');
   const iRep = src.indexOf('await setRepImage(page, frame, parsed.thumbnailIndex)');
   ok('🔴 setRepImage 호출이 verifyFilled «뒤»에 있다', iVerify > 0 && iRep > iVerify, `verify@${iVerify} rep@${iRep}`);
-  ok('🔴 verdict 가 깨끗할 때만 세운다', /verdict\.length === 0/.test(src.slice(iVerify, iRep + 200)));
+  // 🔴 2026-08-20 계약 변경 — 게이트 축이 «verdict 전체» → «이미지 개수» 로 좁혀졌다.
+  // @AI:INTENT 그 뒤로 verdict 에 이미지와 무관한 판정(굵게 번짐·글꼴 섞임)이 들어왔다.
+  //   그러자 글꼴 하나가 어긋났다고 «대표 이미지까지» 안 세워져, 검색결과 얼굴이 본문 첫
+  //   도식으로 나갈 뻔했다(실측). 이 조건이 막으려던 것은 «그림이 덜 들어간 상태에서 번호를
+  //   세는 것» 하나뿐이라, 축을 이미지로 좁혀 둔다.
+  // @AI:CONSTRAINT 🔴 verdict.length === 0 으로 되돌리지 말 것 — 판정을 하나 더할 때마다
+  //   얼굴이 조용히 빠진다. 새 판정은 얼굴과 무관하다.
+  const gate = src.slice(iVerify, iRep + 200);
+  ok('🔴 «이미지가 다 들어갔나»로만 게이트한다', /imagesOk/.test(gate), gate.slice(0, 120));
+  ok('🔴 verdict 전체로 게이트하지 «않는다»', !/verdict\.length === 0/.test(gate));
 }
 
 console.log('\n[11] 🔴 취소선이 그어졌으면 «막는다» (2026-08-16 실사고 — 사장님이 화면에서 발견)');
@@ -131,6 +140,134 @@ console.log('\n[11] 🔴 취소선이 그어졌으면 «막는다» (2026-08-16 
      '순서 어긋남');
   ok('🔴 결과도 «센다» (readBody 가 struck 를 돌려준다)', /struck:\s*c\.querySelectorAll\('s, del, strike'\)/.test(src));
 }
+
+// ─────────────────────────────────────────────────────────────
+// 🔴 굵게 누출 (2026-08-20 실사고 — 담당자가 화면에서 발견)
+//   앞 조각이 굵게로 «끝나면» 커서가 <b> 안에 남고, 다음 조각이 통째로 굵어진다.
+//   실측: RPG 9편에서 「성수기 항공 건은…」 뒤로 «글 전체»가 굵어졌는데
+//   도구는 그대로 ready_to_register 를 냈다. 끄는 것과 «세는 것» 둘 다 필요하다.
+// ─────────────────────────────────────────────────────────────
+console.log('\n[굵게] 조각 경계에서 번지는 것을 막는다');
+{
+  const F = require('./naver-fill.js');
+
+  ok('🔴 커서용 토글 목록에 «굵게»가 있다',
+     F.CARET_TOGGLES.some(([n]) => n === '굵게'),
+     JSON.stringify(F.CARET_TOGGLES.map(([n]) => n)));
+  // @AI:CONSTRAINT ①-b 의 FORMAT_TOGGLES 와 «다른 목록»이다 — 합치면 글 전체 굵게가 꺼진다
+  ok('🔴 글 전체용 목록에는 굵게가 «없다»',
+     !F.FORMAT_TOGGLES.some(([n]) => n === '굵게'),
+     JSON.stringify(F.FORMAT_TOGGLES.map(([n]) => n)));
+
+  const blocks = (h) => [{ kind: 'html', html: h }];
+  ok('원고의 굵게 글자를 센다', F.countBoldChars(blocks('가<b>나다</b>라')) === 2);
+  ok('strong 도 센다', F.countBoldChars(blocks('<strong>가나</strong>')) === 2);
+  ok('공백은 빼고 센다', F.countBoldChars(blocks('<b>가 나</b>')) === 2);
+  ok('중첩 태그 안 글자만 센다', F.countBoldChars(blocks('<b>가<span>나</span></b>')) === 2);
+  ok('이미지 조각은 안 센다', F.countBoldChars([{ kind: 'image', url: 'x' }]) === 0);
+  ok('빈 입력 안전', F.countBoldChars(null) === 0 && F.countBoldChars([]) === 0);
+
+  const V = (expectedBoldChars, boldChars) => F.verifyFilled({
+    start: { slots: 0 }, end: { slots: 2, externalImages: 0, struck: 0, boldChars },
+    expected: 2, uploaded: 2, expectedBoldChars,
+  });
+  ok('🔴 문단이 통째로 굵어지면 막는다', V(400, 2500).some((m) => /굵게가 번졌/.test(m)),
+     JSON.stringify(V(400, 2500)));
+  ok('원고대로면 통과', V(400, 400).length === 0, JSON.stringify(V(400, 400)));
+  // @AI:CONSTRAINT 여유를 좁히지 말 것 — 표 셀·링크에서 에디터가 범위를 조금 넓게 잡는다.
+  //   번짐은 «배수»로 벌어지므로 넉넉해도 잡힌다.
+  ok('약간 넓게 잡힌 것은 «막지 않는다»', V(400, 500).length === 0, JSON.stringify(V(400, 500)));
+  ok('기대값이 없으면 판정하지 않는다',
+     F.verifyFilled({ start: { slots: 0 }, end: { slots: 2, externalImages: 0, struck: 0, boldChars: 9999 },
+                      expected: 2, uploaded: 2 }).length === 0);
+  ok('취소선 판정은 그대로 산다',
+     F.verifyFilled({ start: { slots: 0 }, end: { slots: 2, externalImages: 0, struck: 1, boldChars: 0 },
+                      expected: 2, uploaded: 2, expectedBoldChars: 0 }).some((m) => /취소선/.test(m)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// 🔴 이미지 옆트임 (2026-08-20)
+//   판정축은 «선택 상태의 토글 + 폭». 컴포넌트 클래스는 세 설정 모두 se-l-default 로 같다.
+// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// 🔴 이미지가 «빈 문단 한 칸을 먹는다» (2026-08-20 실측)
+//   조각 끝에 2칸을 보냈는데 화면에는 1칸만 남았다. 이미지 «뒤»는 멀쩡하고 «앞»만 줄었다.
+//   보정 전/후 실측 (그림 7곳):  꼬리 1 → 꼬리 2
+// ─────────────────────────────────────────────────────────────
+console.log('\n[이미지 앞 여백] 에디터가 먹는 한 칸을 되돌린다');
+{
+  const F = require('./naver-fill.js');
+  const fs2 = require('fs');
+  const src = fs2.readFileSync(require('path').join(__dirname, 'naver-fill.js'), 'utf8');
+
+  ok('보정 칸수 상수가 1이다', F.IMAGE_EATS_LINES === 1, String(F.IMAGE_EATS_LINES));
+  // @AI:CONSTRAINT 🔴 «빈 문단 붙여넣기»로 되돌리지 말 것 — 이미 빈 문단인 자리에 흡수돼
+  //   아무 일도 안 난다(2026-08-20 실측: 보정 전후 화면이 완전히 동일했다). 엔터 키여야 한다.
+  ok('🔴 엔터 키로 늘린다 (붙여넣기가 아니다)',
+     /IMAGE_EATS_LINES[\s\S]{0,200}keyboard\.press\('Enter'\)/.test(src));
+  ok('이미지 «업로드 전»에 넣는다',
+     src.indexOf('IMAGE_EATS_LINES;') < src.indexOf('const r = await uploadImage'));
+}
+
+console.log('\n[옆트임] 이미지 폭');
+{
+  const F = require('./naver-fill.js');
+  ok('옆트임 선택자가 extend 다', /object-arrangement-extend/.test(F.ARRANGE.옆트임));
+  ok('문서너비 선택자가 fit 다', /object-arrangement-fit/.test(F.ARRANGE.문서너비));
+  ok('작게 선택자가 normal 이다', /object-arrangement-normal/.test(F.ARRANGE.작게));
+  // @AI:CONSTRAINT 🔴 se-l-* 로 판정하면 세 설정이 구별되지 않는다. 선택자에 들어오면 안 된다.
+  ok('🔴 클래스(se-l-)로 판정하지 않는다',
+     !Object.values(F.ARRANGE).some((v) => /se-l-/.test(v)));
+  ok('전부 «보이는» 컨텍스트 툴바를 쓴다',
+     Object.values(F.ARRANGE).every((v) => v.startsWith('.se-context-toolbar-group-toggle-button')));
+  ok('extendAllImages 가 있다', typeof F.extendAllImages === 'function');
+  ok('setImageExtend 가 있다', typeof F.setImageExtend === 'function');
+}
+
+// ─────────────────────────────────────────────────────────────
+// 🔴 글꼴 — 마루부리 (2026-08-20)
+//   실측에서 «순서»와 «범위»가 전부 함정이었다. 셋 다 소스로 잠근다.
+// ─────────────────────────────────────────────────────────────
+console.log('\n[글꼴] 마루부리');
+{
+  const F = require('./naver-fill.js');
+  const NF2 = require('../../../shared/naver-format/naver-format.js');
+  const src = require('fs').readFileSync(path.join(__dirname, 'naver-fill.js'), 'utf8');
+
+  ok('글꼴 이름을 «정본»에서 읽는다 (여기 박지 않는다)',
+     /NF\.FONT_FAMILY/.test(src) && !/'nanummaruburi'/.test(src),
+     NF2.FONT_FAMILY);
+  ok('선택자가 data-value 로 고른다', /data-value="\$\{code\}"/.test(F.FONT_OPT('x')) === false
+     && F.FONT_OPT('x').includes('[data-name="font-family"][data-value="x"]'), F.FONT_OPT('x'));
+
+  // 🔴 ① 순서 — 글꼴은 «맨 마지막». 채우는 중에는 전체 선택이 안 잡힌다(실측: 33곳 + 제목이 남았다).
+  const iRep = src.indexOf('await setRepImage(page, frame, parsed.thumbnailIndex)');
+  const iFont = src.indexOf('const fa = await applyFontToAll(page, frame, fontCode)');
+  const iRet = src.indexOf("status: okAll ? 'ready_to_register' : 'partial'");
+  ok('🔴 글꼴 적용이 «대표 이미지 뒤»에 있다', iRep > 0 && iFont > iRep, `rep@${iRep} font@${iFont}`);
+  ok('🔴 그리고 «반환 직전»이다', iFont > 0 && iRet > iFont, `font@${iFont} ret@${iRet}`);
+  // @AI:CONSTRAINT 「검증 전에 해야 깔끔하다」로 되돌리면 «적용 자체가 안 된다».
+  ok('🔴 판정도 그 자리에서 한다', /applyFontToAll[\s\S]{0,400}글꼴이 섞였습니다/.test(src));
+
+  // 🔴 ② 강제 — 선택 영역에 입히려면 이미 그 글꼴로 «보여도» 눌러야 한다
+  ok('🔴 전체 선택 패스는 force 로 누른다',
+     (src.match(/setFont\(page, frame, code, \{ force: true \}\)/g) || []).length >= 2);
+  ok('force 없이는 이미 골라진 것을 건너뛴다', /if \(already === true && !force\)/.test(src));
+
+  // 🔴 ③ 범위 — 세는 곳이 틀리면 «고칠 수 없는 문제»가 매번 뜬다
+  ok('🔴 본문과 제목칸만 센다 (body 전체를 세면 글꼴 드롭다운이 잡힌다)',
+     /\['\.se-content', '\.se-documentTitle'\]/.test(src));
+  ok('🔴 인용구는 «빼고» 센다 — 네이버가 그 안에서 글꼴 버튼을 감춘다',
+     /closest\('\.se-quotation'\)\) return;/.test(src));
+  ok('🔴 숨은 자리표시자는 «빼고» 센다 (「사진 설명을 입력하세요」·「출처 입력」)',
+     /offsetParent === null\) return;/.test(src) && /innerText \|\| ''\)\.trim\(\)\) return;/.test(src));
+  ok('🔴 인용구에 글꼴을 다시 걸려고 하지 «않는다»', !/se-quotation[\s\S]{0,200}setFont/.test(src));
+
+  ok('제목칸을 «따로» 건다 (본문 전체 선택이 안 닿는다)',
+     /se-documentTitle[\s\S]{0,600}setFont\(page, frame, code, \{ force: true \}\)/.test(src));
+}
+
+
 
 console.log('\n──────────────────────────────────────────────');
 console.log(fail === 0 ? `✅ ALL PASS  ${pass}/${pass + fail}` : `❌ FAIL  ${pass}/${pass + fail}`);

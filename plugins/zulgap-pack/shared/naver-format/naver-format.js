@@ -19,7 +19,62 @@ const TABLE_HEADER_FG = '#ffffff';         // 🔴 td 가 아니라 span 에 준
 //   사장님이 검수하시고 선을 넣기로 하셨다(2026-08-16). 그래서 여기서만 다르다 —
 //   기존 글과 모양이 갈리는 지점이니 되돌릴 때도 이 상수 하나만 보면 된다.
 const TABLE_BORDER = '1px solid #d5d5d5';
-const SPACER = '<p><br></p>';              // 문단 사이 여백. 기존 글은 문단의 56~61% 가 빈 문단
+const SPACER = '<p><br></p>';              // 여백 «한 칸»의 최소 단위 (빈 문단 하나)
+
+// @AI:INTENT 여백은 «몇 칸»이냐가 규칙이다 — 담당자가 손으로 칠 때 엔터를 몇 번 누르는지와 같다.
+//   2026-08-20 실무 확인: 문단↔문단은 «엔터 3번», 문단↔이미지는 «엔터 2번».
+//   그 전에는 어디든 한 칸이라, 손으로 친 글과 나란히 놓으면 빽빽해 보였다.
+// @AI:CONSTRAINT 이미지 옆이 «더 좁다». 반대로 넣지 말 것 — 이미지는 그 자체로 쉼이라
+//   위아래까지 벌리면 글이 토막나 보인다.
+// 🔴 글꼴 — 「마루부리」 (2026-08-20 실무 확인)
+// @AI:INTENT 에디터 기본값은 «나눔고딕»이라 그냥 두면 손으로 친 글과 서체가 갈린다.
+// @AI:CONSTRAINT 화면 이름(마루부리)이 아니라 «네이버 코드»(nanummaruburi)가 판정축이다 —
+//   글꼴 버튼의 data-value 이고, 본문에는 `se-ff-<코드>` 클래스로 박힌다. 둘이 같은 문자열이라
+//   고르는 것과 확인하는 것을 한 값으로 할 수 있다.
+const FONT_FAMILY = 'nanummaruburi';       // 마루부리
+const FONT_CLASS = `se-ff-${FONT_FAMILY}`; // 본문에 박히는 클래스
+
+const GAP_PARAGRAPH = 3;   // 문단 ↔ 문단 (소제목·표·구분선 사이도 같다)
+const GAP_IMAGE = 2;       // 문단 ↔ 이미지
+
+/** 여백 n 칸. */
+function spacers(n) { return new Array(Math.max(0, n)).fill(SPACER).join('\n'); }
+
+/**
+ * 조각 안의 여백을 «정규화»한다 — 원고가 빈 줄을 몇 개 넣었든 규칙대로 다시 센다.
+ *
+ * @AI:INTENT 여백을 «쌓기»로 만들면 원고에 따라 들쭉날쭉해진다(문단 뒤 1칸 + 원고 빈 줄 1칸 = 2칸).
+ *   그래서 만들 때는 한 칸만 넣어 두고, 여기서 «한 번에» 규칙대로 다시 센다. 결정론이 유지된다.
+ * @AI:CONSTRAINT 조각의 «양 끝»은 이웃이 정한다 — 앞뒤가 이미지면 GAP_IMAGE, 글의 처음/끝이면 0.
+ *   조각 «안»에서는 알 수 없어서(다음 조각을 모른다) 호출자가 알려 준다.
+ * @AI:CONSTRAINT 🔴 표 줄(<tr>·<td>) 사이는 «여백 자리가 아니다». 빈 문단이 끼면 표가 쪼개진다.
+ *   여기서는 SPACER 줄만 세므로 표 줄은 그대로 지나간다 — 그 성질을 깨는 수정을 하지 말 것.
+ *
+ * @param {string} html 조각 HTML
+ * @param {{before:string, after:string}} neighbors 'image' 면 그쪽에 이미지가 붙어 있다
+ */
+function normalizeGaps(html, { before = 'none', after = 'none' } = {}) {
+  const lines = String(html == null ? '' : html).split('\n');
+  const isSpacer = (l) => l.trim() === SPACER;
+
+  // ① 안쪽의 «연속» 여백을 GAP_PARAGRAPH 칸으로 다시 센다
+  const body = [];
+  let run = 0;
+  for (const l of lines) {
+    if (isSpacer(l)) { run += 1; continue; }
+    if (run > 0 && body.length) body.push(spacers(GAP_PARAGRAPH));
+    run = 0;
+    body.push(l);
+  }
+  // 끝에 남은 run 은 «조각 끝 여백»이라 ② 가 정한다 — 여기서 버린다
+
+  // ② 양 끝 — 이웃이 정한다
+  while (body.length && !body[0].trim()) body.shift();
+  while (body.length && !body[body.length - 1].trim()) body.pop();
+  const head = before === 'image' ? [spacers(GAP_IMAGE)] : [];
+  const tail = after === 'image' ? [spacers(GAP_IMAGE)] : [];
+  return [...head, ...body, ...tail].join('\n');
+}
 
 /**
  * 인라인 마크다운 → HTML.
@@ -53,12 +108,35 @@ function inline(s) {
  *   흡수된다(2026-08-16 실험). 반면 `<blockquote>` 는 se-quotation 컴포넌트가 되고,
  *   그것이 이 블로그가 소제목을 다루는 방식이다(발행글 4편 전부 사용 — CIF 10개·마케터가 5개).
  */
-function subheading(text) { return `<blockquote>${inline(text)}</blockquote>`; }
+function subheading(text) { return `<blockquote>${bold(text)}</blockquote>`; }
 
 /** 본문 인용 — 소제목과 «같은 태그지만 다른 의도». 원문 인용·의료 안내 등이 여기 온다. */
-function quote(text) { return `<blockquote>${inline(text)}</blockquote>`; }
+function quote(text) { return `<blockquote>${bold(text)}</blockquote>`; }
 
-/** 문단. 뒤에 여백 한 칸을 붙인다 — 이 블로그 글은 여백으로 숨을 쉰다. */
+/**
+ * 인용구 «안»은 굵게 (2026-08-20 실무 확인).
+ *
+ * @AI:INTENT 담당자가 손으로 칠 때 인용구 문장을 굵게 친다. 안 하면 소제목이 본문과
+ *   같은 굵기라 눈에 안 띈다 — 인용구는 이 블로그에서 «소제목 자리»다.
+ * @AI:CONSTRAINT 🔴 subheading 과 quote «둘 다»에 건다. 네이버에서는 두 함수가 같은
+ *   컴포넌트(se-quotation)로 나가므로, 한쪽만 굵게 하면 같은 모양의 인용구끼리 굵기가 갈린다.
+ *   본문 인용(의료 안내·기관 인용)만 빼고 싶어지면 여기를 나누면 된다 — 한 자리에 모아 둔 이유다.
+ * @AI:CONSTRAINT 이미 굵게가 걸린 문장은 «겹치지 않는다». `**A**` 를 `<b><b>A</b></b>` 로
+ *   만들면 네이버가 별표째 남기거나 태그를 뭉갠다.
+ */
+function bold(text) {
+  const html = inline(text);
+  if (!html.trim()) return html;
+  // 줄 «전체»가 이미 굵게면 그대로 둔다 (겹침 방지)
+  if (/^<b>[\s\S]*<\/b>$/.test(html.trim())) return html;
+  return `<b>${html}</b>`;
+}
+
+/**
+ * 문단. 뒤에 여백을 «한 칸» 붙인다.
+ * @AI:CONSTRAINT 여기서 «몇 칸»인지 정하지 않는다 — 실제 칸 수는 normalizeGaps 가 조각 단위로
+ *   다시 센다. 여기서 칸을 늘리면 원고의 빈 줄과 합쳐져 들쭉날쭉해진다.
+ */
 function paragraph(text, { spacer = true } = {}) {
   return spacer ? `<p>${inline(text)}</p>\n${SPACER}` : `<p>${inline(text)}</p>`;
 }
@@ -151,7 +229,9 @@ function createTableCollector() {
 }
 
 module.exports = {
-  inline, subheading, quote, paragraph, divider, list, emphasis,
+  inline, bold, subheading, quote, paragraph, divider, list, emphasis,
   table, tableCell, tableWantsHeader, createTableCollector,
-  TABLE_HEADER_BG, TABLE_HEADER_FG, TABLE_BORDER, SPACER,
+  spacers, normalizeGaps,
+  TABLE_HEADER_BG, TABLE_HEADER_FG, TABLE_BORDER, SPACER, GAP_PARAGRAPH, GAP_IMAGE,
+  FONT_FAMILY, FONT_CLASS,
 };

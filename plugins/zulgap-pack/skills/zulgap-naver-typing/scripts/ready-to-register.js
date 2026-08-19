@@ -16,6 +16,7 @@
  *   node ready-to-register.js --front 1                        # 1번 창을 앞으로 가져온다
  */
 
+const fs = require('fs');
 const path = require('path');
 const SK = path.join(__dirname, '..');
 
@@ -137,12 +138,36 @@ async function readWindow(page, mod) {
 // 실행
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * 열려 있는 세션의 CDP 포트를 잠금파일에서 읽는다.
+ * @AI:CONSTRAINT 프로필키를 안 주면 «살아 있는 것이 하나뿐일 때만» 답한다 —
+ *   여러 계정 창이 떠 있는데 아무거나 고르면 «남의 블로그»를 검사하고 통과시킨다.
+ */
+function sessionPort(profileKey) {
+  try {
+    const cs = require(path.join(SK, 'scripts/chrome-session.js'));
+    if (profileKey) {
+      const o = cs.readOwner(profileKey);
+      return o && o.port ? String(o.port) : null;
+    }
+    const dirs = fs.readdirSync(cs.PROFILES_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory()).map((d) => d.name);
+    const live = dirs.map((k) => cs.readOwner(k)).filter((o) => o && o.port);
+    return live.length === 1 ? String(live[0].port) : null;
+  } catch { return null; }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const argOf = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
   const expectCategory = argOf('--category');
   const front = argOf('--front');
-  const port = argOf('--port') || '9223';
+  // 🔴 포트를 «고정값으로 짐작하지 않는다» (2026-08-20)
+  // @AI:INTENT chrome-session 은 9222 부터 «빈 포트를 찾아» 쓰고 그 번호를 잠금파일에 적어 둔다.
+  //   여기 기본값이 9223 으로 박혀 있어, 정상적으로 9222 를 잡은 세션에는 붙지 못하고
+  //   ECONNREFUSED 로 죽었다 — 사람이 매번 `--port` 를 손으로 붙여야 했다.
+  // @AI:CONSTRAINT 잠금파일이 정본이다. 못 읽었을 때만 9222(=PORT_BASE)로 떨어진다.
+  const port = argOf('--port') || sessionPort(argOf('--profile')) || '9222';
 
   const { chromium } = require(path.join(SK, 'node_modules', 'playwright-core'));
   const mod = {
