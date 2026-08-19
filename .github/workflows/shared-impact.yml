@@ -1,0 +1,61 @@
+name: shared-impact-gate
+
+# 목적: "여러 곳이 함께 쓰는 것을 고치면 어디가 바뀌는지 적는다"를
+#       사람의 기억이 아니라 코드가 집행한다 (2026-08-20 사장님 확정).
+#
+# 왜 문서로는 안 되나 (실측):
+#   최근 3개월 `plugins/*/shared/` 변경 9건 중 「영향 범위」를 적은 것 **0건**.
+#   작성자는 레포 주인 8건 + 팀원 1건 — 규칙을 만든 쪽도 안 적었다.
+#   실사고(PR #239): 한 채널 서식을 고치려고 공유 포맷 규칙을 바꿨는데 스킬 5개가 함께 바뀌었고,
+#   자동검사는 전부 초록이었다(consistency 는 SKILL.md 만 본다).
+#
+# 🔴 파일을 분리한 이유 — `check-plugin-consistency.js` 는 팀원에게
+#    *"로컬에서 돌려 exit=0 이면 통과"* 로 공표된 스크립트다. 거기에 git·PR 본문 의존을 섞으면
+#    로컬에서 조용히 skip 되어 그 문장이 거짓이 된다. `skill-ownership.yml` 과 같은 이유·같은 구조.
+#
+# 🔴 fetch-depth: 0 이 필수다.
+#    actions/checkout 기본값은 shallow(depth 1) 라 base...head 3점 diff 가 성립하지 않는다.
+#
+# 🔴 pull_request_review 트리거를 넣지 않는다.
+#    이 게이트의 통과 조건은 «PR 본문 수정»이지 승인이 아니다. 본문을 고치면
+#    `edited` 이벤트로 다시 돈다 — 승인으로는 풀 수 없는 것이 의도다.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  shared-impact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # base...head 3점 diff 에 전체 이력이 필요하다 (위 주석 참조)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 공유 영향 게이트
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # @AI:CONSTRAINT 본문을 인자로 넘기지 말 것 — 한글·따옴표·백틱이 셸에서 깨진다.
+          #   env 로 넘기면 값 그대로 프로세스에 들어간다(pr-notify.yml 이 파일 경유를 쓰는 것과 같은 이유).
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -o pipefail
+          if node scripts/check-shared-impact.js; then
+            echo ""
+            echo "✅ 공유 영향 확인 완료."
+          else
+            echo ""
+            echo "::error::여러 곳이 함께 쓰는 것을 고쳤습니다. 위 목록을 PR 본문 「영향 범위」에 적어 주세요."
+            echo "  막는 것이 아니라 '어디가 바뀌는지 적어 달라'는 뜻입니다 — 본문을 고치면 자동으로 다시 돕니다."
+            exit 1
+          fi
