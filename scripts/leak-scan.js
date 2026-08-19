@@ -18,6 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const BASELINE = path.join(__dirname, '_leak-baseline.json');
@@ -61,12 +62,45 @@ function isDummy(s) {
   return '01234567890123456789'.includes(d);        // 1234567890 · 234567890 …
 }
 
-function walk(dir, out = []) {
+/**
+ * git 이 «무시하는» 파일 집합. 이 스크립트의 목적은 «커밋되면 공개되는 것»을 막는 것이므로,
+ * 애초에 커밋될 수 없는 파일은 대상이 아니다.
+ *
+ * @AI:INTENT 실사고(2026-08-19): `zulgap-naver-typing` 을 한 번 돌린 PC 에 크롬 프로필이 생기는데
+ *   그 폴더는 스킬의 `.gitignore` 로 **이미 2026-08-17(#215)부터 막혀 있었다.** 그런데 이 스캐너가
+ *   워킹트리를 그대로 훑어 **83건**을 잡았고, 그 결과 그 스킬을 쓴 사람은 «로컬 게이트를 영원히
+ *   못 돌리게» 됐다 — `zulgap-make-skill` Phase 3 이 그 PC 에서 통째로 죽는다.
+ *   **위험은 0인데 게이트만 죽어 있었다**(파일은 커밋될 수 없으므로 공개될 수 없다).
+ * @AI:CONSTRAINT 🔴 `SKIP_DIR` 에 폴더 이름을 하나씩 더하지 말 것 — 그러면 `.gitignore` 와
+ *   두 벌 장부가 되어 언젠가 어긋나고, 어긋난 것을 아무도 모른다. 무시 규칙의 SSOT 는 `.gitignore` 다.
+ * @AI:CONSTRAINT «추적 중인» 파일은 ignore 패턴에 걸려도 검사한다 — 이미 git 에 들어 있으면
+ *   커밋되기 때문이다(`--others` 가 그 구분이다). 여기서 빼는 것은 «추적되지 않으면서 무시되는» 것뿐이다.
+ */
+function gitIgnoredSet() {
+  try {
+    const out = execFileSync('git', ['ls-files', '--others', '--ignored', '--exclude-standard', '-z'], {
+      cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+    });
+    return new Set(out.split('\0').filter(Boolean));
+  } catch {
+    // git 이 없거나 레포가 아니면 «전부 검사» 로 떨어진다 — 안전측(놓치는 것보다 낫다).
+    return new Set();
+  }
+}
+
+function walk(dir, ignored, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, e.name);
     if (SKIP_DIR.test(full)) continue;
-    if (e.isDirectory()) { walk(full, out); continue; }
+    const rel = path.relative(ROOT, full).replace(/\\/g, '/');
+    if (e.isDirectory()) {
+      // git 은 «디렉토리»가 통째로 무시되면 그 안 파일을 하나씩 나열하지 않고 폴더만 준다.
+      if (ignored.has(`${rel}/`)) continue;
+      walk(full, ignored, out);
+      continue;
+    }
     if (SKIP_EXT.test(e.name)) continue;
+    if (ignored.has(rel)) continue;
     out.push(full);
   }
   return out;
@@ -78,9 +112,12 @@ function walk(dir, out = []) {
  */
 function scan(only) {
   const found = {};
+  const ignored = gitIgnoredSet();
   const targets = only
+    // @AI:CONSTRAINT 훅이 넘기는 목록은 «스테이징된 것»이라 정의상 무시 대상이 아니다 —
+    //   여기서 ignored 를 다시 빼면 사람이 `git add -f` 로 강제 추가한 파일을 놓친다.
     ? only.map((f) => path.join(ROOT, f)).filter((f) => fs.existsSync(f) && !SKIP_EXT.test(f) && !SKIP_DIR.test(f))
-    : walk(ROOT);
+    : walk(ROOT, ignored);
   for (const full of targets) {
     let raw;
     try { raw = fs.readFileSync(full, 'utf8'); } catch { continue; }

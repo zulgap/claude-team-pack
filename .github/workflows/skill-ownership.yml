@@ -28,6 +28,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  actions: write        # 승인 후 «옛 실패 기록»을 지우는 데 필요하다 (아래 마지막 스텝 참조)
 
 jobs:
   ownership:
@@ -107,3 +108,41 @@ jobs:
             echo "::warning::팀챗 알림 실패 — ${OWNERS} 에게 직접 알려주세요."
             printf '%s' "$RESP" | head -c 300
           fi
+
+      # @AI:INTENT 승인을 받아 초록이 됐는데도 «머지가 안 풀리는» 문제를 없앤다.
+      #   실사고(2026-08-19 PR #239): 소유자 승인 → 이 게이트 재실행 → SUCCESS 인데
+      #   머지 상태가 계속 BLOCKED 였다. 원인은 **같은 커밋에 결과가 둘**이라는 것 —
+      #   처음 열었을 때의 FAILURE(pull_request) 와 승인 후의 SUCCESS(pull_request_review) 가
+      #   함께 남아, 브랜치 보호가 옛 실패를 계속 본다(실측: head_sha 98f378cd 에 둘 다 존재).
+      #   위 주석의 *"승인이 등록되면 자동으로 다시 돌아 초록이 된다"* 는 **초록까지만 맞고
+      #   차단 해제는 안 됐다.** 그날은 빈 커밋을 하나 밀어 잔상을 지웠지만, 그건 사람이 매번 해야 한다.
+      # @AI:CONSTRAINT 🔴 «통과했을 때만» 지운다 — 실패 상태에서 지우면 증거 인멸이다.
+      #   `success()` 가 그 잠금이고, 조건을 넓히지 말 것.
+      # @AI:CONSTRAINT 지우는 대상은 **같은 커밋(head_sha)·같은 워크플로우·conclusion=failure** 뿐이다.
+      #   다른 커밋의 이력은 그 커밋의 판정 근거라 남긴다. 자기 자신(run_id)도 제외한다.
+      # 🔑 사라지는 로그는 「승인 전이라 실패」라는 자명한 내용이고, 지금 SUCCESS 가 그 자리를 대신한다.
+      - name: 승인 후 옛 실패 기록 정리
+        if: success() && github.event_name == 'pull_request_review'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          SELF: ${{ github.run_id }}
+        run: |
+          set -o pipefail
+          STALE=$(gh api "repos/${TARGET_REPO}/actions/workflows/skill-ownership.yml/runs?head_sha=${SHA}&per_page=100" \
+            --jq ".workflow_runs[] | select(.conclusion==\"failure\") | select(.id != ${SELF}) | .id") || STALE=''
+          if [ -z "$STALE" ]; then
+            echo "정리할 옛 실패 기록 없음 — 이 커밋의 첫 판정입니다."
+            exit 0
+          fi
+          for id in $STALE; do
+            if gh api -X DELETE "repos/${TARGET_REPO}/actions/runs/${id}" >/dev/null 2>&1; then
+              echo "옛 실패 기록 삭제 — run ${id} (승인 전 판정)"
+            else
+              # @AI:CONSTRAINT 정리 실패가 게이트 판정을 뒤집지 않는다 — 승인은 이미 확인됐다.
+              #   여기서 죽으면 통과한 PR 이 실패로 보인다.
+              echo "::warning::run ${id} 삭제 실패 — 머지가 안 풀리면 빈 커밋을 하나 밀어 주세요."
+            fi
+          done
