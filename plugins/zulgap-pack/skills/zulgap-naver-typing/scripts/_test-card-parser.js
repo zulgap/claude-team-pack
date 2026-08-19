@@ -92,8 +92,9 @@ console.log('\n[5] 서식 보존');
 const allHtml = P.blocks.filter(b => b.kind === 'html').map(b => b.html).join('\n');
 // 🔴 2026-08-16 계약 변경 — 포맷을 공용 정본(shared/naver-format)에 맡기면서 바뀐 것.
 //   네이버에서 <h2> 는 «컴포넌트가 되지 않고» 앞 문단에 흡수된다. 소제목은 인용구다.
+// 🔴 2026-08-20 계약 변경 — 인용구 «안»은 굵게 (담당자가 손으로 칠 때 그렇게 친다)
 ok('🔴 소제목이 인용구로 (h2 아님)',
-   allHtml.includes('<blockquote>은행은 서류만 봅니다</blockquote>') && !allHtml.includes('<h2'));
+   allHtml.includes('<blockquote><b>은행은 서류만 봅니다</b></blockquote>') && !allHtml.includes('<h2'));
 ok('굵게 유지', allHtml.includes('<b>은행이 보는 것이 물건이 아니기 때문</b>'));
 ok('표 구조는 유지', allHtml.includes('<table header-row="true">'));
 ok('🔴 표 머리 행에 색 (header-row 속성은 네이버가 무시한다)',
@@ -125,10 +126,13 @@ ${'그 아래 본문입니다. '.repeat(10)}
 **마무리**
 ${'끝 문단입니다. '.repeat(10)}`);
 const bHtml = BOLD.blocks.filter(b => b.kind === 'html').map(b => b.html).join('\n');
-ok('줄 전체 볼드 → 인용구', bHtml.includes('<blockquote>실제 숫자를 열어봤습니다</blockquote>'));
-ok('짧은 것도 인용구', bHtml.includes('<blockquote>마무리</blockquote>'));
-ok('🔴 문장 «일부» 볼드는 소제목이 아니다', !bHtml.includes('<blockquote>강조</blockquote>') && bHtml.includes('<b>강조</b>'));
-ok('🔴 볼드로 시작해도 뒤에 말이 붙으면 문단', !bHtml.includes('<blockquote>은행이 보는 것이 물건이 아니기 때문</blockquote>'));
+ok('줄 전체 볼드 → 인용구', bHtml.includes('<blockquote><b>실제 숫자를 열어봤습니다</b></blockquote>'));
+ok('짧은 것도 인용구', bHtml.includes('<blockquote><b>마무리</b></blockquote>'));
+// @AI:CONSTRAINT 인용구가 굵어진 뒤로는 «굵게가 있나»로 가르면 안 된다 — 판정축은 blockquote 다
+ok('🔴 문장 «일부» 볼드는 소제목이 아니다',
+   !/<blockquote>(<b>)?강조/.test(bHtml) && bHtml.includes('<b>강조</b>'));
+ok('🔴 볼드로 시작해도 뒤에 말이 붙으면 문단',
+   !/<blockquote>(<b>)?은행이 보는 것이 물건이 아니기 때문/.test(bHtml));
 ok('  └ 그 줄은 굵게로 남는다', bHtml.includes('<b>은행이 보는 것이 물건이 아니기 때문</b>'));
 const bq = (bHtml.match(/<blockquote>/g) || []).length;
 ok(`인용구가 정확히 2개 (${bq})`, bq === 2);

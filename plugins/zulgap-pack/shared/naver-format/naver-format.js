@@ -100,10 +100,29 @@ function inline(s) {
  *   흡수된다(2026-08-16 실험). 반면 `<blockquote>` 는 se-quotation 컴포넌트가 되고,
  *   그것이 이 블로그가 소제목을 다루는 방식이다(발행글 4편 전부 사용 — CIF 10개·마케터가 5개).
  */
-function subheading(text) { return `<blockquote>${inline(text)}</blockquote>`; }
+function subheading(text) { return `<blockquote>${bold(text)}</blockquote>`; }
 
 /** 본문 인용 — 소제목과 «같은 태그지만 다른 의도». 원문 인용·의료 안내 등이 여기 온다. */
-function quote(text) { return `<blockquote>${inline(text)}</blockquote>`; }
+function quote(text) { return `<blockquote>${bold(text)}</blockquote>`; }
+
+/**
+ * 인용구 «안»은 굵게 (2026-08-20 실무 확인).
+ *
+ * @AI:INTENT 담당자가 손으로 칠 때 인용구 문장을 굵게 친다. 안 하면 소제목이 본문과
+ *   같은 굵기라 눈에 안 띈다 — 인용구는 이 블로그에서 «소제목 자리»다.
+ * @AI:CONSTRAINT 🔴 subheading 과 quote «둘 다»에 건다. 네이버에서는 두 함수가 같은
+ *   컴포넌트(se-quotation)로 나가므로, 한쪽만 굵게 하면 같은 모양의 인용구끼리 굵기가 갈린다.
+ *   본문 인용(의료 안내·기관 인용)만 빼고 싶어지면 여기를 나누면 된다 — 한 자리에 모아 둔 이유다.
+ * @AI:CONSTRAINT 이미 굵게가 걸린 문장은 «겹치지 않는다». `**A**` 를 `<b><b>A</b></b>` 로
+ *   만들면 네이버가 별표째 남기거나 태그를 뭉갠다.
+ */
+function bold(text) {
+  const html = inline(text);
+  if (!html.trim()) return html;
+  // 줄 «전체»가 이미 굵게면 그대로 둔다 (겹침 방지)
+  if (/^<b>[\s\S]*<\/b>$/.test(html.trim())) return html;
+  return `<b>${html}</b>`;
+}
 
 /**
  * 문단. 뒤에 여백을 «한 칸» 붙인다.
@@ -202,7 +221,7 @@ function createTableCollector() {
 }
 
 module.exports = {
-  inline, subheading, quote, paragraph, divider, list, emphasis,
+  inline, bold, subheading, quote, paragraph, divider, list, emphasis,
   table, tableCell, tableWantsHeader, createTableCollector,
   spacers, normalizeGaps,
   TABLE_HEADER_BG, TABLE_HEADER_FG, TABLE_BORDER, SPACER, GAP_PARAGRAPH, GAP_IMAGE,

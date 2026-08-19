@@ -17,9 +17,26 @@ ok('우리가 만든 태그는 안 깨진다', F.inline('**<b>**').includes('<b>
 ok('빈값 안전', F.inline(null) === '' && F.inline(undefined) === '');
 
 console.log('\n[2] 소제목 — 🔴 h2 가 아니라 인용구');
-ok('blockquote 로 나온다', F.subheading('먼저 갈리는 자리') === '<blockquote>먼저 갈리는 자리</blockquote>');
+ok('blockquote 로 나온다', F.subheading('먼저 갈리는 자리') === '<blockquote><b>먼저 갈리는 자리</b></blockquote>',
+   F.subheading('먼저 갈리는 자리'));
 ok('h2 를 만들지 않는다', !F.subheading('제목').includes('<h2'));
 ok('소제목 안 마크다운도 푼다', F.subheading('**꼭** 보세요').includes('<b>꼭</b>'));
+
+// 🔴 인용구 «안»은 굵게 (2026-08-20 실무 확인)
+//   인용구는 이 블로그에서 소제목 자리다 — 굵기가 없으면 본문과 구별이 안 된다.
+ok('🔴 소제목이 굵게 나온다', /^<blockquote><b>.+<\/b><\/blockquote>$/.test(F.subheading('소제목')),
+   F.subheading('소제목'));
+ok('🔴 본문 인용도 «같이» 굵게 — 네이버에서 같은 컴포넌트다',
+   /^<blockquote><b>.+<\/b><\/blockquote>$/.test(F.quote('기관 인용입니다')), F.quote('기관 인용입니다'));
+// @AI:CONSTRAINT 겹쳐 걸면 네이버가 별표째 남기거나 태그를 뭉갠다
+ok('🔴 이미 굵은 줄에 «겹쳐 걸지» 않는다',
+   F.subheading('**이미 굵음**') === '<blockquote><b>이미 굵음</b></blockquote>',
+   F.subheading('**이미 굵음**'));
+ok('문장 «일부»만 굵은 줄은 통째로 감싼다',
+   F.subheading('**앞부분**만 굵다') === '<blockquote><b><b>앞부분</b>만 굵다</b></blockquote>',
+   F.subheading('**앞부분**만 굵다'));
+ok('빈 인용구는 안 감싼다', F.bold('') === '' && F.subheading('') === '<blockquote></blockquote>',
+   F.subheading(''));
 
 console.log('\n[3] 여백 — 이 블로그 글은 여백으로 숨을 쉰다 (기존 글 빈 문단 56~61%)');
 const p = F.paragraph('본문입니다');
@@ -142,6 +159,7 @@ if (!fs.existsSync(docPath)) {
   ok('문서가 옆트임을 명시', /옆트임/.test(doc) && /se-object-arrangement-extend/.test(doc));
   ok('🔴 문서가 «클래스로 판정하지 말라»를 명시', /se-l-default/.test(doc));
   ok('문서가 blockquote 를 소제목으로 명시', /blockquote/.test(doc) && /소제목/.test(doc));
+  ok('문서가 «인용구 안 굵게»를 명시', /인용구 안/.test(doc) && /굵게/.test(doc));
   ok('문서가 h2 금지를 명시', /h2/.test(doc));
 }
 
