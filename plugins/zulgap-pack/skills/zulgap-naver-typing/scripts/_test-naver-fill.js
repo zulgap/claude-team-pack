@@ -105,7 +105,16 @@ console.log('\n[10] 🔴 대표 지정은 «검증 뒤»에 온다 — 그림이
   const iVerify = src.indexOf('const verdict = verifyFilled(');
   const iRep = src.indexOf('await setRepImage(page, frame, parsed.thumbnailIndex)');
   ok('🔴 setRepImage 호출이 verifyFilled «뒤»에 있다', iVerify > 0 && iRep > iVerify, `verify@${iVerify} rep@${iRep}`);
-  ok('🔴 verdict 가 깨끗할 때만 세운다', /verdict\.length === 0/.test(src.slice(iVerify, iRep + 200)));
+  // 🔴 2026-08-20 계약 변경 — 게이트 축이 «verdict 전체» → «이미지 개수» 로 좁혀졌다.
+  // @AI:INTENT 그 뒤로 verdict 에 이미지와 무관한 판정(굵게 번짐·글꼴 섞임)이 들어왔다.
+  //   그러자 글꼴 하나가 어긋났다고 «대표 이미지까지» 안 세워져, 검색결과 얼굴이 본문 첫
+  //   도식으로 나갈 뻔했다(실측). 이 조건이 막으려던 것은 «그림이 덜 들어간 상태에서 번호를
+  //   세는 것» 하나뿐이라, 축을 이미지로 좁혀 둔다.
+  // @AI:CONSTRAINT 🔴 verdict.length === 0 으로 되돌리지 말 것 — 판정을 하나 더할 때마다
+  //   얼굴이 조용히 빠진다. 새 판정은 얼굴과 무관하다.
+  const gate = src.slice(iVerify, iRep + 200);
+  ok('🔴 «이미지가 다 들어갔나»로만 게이트한다', /imagesOk/.test(gate), gate.slice(0, 120));
+  ok('🔴 verdict 전체로 게이트하지 «않는다»', !/verdict\.length === 0/.test(gate));
 }
 
 console.log('\n[11] 🔴 취소선이 그어졌으면 «막는다» (2026-08-16 실사고 — 사장님이 화면에서 발견)');
@@ -214,6 +223,50 @@ console.log('\n[옆트임] 이미지 폭');
   ok('extendAllImages 가 있다', typeof F.extendAllImages === 'function');
   ok('setImageExtend 가 있다', typeof F.setImageExtend === 'function');
 }
+
+// ─────────────────────────────────────────────────────────────
+// 🔴 글꼴 — 마루부리 (2026-08-20)
+//   실측에서 «순서»와 «범위»가 전부 함정이었다. 셋 다 소스로 잠근다.
+// ─────────────────────────────────────────────────────────────
+console.log('\n[글꼴] 마루부리');
+{
+  const F = require('./naver-fill.js');
+  const NF2 = require('../../../shared/naver-format/naver-format.js');
+  const src = require('fs').readFileSync(path.join(__dirname, 'naver-fill.js'), 'utf8');
+
+  ok('글꼴 이름을 «정본»에서 읽는다 (여기 박지 않는다)',
+     /NF\.FONT_FAMILY/.test(src) && !/'nanummaruburi'/.test(src),
+     NF2.FONT_FAMILY);
+  ok('선택자가 data-value 로 고른다', /data-value="\$\{code\}"/.test(F.FONT_OPT('x')) === false
+     && F.FONT_OPT('x').includes('[data-name="font-family"][data-value="x"]'), F.FONT_OPT('x'));
+
+  // 🔴 ① 순서 — 글꼴은 «맨 마지막». 채우는 중에는 전체 선택이 안 잡힌다(실측: 33곳 + 제목이 남았다).
+  const iRep = src.indexOf('await setRepImage(page, frame, parsed.thumbnailIndex)');
+  const iFont = src.indexOf('const fa = await applyFontToAll(page, frame, fontCode)');
+  const iRet = src.indexOf("status: okAll ? 'ready_to_register' : 'partial'");
+  ok('🔴 글꼴 적용이 «대표 이미지 뒤»에 있다', iRep > 0 && iFont > iRep, `rep@${iRep} font@${iFont}`);
+  ok('🔴 그리고 «반환 직전»이다', iFont > 0 && iRet > iFont, `font@${iFont} ret@${iRet}`);
+  // @AI:CONSTRAINT 「검증 전에 해야 깔끔하다」로 되돌리면 «적용 자체가 안 된다».
+  ok('🔴 판정도 그 자리에서 한다', /applyFontToAll[\s\S]{0,400}글꼴이 섞였습니다/.test(src));
+
+  // 🔴 ② 강제 — 선택 영역에 입히려면 이미 그 글꼴로 «보여도» 눌러야 한다
+  ok('🔴 전체 선택 패스는 force 로 누른다',
+     (src.match(/setFont\(page, frame, code, \{ force: true \}\)/g) || []).length >= 2);
+  ok('force 없이는 이미 골라진 것을 건너뛴다', /if \(already === true && !force\)/.test(src));
+
+  // 🔴 ③ 범위 — 세는 곳이 틀리면 «고칠 수 없는 문제»가 매번 뜬다
+  ok('🔴 본문과 제목칸만 센다 (body 전체를 세면 글꼴 드롭다운이 잡힌다)',
+     /\['\.se-content', '\.se-documentTitle'\]/.test(src));
+  ok('🔴 인용구는 «빼고» 센다 — 네이버가 그 안에서 글꼴 버튼을 감춘다',
+     /closest\('\.se-quotation'\)\) return;/.test(src));
+  ok('🔴 숨은 자리표시자는 «빼고» 센다 (「사진 설명을 입력하세요」·「출처 입력」)',
+     /offsetParent === null\) return;/.test(src) && /innerText \|\| ''\)\.trim\(\)\) return;/.test(src));
+  ok('🔴 인용구에 글꼴을 다시 걸려고 하지 «않는다»', !/se-quotation[\s\S]{0,200}setFont/.test(src));
+
+  ok('제목칸을 «따로» 건다 (본문 전체 선택이 안 닿는다)',
+     /se-documentTitle[\s\S]{0,600}setFont\(page, frame, code, \{ force: true \}\)/.test(src));
+}
+
 
 
 console.log('\n──────────────────────────────────────────────');

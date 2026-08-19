@@ -26,6 +26,14 @@ const SPACER = '<p><br></p>';              // 여백 «한 칸»의 최소 단�
 //   그 전에는 어디든 한 칸이라, 손으로 친 글과 나란히 놓으면 빽빽해 보였다.
 // @AI:CONSTRAINT 이미지 옆이 «더 좁다». 반대로 넣지 말 것 — 이미지는 그 자체로 쉼이라
 //   위아래까지 벌리면 글이 토막나 보인다.
+// 🔴 글꼴 — 「마루부리」 (2026-08-20 실무 확인)
+// @AI:INTENT 에디터 기본값은 «나눔고딕»이라 그냥 두면 손으로 친 글과 서체가 갈린다.
+// @AI:CONSTRAINT 화면 이름(마루부리)이 아니라 «네이버 코드»(nanummaruburi)가 판정축이다 —
+//   글꼴 버튼의 data-value 이고, 본문에는 `se-ff-<코드>` 클래스로 박힌다. 둘이 같은 문자열이라
+//   고르는 것과 확인하는 것을 한 값으로 할 수 있다.
+const FONT_FAMILY = 'nanummaruburi';       // 마루부리
+const FONT_CLASS = `se-ff-${FONT_FAMILY}`; // 본문에 박히는 클래스
+
 const GAP_PARAGRAPH = 3;   // 문단 ↔ 문단 (소제목·표·구분선 사이도 같다)
 const GAP_IMAGE = 2;       // 문단 ↔ 이미지
 
@@ -225,4 +233,5 @@ module.exports = {
   table, tableCell, tableWantsHeader, createTableCollector,
   spacers, normalizeGaps,
   TABLE_HEADER_BG, TABLE_HEADER_FG, TABLE_BORDER, SPACER, GAP_PARAGRAPH, GAP_IMAGE,
+  FONT_FAMILY, FONT_CLASS,
 };

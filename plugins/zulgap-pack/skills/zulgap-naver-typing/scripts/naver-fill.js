@@ -15,6 +15,8 @@
 
 const fs = require('fs');
 const path = require('path');
+// 포맷 정본 — 글꼴 같은 «규칙»은 여기서 읽는다 (카드를 만드는 쪽과 같은 값)
+const NF = require(path.join(__dirname, '../../../shared/naver-format/naver-format.js'));
 
 const BODY = '.se-content';
 const PARA = '.se-text-paragraph';
@@ -256,6 +258,147 @@ async function clearFormatting(page, frame) {
     (after === false ? turnedOff : stillOn).push(name);
   }
   return { turnedOff, stillOn };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 글꼴 — 「마루부리」 (2026-08-20)
+// ─────────────────────────────────────────────────────────────
+// @AI:INTENT 에디터 기본값은 «나눔고딕»이다. 그냥 두면 담당자가 손으로 친 글과 서체가 갈린다.
+// @AI:CONSTRAINT 어떤 글꼴인지는 «포맷 정본»(naver-format)이 안다 — 여기서 이름을 박지 말 것.
+//   카드를 만드는 쪽과 올리는 쪽이 같은 값을 봐야 한다.
+// @AI:CONSTRAINT 🔴 «붙여넣기 전»에 골라야 한다. 뒤에 고르면 이미 들어간 글자는 안 바뀐다
+//   (선택 영역이 없으면 토글은 «다음에 칠 글자»에만 걸린다).
+const FONT_BTN = '.se-font-family-toolbar-button';
+const FONT_OPT = (code) => `[data-name="font-family"][data-value="${code}"]`;
+
+/**
+ * 글꼴을 고른다.
+ * @AI:CONSTRAINT 「눌렀다」로 끝내지 않는다 — 고른 «뒤» aria-current 를 다시 읽어 확인한다.
+ *   드롭다운은 토글이라 이미 열려 있을 때 또 누르면 «닫힌다»(카테고리에서 겪은 것과 같은 함정).
+ */
+async function setFont(page, frame, code, { force = false } = {}) {
+  // @AI:CONSTRAINT 🔴 force 를 «선택 영역이 있을 때» 반드시 켠다.
+  //   aria-current 는 «다음에 칠 글자»의 상태다. 선택한 글자에 입히려면 이미 그 글꼴로
+  //   보이더라도 «실제로 눌러야» 한다. 2026-08-20 실측: 이 조기 반환 때문에 전체 선택 패스가
+  //   통째로 건너뛰어져 46곳과 제목이 나눔고딕으로 남았다 — 그런데 결과는 ok 였다.
+  const already = await frame.evaluate((sel) => {
+    const o = document.querySelector(sel);
+    return o ? o.getAttribute('aria-current') === 'true' : null;
+  }, FONT_OPT(code));
+  if (already === true && !force) return { ok: true, code, already: true };
+
+  const opened = await frame.evaluate((sel) => {
+    const o = document.querySelector(sel);
+    return !!(o && o.offsetParent !== null);
+  }, FONT_OPT(code));
+  if (!opened) {
+    const btn = frame.locator(`${FONT_BTN}:visible`).first();
+    if (!(await btn.count())) return { ok: false, code, reason: 'NO_BUTTON' };
+    await btn.click({ timeout: 8000 });
+    await page.waitForTimeout(500);
+  }
+
+  const opt = frame.locator(`${FONT_OPT(code)}:visible`).first();
+  if (!(await opt.count())) return { ok: false, code, reason: 'NOT_FOUND' };
+  await opt.click({ timeout: 8000 });
+  await page.waitForTimeout(500);
+
+  const after = await frame.evaluate((sel) => {
+    const o = document.querySelector(sel);
+    return o ? o.getAttribute('aria-current') === 'true' : null;
+  }, FONT_OPT(code));
+  return after === true ? { ok: true, code, already: false } : { ok: false, code, reason: 'NOT_APPLIED' };
+}
+
+/**
+ * 채우기가 «끝난 뒤» 글 전체를 골라 글꼴을 입힌다.
+ *
+ * @AI:INTENT 미리 고르는 것(①-c)만으로는 부족하다 — 실측(2026-08-20): 264곳 중 218곳만
+ *   마루부리가 되고 46곳과 «제목칸»이 나눔고딕으로 남았다. 글꼴은 커서 자리의 성질이라
+ *   이미지 업로드를 지나며 기본값으로 되돌아가는 자리가 생긴다.
+ * @AI:CONSTRAINT 그래서 «전체 선택»으로 한 번 더 입힌다. 선택 영역이 있으면 글꼴은
+ *   그 영역에 통째로 걸리므로 표·인용구 안까지 닿는다.
+ * @AI:CONSTRAINT 🔴 제목칸은 «본문과 다른 편집 영역»이다 — 본문에서 전체 선택해도 안 닿는다.
+ *   따로 눌러서 따로 걸어야 한다(실측: 제목만 나눔고딕으로 남았다).
+ * @AI:CONSTRAINT 미리 고르는 것을 «없애지 말 것» — 없애면 붙는 동안 내내 다른 서체로 보이고,
+ *   중간에 실패하면 통째로 남의 서체인 글이 남는다.
+ */
+async function applyFontToAll(page, frame, code, { tries = 3 } = {}) {
+  const want = `se-ff-${code}`;
+  const out = { body: null, title: null, rounds: 0 };
+  const mixed = async () => {
+    const f = await readFonts(frame);
+    return Object.keys(f).filter((k) => k !== want);
+  };
+
+  // ① 본문 — 전체 선택해서 입힌다 (🔴 표 셀은 이 길로만 닿는다)
+  for (let i = 0; i < tries; i += 1) {
+    if (!(await mixed()).length) { out.body = { ok: true }; break; }
+    out.rounds += 1;
+    await withPopupGuard(page, frame, () => cursorToEnd(page, frame));
+    await page.keyboard.press('Control+A');
+    await page.waitForTimeout(400);
+    out.body = await setFont(page, frame, code, { force: true });
+    await page.waitForTimeout(700);
+  }
+
+  // ② 인용구는 «건드릴 수 없다» — 네이버가 막아 둔 자리다 (2026-08-20 실측)
+  // @AI:INTENT 인용구 안에 커서를 두면 «글꼴 버튼이 화면에서 사라진다»(라벨 null · 클릭 불가).
+  //   즉 서체를 못 바꾸는 게 아니라 «바꾸지 못하게 되어 있다». 인용구는 제 서체(나눔명조)가 고정이다.
+  // @AI:CONSTRAINT 🔴 여기에 「인용구도 마루부리로」 코드를 다시 넣지 말 것 —
+  //   클릭·전체선택·강제누르기 다 해 봤고 20개 전부 실패했다. 되는 길이 없다.
+  //   대신 readFonts 가 인용구를 «세지 않는다» — 세면 영원히 「섞였다」가 나온다.
+
+  // ③ 제목칸 — 🔴 «본문과 다른 편집 영역»이라 전체 선택이 안 닿는다. 따로 눌러 따로 건다.
+  const t = frame.locator('.se-documentTitle .se-text-paragraph, .se-title-text .se-text-paragraph').first();
+  if (await t.count()) {
+    for (let i = 0; i < tries; i += 1) {
+      const now = await frame.evaluate(() => {
+        const el = document.querySelector('.se-documentTitle [class*="se-ff-"]');
+        return el ? [...el.classList].find((c) => c.startsWith('se-ff-')) : null;
+      });
+      if (now === null || now === want) { out.title = { ok: true }; break; }
+      await withPopupGuard(page, frame, () => t.click({ timeout: 10000 }));
+      await page.waitForTimeout(400);
+      await page.keyboard.press('Control+A');
+      await page.waitForTimeout(400);
+      out.title = await setFont(page, frame, code, { force: true });
+      await page.waitForTimeout(700);
+    }
+  }
+
+  // 선택을 풀고 커서를 본문 끝으로 (다음 단계가 선택 영역을 물고 가지 않게)
+  await withPopupGuard(page, frame, () => cursorToEnd(page, frame));
+  return out;
+}
+
+/**
+ * 글에 «다른 글꼴»이 섞였나 — 화면 클래스로 센다.
+ *
+ * @AI:CONSTRAINT 🔴 범위는 «글이 있는 두 곳»뿐이다 — 본문(.se-content)과 제목칸.
+ *   body 전체를 보면 «글꼴 드롭다운»이 잡힌다. 그 메뉴의 항목들은 각자 제 서체로 그려져 있어서
+ *   (나눔스퀘어·바른히피·우리딸손글씨…) 글이 완벽해도 «섞였다»가 나온다(2026-08-20 실측).
+ * @AI:CONSTRAINT 🔴 «보이고 글자가 있는 것»만 센다. 지워지지 않는 자리표시자가 있다 —
+ *   이미지의 「사진 설명을 입력하세요」, 인용구의 「출처 입력」. 우리가 쓴 글이 아닌데
+ *   그냥 세면 영원히 「섞였다」가 나온다(실측 35곳).
+ * @AI:CONSTRAINT 🔴 인용구(se-quotation)는 «빼고» 센다 — 네이버가 그 안에서 글꼴 버튼을
+ *   아예 감춘다(2026-08-20 실측: 커서를 넣으면 버튼이 사라져 클릭조차 못 한다).
+ *   바꿀 수 없는 것을 세면 «고칠 수 없는 문제»가 매번 뜬다.
+ */
+async function readFonts(frame) {
+  return frame.evaluate((roots) => {
+    const out = {};
+    roots.forEach((sel) => {
+      document.querySelectorAll(`${sel} [class*="se-ff-"]`).forEach((el) => {
+        if (el.offsetParent === null) return;               // 숨은 것 = 자리표시자
+        if (!(el.innerText || '').trim()) return;           // 빈 것 = 자리표시자
+        if (el.closest('.se-quotation')) return;            // 인용구 = 서체를 못 바꾸는 자리
+        [...el.classList].filter((x) => x.startsWith('se-ff-'))
+          .forEach((x) => { out[x] = (out[x] || 0) + 1; });
+      });
+    });
+    return out;
+  }, ['.se-content', '.se-documentTitle']);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -600,6 +743,15 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   if (fmt.turnedOff.length) notes.push(`켜져 있던 서식을 껐습니다: ${fmt.turnedOff.join(', ')}`);
   if (fmt.stillOn.length) problems.push(`서식이 안 꺼집니다: ${fmt.stillOn.join(', ')} (이대로 채우면 글 전체가 그 서식을 먹습니다)`);
 
+  // ①-c 글꼴 — 🔴 «붙여넣기 전»에 골라야 이미 들어간 글자가 안 남는다 (2026-08-20)
+  const fontCode = opts.font || NF.FONT_FAMILY;
+  if (fontCode) {
+    // @AI:CONSTRAINT 여기서 실패해도 «막지 않는다» — ⑤-c 가 전체 선택으로 다시 입히고,
+    //   최종 판정은 «화면 클래스 개수»가 한다. 여기서 막으면 되살릴 수 있는 글이 버려진다.
+    const fr = await setFont(page, frame, fontCode);
+    notes.push(fr.ok ? `글꼴 ${fontCode} (미리 고름)` : `글꼴 미리 고르기 실패 (${fr.reason}) — 채운 뒤 다시 겁니다`);
+  }
+
   // ② 이미지 미리 받기 — 중간에 받으면 실패 시 반쪽 글이 남는다
   const files = await downloadImages(parsed.blocks, imageDir);
   const failed = files.filter((f) => !f.ok);
@@ -710,7 +862,14 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
   // @AI:CONSTRAINT 썸네일이 «없는» 카드(엔노블·검단가온)는 건드리지 않는다 — 네이버 기본이 맞다.
   let rep = null;
   const hasThumb = parsed.thumbnailIndex !== null && parsed.thumbnailIndex !== undefined;
-  if (hasThumb && verdict.length === 0) {
+  // 🔴 게이트는 «이미지가 다 들어갔나»만 본다 (2026-08-20 고침)
+  // @AI:INTENT 원래는 verdict 가 «비었을 때»만 세웠는데, 그 뒤로 verdict 에 이미지와 무관한
+  //   판정(굵게 번짐·글꼴 섞임)이 들어왔다. 그러자 글꼴 하나가 어긋났다고 «대표 이미지까지»
+  //   안 세워져, 검색결과 얼굴이 본문 첫 도식으로 나갈 뻔했다(2026-08-20 실측).
+  // @AI:CONSTRAINT 이 조건이 막으려던 것은 «그림이 덜 들어간 상태에서 번호를 세는 것» 하나다.
+  //   새 판정을 verdict 에 더할 때 이 게이트가 같이 조여지지 않게, 축을 이미지로 좁혀 둔다.
+  const imagesOk = ((end.slots || 0) - ((start && start.slots) || 0)) === parsed.images;
+  if (hasThumb && imagesOk) {
     rep = await setRepImage(page, frame, parsed.thumbnailIndex);
     if (rep.ok) {
       notes.push(`대표 이미지 = 썸네일(${parsed.thumbnailIndex + 1}번째)${rep.already ? ' — 이미 지정돼 있었습니다' : ''}`);
@@ -722,6 +881,26 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
     await page.waitForTimeout(400);
   } else if (hasThumb) {
     problems.push('그림이 덜 들어가 대표 이미지를 세우지 않았습니다 (틀린 얼굴로 나가는 것보다 안전합니다)');
+  }
+
+  // ⑦ 글꼴 — 🔴 «맨 마지막»에 입힌다 (2026-08-20 실측)
+  // @AI:INTENT 채우는 «중»에 전체 선택을 걸면 안 먹는다. 이미지 업로드·옆트임으로 에디터가
+  //   바쁜 동안에는 선택이 잡히지 않아, 표와 제목이 나눔고딕으로 남았다(33곳 + 제목).
+  //   똑같은 코드를 «정리된 화면»에 돌리면 한 번에 들어간다 — 그래서 순서를 맨 끝으로 옮겼다.
+  // @AI:CONSTRAINT 🔴 이 블록을 위로 되돌리지 말 것. 「검증 전에 해야 깔끔하다」는 생각이
+  //   자연스럽지만, 그러면 «적용 자체가 안 된다». 판정도 여기서 같이 한다.
+  // @AI:CONSTRAINT 미리 고르기(①-c)는 그대로 둔다 — 붙는 동안 화면이 남의 서체로 보이지 않게 한다.
+  if (fontCode) {
+    await page.waitForTimeout(1200);                   // 에디터가 가라앉기를 기다린다
+    const fa = await applyFontToAll(page, frame, fontCode);
+    const fonts = await readFonts(frame);
+    const wrong = Object.entries(fonts).filter(([k]) => k !== `se-ff-${fontCode}`);
+    if (wrong.length) {
+      problems.push(`글꼴이 섞였습니다 — ${wrong.map(([k, n]) => `${k} ${n}곳`).join(' / ')} ` +
+        `(원하는 것은 se-ff-${fontCode})`);
+    } else {
+      notes.push(`글꼴 ${fontCode}${fa.rounds ? ` (${fa.rounds}번째에 들어감)` : ''}`);
+    }
   }
 
   const okAll = problems.length === 0;
@@ -818,4 +997,5 @@ module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadO
                    downloadImages, describeImageFailure, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard,
                    clearFormatting, FORMAT_TOGGLES, clearCaretFormatting, CARET_TOGGLES, countBoldChars,
                    selectImage, setImageExtend, extendAllImages, ARRANGE, IMAGE_EATS_LINES,
+                   setFont, applyFontToAll, readFonts, FONT_BTN, FONT_OPT,
                    readRepImage, setRepImage, REP_BTN, REP_ON, IMG_COMPONENT, BODY, PARA };

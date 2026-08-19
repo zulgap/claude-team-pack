@@ -92,6 +92,13 @@ const c2 = F.createTableCollector();
 ok('표 밖 줄은 무시', c2.feed('<p>문단</p>') === null && c2.isOpen === false);
 ok('여는 줄만 넣으면 아직 안 닫힘', c2.feed('<table>') === null && c2.isOpen === true);
 
+console.log('\n[9-c] 🔴 글꼴 — 마루부리 (2026-08-20)');
+{
+  ok('글꼴 코드가 마루부리다', F.FONT_FAMILY === 'nanummaruburi', F.FONT_FAMILY);
+  // @AI:CONSTRAINT 코드가 곧 클래스다 — 고르는 값과 확인하는 값이 같아야 «골랐다≠들어갔다»를 잰다
+  ok('클래스는 코드에서 나온다', F.FONT_CLASS === `se-ff-${F.FONT_FAMILY}`, F.FONT_CLASS);
+}
+
 console.log('\n[9-b] 🔴 여백 칸 수 — 문단 3칸 / 이미지 2칸 (2026-08-20)');
 {
   const S = F.SPACER;
@@ -160,6 +167,8 @@ if (!fs.existsSync(docPath)) {
   ok('🔴 문서가 «클래스로 판정하지 말라»를 명시', /se-l-default/.test(doc));
   ok('문서가 blockquote 를 소제목으로 명시', /blockquote/.test(doc) && /소제목/.test(doc));
   ok('문서가 «인용구 안 굵게»를 명시', /인용구 안/.test(doc) && /굵게/.test(doc));
+  ok('글꼴 코드가 문서와 같다', doc.includes(F.FONT_FAMILY), `코드=${F.FONT_FAMILY}`);
+  ok('🔴 문서가 «인용구는 글꼴을 못 바꾼다»를 명시', /인용구 안에서는 네이버가 글꼴 버튼/.test(doc));
   ok('문서가 h2 금지를 명시', /h2/.test(doc));
 }
 
