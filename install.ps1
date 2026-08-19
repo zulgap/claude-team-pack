@@ -268,7 +268,8 @@ try {
     $s | Add-Member -NotePropertyName extraKnownMarketplaces -NotePropertyValue ([pscustomobject]@{}) -Force
   }
 # @AI:INTENT autoUpdate=true -> Claude Code 시작 시 마켓플레이스(스킬) 자동 pull. 직원 zip 재설치 불필요.
-  $mp = [pscustomobject]@{ source = [pscustomobject]@{ source = "github"; repo = "zulgap/claude-team-pack" }; autoUpdate = $true }
+  # @AI:INTENT 🔴 마켓플레이스는 «새» 공개 레포(jedi-pack), 배관 raw 는 «옛» 레포 — install.sh 의 같은 주석 참조.
+  $mp = [pscustomobject]@{ source = [pscustomobject]@{ source = "github"; repo = "zulgap/jedi-pack" }; autoUpdate = $true }
   $s.extraKnownMarketplaces | Add-Member -NotePropertyName 'zulgap-team-pack' -NotePropertyValue $mp -Force
   if (-not ($s.PSObject.Properties.Name -contains 'enabledPlugins') -or $null -eq $s.enabledPlugins) {
     $s | Add-Member -NotePropertyName enabledPlugins -NotePropertyValue ([pscustomobject]@{}) -Force
@@ -404,7 +405,7 @@ try {
     Write-Host ("  [경고] $label 실패 — " + $(if ($t) { ($t -split "`n")[0] } else { "종료코드 $LASTEXITCODE" })) -ForegroundColor DarkYellow
     Write-Host "         레포가 private 이면 인증이 필요합니다: gh auth login" -ForegroundColor DarkYellow
   }
-  $mpOut = & $claudeCmd plugin marketplace add zulgap/claude-team-pack 2>&1
+  $mpOut = & $claudeCmd plugin marketplace add zulgap/jedi-pack 2>&1
   Show-MpFailure '마켓플레이스 등록' $mpOut
   # @AI:INTENT add는 이미 등록된 마켓의 카탈로그를 새로 받지 않는다 - 낡은 카탈로그로 install하면 구 sha가 박힌다.
   $mpOut = & $claudeCmd plugin marketplace update zulgap-team-pack 2>&1
@@ -447,7 +448,7 @@ try {
   Write-Host "[경고] 플러그인 자동 등록 실패 - 사장님께 화면을 보내주세요." -ForegroundColor Red
   # @AI:INTENT 일반 안내만 찍으면 원인 미상(직원 화면만으론 진단 불가) -> 실제 예외 메시지 1줄 노출.
   Write-Host ("  (원인: " + $_.Exception.Message + ")") -ForegroundColor DarkYellow
-  Write-Host "  * claude 실행 후 폴백: /plugin marketplace add zulgap/claude-team-pack -> /plugin install jedi-core@zulgap-team-pack, zulgap-pack@zulgap-team-pack (dev/master는 dev-pack@zulgap-team-pack 추가)" -ForegroundColor DarkYellow
+  Write-Host "  * claude 실행 후 폴백: /plugin marketplace add zulgap/jedi-pack -> /plugin install jedi-core@zulgap-team-pack, zulgap-pack@zulgap-team-pack (dev/master는 dev-pack@zulgap-team-pack 추가)" -ForegroundColor DarkYellow
 }
 
 # 7. 바탕화면 "줄갭 Claude" 바로가기 (더블클릭 -> claude 실행)

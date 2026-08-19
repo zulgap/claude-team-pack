@@ -238,7 +238,12 @@ if (fs.existsSync(p)) {
   try { s = JSON.parse(fs.readFileSync(p, 'utf8')) || {}; } catch (e) { console.error('settings.json parse failed: ' + e.message); process.exit(1); }
 }
 s.extraKnownMarketplaces = s.extraKnownMarketplaces || {};
-s.extraKnownMarketplaces['zulgap-team-pack'] = { source: { source: 'github', repo: 'zulgap/claude-team-pack' }, autoUpdate: true };
+# @AI:INTENT 마켓플레이스는 «새» 공개 레포(jedi-pack), 배관 raw 는 «옛» 레포다 — 갈린 이유가 있다.
+#   플러그인은 Claude Code 가 직접 clone 하는데 2.1.235 실측상 source 타입 'directory'·'git' 은
+#   설치가 거부되고 private 은 인증을 요구한다(고객은 GitHub 계정이 없다). 그래서 스킬만 담은
+#   공개 레포를 따로 두고, 고객사명·직원실명·이력이 든 이 레포는 닫는다. 배관(install.sh·훅)은
+#   서버 배달구가 자기 토큰으로 읽어 무인증으로 내주므로 이 레포가 닫혀도 산다.
+s.extraKnownMarketplaces['zulgap-team-pack'] = { source: { source: 'github', repo: 'zulgap/jedi-pack' }, autoUpdate: true };
 s.enabledPlugins = s.enabledPlugins || {};
 // v2.0 플러그인 3분리 — 신규 설치는 신 플러그인만 활성 (role 분기 = hook-doctor-v2.js와 동기 필수)
 // @AI:INTENT 켤 것·끌 것은 resolve-packs.js(3장부 공용 SSOT)가 정한다. 여기서는 **쓰기만** 한다.
@@ -331,7 +336,7 @@ if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMP
       warn "[warn] $1 실패 — $(printf '%s' "$3" | head -1)"
       warn "       레포가 private 이면 인증이 필요합니다: gh auth login"
     }
-    mp_out=$("$CLAUDE_BIN" plugin marketplace add zulgap/claude-team-pack 2>&1); mp_rc=$?
+    mp_out=$("$CLAUDE_BIN" plugin marketplace add zulgap/jedi-pack 2>&1); mp_rc=$?
     mp_report "marketplace add" "$mp_rc" "$mp_out"
     # @AI:INTENT add는 이미 등록된 마켓의 카탈로그를 새로 받지 않는다 — 낡은 카탈로그로 install하면 구 sha가 박힌다.
     mp_out=$("$CLAUDE_BIN" plugin marketplace update zulgap-team-pack 2>&1); mp_rc=$?
@@ -371,7 +376,7 @@ if SETTINGS_PATH="$CLAUDE_DIR/settings.json" HOOK_GUIDE="$HOOK_GUIDE" HOOK_PROMP
   fi
 else
   fail "[warn] plugin auto-register failed — after launching claude run:"
-  echo  "  /plugin marketplace add zulgap/claude-team-pack"
+  echo  "  /plugin marketplace add zulgap/jedi-pack"
   echo  "  /plugin install jedi-core@zulgap-team-pack"
 fi
 

@@ -319,7 +319,7 @@ for (const k of wantKeys) ep[k] = true;
 
 // 신 플러그인 '실물' 설치 — 이게 성공해야만 구 플러그인을 끌 수 있다.
 ensureGitHttps();
-try { execFileSync(claudeBin(), ['plugin', 'marketplace', 'add', 'zulgap/claude-team-pack'], { stdio: 'ignore', timeout: 60000 }); } catch (_) {}
+try { execFileSync(claudeBin(), ['plugin', 'marketplace', 'add', 'zulgap/jedi-pack'], { stdio: 'ignore', timeout: 60000 }); } catch (_) {}
 // @AI:INTENT add는 '이미 등록됨'이면 카탈로그를 새로 안 받는다 — 낡은 카탈로그로 install하면 구 sha가 박힌다.
 try { execFileSync(claudeBin(), ['plugin', 'marketplace', 'update', MP], { stdio: 'ignore', timeout: REFRESH_MP_TIMEOUT }); } catch (_) {}
 let installOk = true;
