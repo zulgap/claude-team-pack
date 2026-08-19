@@ -224,6 +224,9 @@ const FORMAT_TOGGLES = [
 ];
 const TOGGLE_ON = 'se-is-selected';
 
+// 이미지가 먹는 빈 문단 한 칸을 미리 채워 둔다 (위 ④ 루프 참조 — 실측 보정이다)
+const IMAGE_EATS_LINES = 1;
+
 // @AI:INTENT 조각을 붙이기 «직전»에 끄는 것들 — FORMAT_TOGGLES 와 «굵게 하나»가 다르다.
 //   왜 다른지는 clearCaretFormatting 의 주석에 있다. 두 목록을 합치지 말 것.
 const CARET_TOGGLES = [
@@ -633,6 +636,20 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
       imgSeq += 1;
       const f = files.find((x) => x.index === imgSeq);
       if (!f || !f.ok) { problems.push(`이미지 ${imgSeq} 건너뜀 (파일 없음)`); continue; }
+      // 🔴 이미지 삽입이 «맨 끝 빈 문단 하나를 먹는다» (2026-08-20 실측)
+      // @AI:INTENT 조각 끝에 여백 2칸을 보냈는데 화면에는 1칸만 남았다 — 이미지가 커서 자리의
+      //   빈 문단을 «자기 자리로 쓰기» 때문이다. 이미지 «뒤»(2칸)는 멀쩡하고 «앞»만 줄었다.
+      //   실측: 그림 6곳 전부 2 → 1. 예외 없다.
+      // @AI:CONSTRAINT 🔴 이 보정을 normalizeGaps 로 올리지 말 것. 저 함수는 «포맷 정본»이고
+      //   카드를 만드는 쪽도 본다 — 에디터가 한 칸 먹는 것은 «올리는 쪽»의 사정이다.
+      //   정본에 3칸을 적어 두면 카드 원고가 규칙과 어긋나게 된다.
+      // @AI:FRAGILE 🔴 «빈 문단 붙여넣기»로는 안 된다 — 이미 빈 문단인 자리에 흡수돼 아무 일도 안 난다
+      //   (2026-08-20 실측: 보정 전후 화면이 «완전히 동일»했다). 엔터 키만 실제로 문단을 늘린다.
+      await withPopupGuard(page, frame, () => cursorToEnd(page, frame));
+      for (let k = 0; k < IMAGE_EATS_LINES; k += 1) {
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(120);
+      }
       const r = await uploadImage(page, frame, f.file);
       // @AI:INTENT 여기서 problems 로 올리지 않는다 — 이 판정은 «개수 증가»라서 자주 오판이다
       //   (붙여넣기가 이전 이미지를 깨뜨리면 개수가 줄어 늘어난 것이 안 보인다).
@@ -800,5 +817,5 @@ function verifyFilled({ start, end, expected, uploaded, expectedBoldChars }) {
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
                    downloadImages, describeImageFailure, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard,
                    clearFormatting, FORMAT_TOGGLES, clearCaretFormatting, CARET_TOGGLES, countBoldChars,
-                   selectImage, setImageExtend, extendAllImages, ARRANGE,
+                   selectImage, setImageExtend, extendAllImages, ARRANGE, IMAGE_EATS_LINES,
                    readRepImage, setRepImage, REP_BTN, REP_ON, IMG_COMPONENT, BODY, PARA };

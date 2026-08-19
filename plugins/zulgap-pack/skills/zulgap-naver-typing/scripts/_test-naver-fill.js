@@ -180,6 +180,26 @@ console.log('\n[굵게] 조각 경계에서 번지는 것을 막는다');
 // 🔴 이미지 옆트임 (2026-08-20)
 //   판정축은 «선택 상태의 토글 + 폭». 컴포넌트 클래스는 세 설정 모두 se-l-default 로 같다.
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// 🔴 이미지가 «빈 문단 한 칸을 먹는다» (2026-08-20 실측)
+//   조각 끝에 2칸을 보냈는데 화면에는 1칸만 남았다. 이미지 «뒤»는 멀쩡하고 «앞»만 줄었다.
+//   보정 전/후 실측 (그림 7곳):  꼬리 1 → 꼬리 2
+// ─────────────────────────────────────────────────────────────
+console.log('\n[이미지 앞 여백] 에디터가 먹는 한 칸을 되돌린다');
+{
+  const F = require('./naver-fill.js');
+  const fs2 = require('fs');
+  const src = fs2.readFileSync(require('path').join(__dirname, 'naver-fill.js'), 'utf8');
+
+  ok('보정 칸수 상수가 1이다', F.IMAGE_EATS_LINES === 1, String(F.IMAGE_EATS_LINES));
+  // @AI:CONSTRAINT 🔴 «빈 문단 붙여넣기»로 되돌리지 말 것 — 이미 빈 문단인 자리에 흡수돼
+  //   아무 일도 안 난다(2026-08-20 실측: 보정 전후 화면이 완전히 동일했다). 엔터 키여야 한다.
+  ok('🔴 엔터 키로 늘린다 (붙여넣기가 아니다)',
+     /IMAGE_EATS_LINES[\s\S]{0,200}keyboard\.press\('Enter'\)/.test(src));
+  ok('이미지 «업로드 전»에 넣는다',
+     src.indexOf('IMAGE_EATS_LINES;') < src.indexOf('const r = await uploadImage'));
+}
+
 console.log('\n[옆트임] 이미지 폭');
 {
   const F = require('./naver-fill.js');
