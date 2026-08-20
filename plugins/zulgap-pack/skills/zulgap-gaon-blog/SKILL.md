@@ -1,11 +1,11 @@
 ---
 name: zulgap-gaon-blog
 description: 검단가온치과 네이버블로그 초안 1편을 정본 확인 → 개요 → 초안 → 규격 검수 → 링크 검증 → 근거 출처 → 시각물까지 만들어 콘텐츠마스터 카드를 「5. 초안작성완료」로 넘긴다. 발행은 하지 않는다. "/zulgap-gaon-blog", "검단가온 블로그 써줘", "가온 초안 작성해줘", "검단가온 N월 블로그", "가온 초안 검수해줘", "검단가온 교정 글 써줘" 라고 하면 이 스킬을 쓸 것. (제디 토큰 필요)
-version: 1.1.1
+version: 1.1.2
 origin: teampack
 tier: tenant-only
 extends: zulgap-blog
-parent-checksum: c7f0d7c4
+parent-checksum: 1c1b7221
 ---
 
 # 검단가온치과 블로그 초안 (네이버블로그)
