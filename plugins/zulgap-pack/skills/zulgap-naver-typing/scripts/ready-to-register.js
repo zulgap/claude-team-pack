@@ -51,7 +51,7 @@ function judgeRow(row, expect = {}) {
 
   if (!row.title) problems.push('제목이 비어 있습니다');
   if (!row.chars) problems.push('본문이 비어 있습니다');
-  if (!row.hasPublishBtn) problems.push('발행 버튼이 안 보입니다 (발행 패널이 닫혔을 수 있습니다)');
+  if (!row.hasPublishBtn && row.panelOpen) problems.push('발행 버튼이 안 보입니다');
 
   if (row.images_expected != null && row.slots !== row.images_expected) {
     problems.push(`그림 자리 ${row.slots}/${row.images_expected}`);
@@ -64,15 +64,23 @@ function judgeRow(row, expect = {}) {
     problems.push('대표 이미지가 지정돼 있지 않습니다 (검색결과에 얼굴이 안 뜹니다)');
   }
 
-  if (expect.category) {
+  if (expect.category && row.panelOpen) {
     if (!row.category) problems.push('카테고리를 읽지 못했습니다');
     else if (normalizeName(row.category) !== normalizeName(expect.category)) {
       problems.push(`카테고리가 "${row.category}" 입니다 (원한 것: "${expect.category}")`);
     }
   }
 
+  // 🔴 «못 읽은 것»과 «안 걸린 것»을 구별한다 (2026-08-20 실사고)
+  // @AI:INTENT 발행 패널이 닫혀 있으면 예약 입력칸이 DOM 에 없어 전부 빈값으로 읽힌다.
+  //   그 상태를 「예약 안 걸림」으로 말하면, 예약이 «멀쩡히 걸린» 글에 대고
+  //   「누르면 지금 나갑니다」라고 겁을 준다. 실제로 5편 전부 그렇게 나왔고,
+  //   그날의 판정 전체가 거짓 경보였다 — 이런 게 쌓이면 사람이 이 도구를 안 믿게 된다.
+  // @AI:CONSTRAINT 그렇다고 «통과»시키지도 않는다. 모르는 것은 모른다고 하고 막는다.
   const s = row.schedule;
-  if (!s || !s.reserved) {
+  if (!row.panelOpen) {
+    problems.push('발행 패널이 닫혀 있어 카테고리·예약을 읽지 못했습니다 (열고 다시 보세요)');
+  } else if (!s || !s.reserved) {
     problems.push('예약이 걸려 있지 않습니다 — 누르면 «지금» 나갑니다');
   } else {
     if (!s.date) problems.push('예약 날짜가 비어 있습니다');
@@ -100,6 +108,23 @@ async function readWindow(page, mod) {
     const t = document.querySelector('.se-documentTitle');
     return t ? (t.innerText || '').replace(/\s+/g, ' ').trim() : '';
   });
+
+  // 🔴 닫힌 패널은 «열고» 읽는다 (2026-08-20)
+  // @AI:INTENT 카테고리·예약 입력칸은 발행 패널 «안»에 있어서, 패널이 닫혀 있으면
+  //   DOM 에 아예 없다. 앞선 후처리(캡션·태그 등)가 패널을 닫아 두는 일이 흔하고,
+  //   그러면 멀쩡한 글 5편이 전부 「누르지 마세요」로 나왔다. 사람이 매번 손으로
+  //   5개 창을 열고 다시 돌리는 것은 이 도구가 없애려던 바로 그 수고다.
+  // @AI:CONSTRAINT 🔴 여는 것은 «패널»이지 «발행»이 아니다. openPublishPanel 은 글을
+  //   내보내지 않는다. 이 파일에서 눌러도 되는 버튼은 이것 하나뿐이다 —
+  //   패널 «안»의 발행 버튼은 절대 누르지 않는다(되돌릴 수 없다).
+  let panelOpenedByUs = false;
+  try {
+    if (!(await mod.cat.isPanelOpen(f))) {
+      await mod.cat.openPublishPanel(page, f);
+      await page.waitForTimeout(700);
+      panelOpenedByUs = await mod.cat.isPanelOpen(f);
+    }
+  } catch { /* 못 열면 아래 판정이 «닫혀 있다»로 막는다 */ }
 
   const panel = await f.evaluate(() => {
     const p = document.querySelector('[class*="layer_publish"]');
@@ -131,6 +156,7 @@ async function readWindow(page, mod) {
     page, title, chars: body.chars, slots: body.slots,
     category, schedule, rep,
     panelOpen: panel.open, hasPublishBtn: !!panel.hasPublishBtn, publishText: panel.publishText,
+    panelOpenedByUs,
   };
 }
 
@@ -225,7 +251,12 @@ async function main() {
     }
   }
 
-  console.log('\n🔴 아무 버튼도 누르지 않았습니다.');
+  // 🔴 마지막 줄은 «사실»이어야 한다 — 이 한 줄을 보고 사람이 안심한다.
+  //   패널을 연 것은 버튼을 누른 것이므로, 눌렀으면 눌렀다고 말한다.
+  const opened = sorted.filter((r) => r.panelOpenedByUs).length;
+  console.log(opened
+    ? `\n🔴 발행 버튼은 누르지 않았습니다. (읽으려고 발행 패널만 ${opened}개 열었습니다)`
+    : '\n🔴 아무 버튼도 누르지 않았습니다.');
   process.exit(bad === 0 ? 0 : 1);
 }
 

@@ -21,6 +21,7 @@ const 정상 = () => ({
   schedule: { reserved: true, date: '2026. 08. 17', hour: '19', minute: '20', at: '2026. 08. 17 19:20' },
   hasPublishBtn: true,
   rep: { index: 0, total: 11 },
+  panelOpen: true,   // 카테고리·예약은 발행 패널 «안»에서만 읽힌다
 });
 const 기대 = { category: '마미사_ai로 회사 굴립니다' };
 
@@ -108,6 +109,29 @@ console.log('\n[6] 대표 이미지');
 
   const r4 = 정상(); delete r4.rep;
   ok('  rep 를 못 읽었으면(구버전 모듈) 막지 않는다', judgeRow(r4, 기대).ok);
+}
+
+console.log('\n[7] 🔴 «못 읽은 것»과 «안 걸린 것»은 다르다 (2026-08-20 실사고)');
+{
+  // 후처리(캡션·태그·AI 표시)가 발행 패널을 닫아 두면 카테고리·예약 입력칸이 DOM 에서
+  // 사라진다. 그걸 「예약 안 걸림」으로 말하는 바람에, 예약이 «멀쩡히 걸린» 5편 전부가
+  // 「누르면 지금 나갑니다」로 나왔다. 사람이 패널을 열자 그대로 5편 전부 통과했다.
+  const 닫힘 = { ...정상(), panelOpen: false, hasPublishBtn: false, category: null,
+                 schedule: { reserved: false, date: '', hour: '', minute: '', at: '' } };
+  const v = judgeRow(닫힘, 기대);
+
+  ok('🔴 그래도 통과시키지는 «않는다»', !v.ok);
+  ok('🔴 «예약이 없다»고 말하지 않는다',
+     !v.problems.some((p) => /예약이 걸려 있지 않습니다/.test(p)), JSON.stringify(v.problems));
+  ok('패널이 닫혔다고 «정확히» 말한다',
+     v.problems.some((p) => /발행 패널이 닫혀 있어/.test(p)), JSON.stringify(v.problems));
+  ok('사유를 한 줄로 모은다 (겹쳐 쌓지 않는다)', v.problems.length === 1, JSON.stringify(v.problems));
+
+  // 패널이 열려 있는데 «진짜로» 예약이 없으면 예전 문구가 그대로 나와야 한다
+  const 진짜없음 = { ...정상(), schedule: { reserved: false, date: '', hour: '', minute: '', at: '' } };
+  const v2 = judgeRow(진짜없음, 기대);
+  ok('🔴 패널이 열렸는데 예약이 없으면 «지금 나갑니다»로 막는다',
+     !v2.ok && v2.problems.some((p) => /누르면 «지금» 나갑니다/.test(p)), JSON.stringify(v2.problems));
 }
 
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAIL'}  ${pass}/${pass + fail}\n`);
