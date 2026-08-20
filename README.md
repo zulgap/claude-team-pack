@@ -31,7 +31,7 @@
 
 ### (참고) 자동 등록이 안 됐을 때 — 수동 등록
 ```
-/plugin marketplace add zulgap/claude-team-pack
+/plugin marketplace add zulgap/jedi-pack
 /plugin install jedi-core@zulgap-team-pack
 /plugin install zulgap-pack@zulgap-team-pack
 /plugin install dev-pack@zulgap-team-pack   (개발자만)
