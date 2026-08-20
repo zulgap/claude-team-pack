@@ -625,6 +625,10 @@ const IMG_COMPONENT = '.se-content .se-component.se-image';
  * @AI:INTENT 「지정했다」를 믿지 않고 화면에서 다시 읽으려고 분리했다.
  * @returns {{index:number|null, total:number}} index 는 0부터. 대표가 없으면 null
  */
+// @AI:CONSTRAINT 🔴 `index: null` 을 «대표가 없다»로 단정하지 말 것 (2026-08-20).
+//   버튼이 아직 안 그려진 그림은 여기서 «안 보인다». 그래서 null 은
+//   「대표가 없다」와 「아직 못 읽었다」를 겹쳐서 뜻한다.
+//   setRepImage 는 이걸 알고 «누른 뒤 다시 읽어» 확인한다 — 판정을 이 함수에만 기대지 말 것.
 async function readRepImage(frame) {
   return frame.evaluate((s) => {
     const list = [...document.querySelectorAll(s.comp)];
@@ -653,14 +657,28 @@ async function setRepImage(page, frame, index = 0) {
   }
   if (before.index === index) return { ok: true, index, total: before.total, already: true };
 
-  const clicked = await frame.evaluate((s) => {
+  // 🔴 대표 버튼은 «그림을 고른 뒤에» 생긴다 (2026-08-20 실측)
+  // @AI:INTENT 에디터가 그림의 테두리 버튼을 미리 그려 두지 않는 때가 있다. 그러면
+  //   `.se-set-rep-image-button` 이 DOM 에 «아예 없어» NO_BUTTON 으로 끝났다.
+  //   댕묘 8/21 「고양이 구토 색깔」 편이 이 경우였고, 하필 그 그림이 «썸네일»이라
+  //   대표가 안 잡힌 채 남았다 — 검색결과 얼굴이 본문 첫 도식이 될 뻔했다.
+  // @AI:CONSTRAINT 캡션칸·AI 토글과 «같은 성질»이다. 없다고 판단하기 «전»에 한 번 고른다.
+  //   selectImage 가 화면 안으로 끌어오는 것까지 겸한다.
+  const clickRep = () => frame.evaluate((s) => {
     const c = [...document.querySelectorAll(s.comp)][s.i];
     const b = c && c.querySelector(s.btn);
     if (!b) return false;
     b.click();
     return true;
   }, { comp: IMG_COMPONENT, btn: REP_BTN, i: index });
-  if (!clicked) return { ok: false, code: 'NO_BUTTON', reason: `${index + 1}번째 그림에 대표 버튼이 없습니다` };
+
+  let clicked = await clickRep();
+  if (!clicked) {
+    try { await selectImage(page, frame, index); } catch { /* 못 골라도 아래에서 걸린다 */ }
+    await page.waitForTimeout(400);
+    clicked = await clickRep();
+  }
+  if (!clicked) return { ok: false, code: 'NO_BUTTON', reason: `${index + 1}번째 그림에 대표 버튼이 없습니다 (골라 봐도 안 나타납니다)` };
 
   await page.waitForTimeout(1200);
   const after = await readRepImage(frame);

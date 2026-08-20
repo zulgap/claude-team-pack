@@ -10,7 +10,7 @@
  *   → 판정축은 «이미지 자리 수(slots)»다. 표시 상태와 무관하게 늘기만 하므로 흔들리지 않는다.
  */
 const path = require('path');
-const { verifyFilled, describeImageFailure } = require(path.join(__dirname, 'naver-fill.js'));
+const { verifyFilled, describeImageFailure, setRepImage } = require(path.join(__dirname, 'naver-fill.js'));
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => {
@@ -317,6 +317,59 @@ console.log('\n[글꼴] 마루부리');
   ok('캡션은 채널이 켠 경우에만 돈다 (기본은 안 넣는다)', /if \(opts\.captions\)/.test(src2));
 }
 
-console.log('\n──────────────────────────────────────────────');
-console.log(fail === 0 ? `✅ ALL PASS  ${pass}/${pass + fail}` : `❌ FAIL  ${pass}/${pass + fail}`);
-process.exit(fail === 0 ? 0 : 1);
+// ─────────────────────────────
+// 대표 이미지 — 버튼이 «나중에» 생기는 경우 (2026-08-20 회귀)
+// @AI:INTENT 화면 없이 «흐름»만 본다. evaluate 는 정해 둔 값을 순서대로 돌려준다.
+//   여기서 지키는 것은 하나 — 버튼이 안 보인다고 «그냥 포기하지 않는 것».
+// ─────────────────────────────
+(async () => {
+  console.log('\n[대표 이미지] 버튼이 없으면 골라 보고 다시 누른다');
+
+  const 가짜 = (queue) => {
+    const 기록 = { evals: 0, 골랐나: false };
+    const frame = {
+      evaluate: async () => { 기록.evals += 1; return queue.shift(); },
+      locator: () => ({
+        nth: () => ({
+          scrollIntoViewIfNeeded: async () => { 기록.골랐나 = true; },
+          click: async () => { 기록.골랐나 = true; },
+        }),
+      }),
+    };
+    return { frame, page: { waitForTimeout: async () => {} }, 기록 };
+  };
+
+  // ① 버튼이 처음엔 없다 → 고른 뒤 두 번째에 눌린다
+  {
+    const { frame, page, 기록 } = 가짜([
+      { index: null, total: 11 },   // readRepImage(전)
+      false,                        // 첫 클릭 — 버튼이 DOM 에 없다
+      { width: 700 },               // selectImage 안의 읽기
+      true,                         // 고른 뒤 클릭 — 눌렸다
+      { index: 10, total: 11 },     // readRepImage(후)
+    ]);
+    const r = await setRepImage(page, frame, 10);
+    ok('🔴 버튼이 없어도 골라서 지정한다', r.ok === true && r.index === 10, JSON.stringify(r));
+    ok('실제로 한 번 골라 봤다', 기록.골랐나 === true);
+  }
+
+  // ② 골라 봐도 없으면 «조용히 넘기지 않는다»
+  {
+    const { frame, page } = 가짜([{ index: null, total: 11 }, false, { width: 700 }, false]);
+    const r = await setRepImage(page, frame, 10);
+    ok('끝내 없으면 NO_BUTTON 으로 멈춘다', r.ok === false && r.code === 'NO_BUTTON', JSON.stringify(r));
+    ok('왜인지 사람 말로 남는다', /골라 봐도/.test(r.reason || ''), r.reason);
+  }
+
+  // ③ 이미 대표면 «누르지 않는다» — 토글이라 누르면 풀린다
+  {
+    const { frame, page, 기록 } = 가짜([{ index: 10, total: 11 }]);
+    const r = await setRepImage(page, frame, 10);
+    ok('이미 대표면 손대지 않는다', r.ok === true && r.already === true, JSON.stringify(r));
+    ok('클릭 시도 자체가 없다', 기록.evals === 1, `${기록.evals}회`);
+  }
+
+  console.log('\n──────────────────────────────────────────────');
+  console.log(fail === 0 ? `✅ ALL PASS  ${pass}/${pass + fail}` : `❌ FAIL  ${pass}/${pass + fail}`);
+  process.exit(fail === 0 ? 0 : 1);
+})();
