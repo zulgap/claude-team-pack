@@ -172,8 +172,57 @@ const inline = NF.inline;
  * @returns {{title:string|null, blocks:Array, dropped:number, images:number}}
  *   blocks: [{kind:'html', html}, {kind:'image', url, caption}]
  */
+/**
+ * 원고 손질 — 붙이기 «전»에 두 가지를 바꾼다 (담당자 확정 2026-08-20).
+ *
+ * @AI:INTENT ① 본문 안 해시태그는 «태그칸»이 갖는다. 본문에 남기면 글 끝이 태그 목록으로 끝난다.
+ *   빼기만 하면 태그가 사라지므로 «돌려준다» — naver-fill 의 setTags 가 그걸 넣는다.
+ * @AI:INTENT ② 「참고 자료」는 1열 2행 표로 감싼다 — 1행 「참고자료」(굵게), 2행은 기호목록(왼쪽 정렬).
+ *   대상 블로그 발행글이 그 모양이고, 출처가 본문과 섞이지 않아 읽기 좋다.
+ * @AI:CONSTRAINT 표 셀 안 줄바꿈은 `<br>` 로 넣는다 — inline() 이 escape 하므로 나중에 되돌린다.
+ */
+function prepareBody(md) {
+  const lines = String(md == null ? '' : md).replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  const tags = [];
+  let i = 0;
+  while (i < lines.length) {
+    const ln = lines[i];
+
+    // 해시태그만 있는 줄 → 본문에서 빼고 태그로 돌려준다
+    if (/^\s*#[^\s#]+(\s+#[^\s#]+)+\s*$/.test(ln)) {
+      ln.trim().split(/\s+/).forEach((t) => tags.push(t.replace(/^#/, '')));
+      i += 1;
+      continue;
+    }
+
+    // 「참고 자료」 절 → 1열 2행 표
+    if (/^#{2,4}\s*참고\s*자료\s*$/.test(ln)) {
+      const items = [];
+      let k = i + 1;
+      while (k < lines.length && (/^\s*[-*]\s+/.test(lines[k]) || !lines[k].trim())) {
+        if (/^\s*[-*]\s+/.test(lines[k])) items.push(lines[k].replace(/^\s*[-*]\s+/, '').trim());
+        k += 1;
+      }
+      if (items.length) {
+        out.push('<table header-row="false">');
+        out.push('<tr>'); out.push('<td>참고자료</td>'); out.push('</tr>');
+        out.push('<tr>'); out.push('<td>' + items.map((x) => '• ' + x).join('<br>') + '</td>'); out.push('</tr>');
+        out.push('</table>');
+        i = k;
+        continue;
+      }
+    }
+    out.push(ln);
+    i += 1;
+  }
+  return { md: out.join('\n'), tags };
+}
 function parseCard(md) {
-  const all = String(md || '').replace(/\r\n/g, '\n').split('\n');
+  // 🔴 붙이기 전에 원고를 손질한다 — 해시태그 분리 · 참고자료 표 (2026-08-20)
+  const prepared = prepareBody(md);
+  const cardTags = prepared.tags;
+  const all = String(prepared.md || '').replace(/\r\n/g, '\n').split('\n');
   const cutRes = cutToBodyStart(all);
   // @AI:INTENT 순서가 중요하다 — «본문 시작» 헤딩을 먼저 보고, 그 뒤에 남은 것의 맨 앞을 본다.
   //   반대로 하면 마미사처럼 안내문이 머리말 «안»에 있는 구조에서 헛돈다(이미 잘려 있다).
@@ -274,8 +323,18 @@ function parseCard(md) {
     //   마미사·검단가온 카드는 후자다 — 그대로 두면 굵은 문단이 되어 네이버에서 밋밋하다.
     // @AI:FRAGILE 판정축은 «줄 전체»다. 본문 중간 강조는 문장 «일부»라(`**A**입니다.`)
     //   안 걸린다. 길이로 자르지 말 것 — 긴 소제목이 있고 짧은 강조 문장도 있다.
+    //
+    // @AI:CONSTRAINT 🔴 «안쪽에 `**` 가 또 있으면 소제목이 아니다» (2026-08-20 실측).
+    //   `$` 앵커 탓에 lazy 여부와 무관하게 «첫 `**` ~ 마지막 `**`» 가 통째로 걸린다.
+    //   그래서 굵게로 «시작해서» 굵게로 «끝나는» 평범한 문단이 —
+    //     `**주사기로 밀어 넣지 마세요.** 강제 급여는 … **나쁜 기억과 한 덩어리가 됩니다.**`
+    //   — 문단 하나가 통째로 인용구가 되어 나갔다(댕묘 8/21 5편 중 3편에서 발생).
+    //   증상이 «본문이 사라진 것»이 아니라 «소제목이 길어진 것»이라 검증도 눈도 안 걸렀고,
+    //   사람이 발행 직전에 발견했다. 안쪽 `**` 하나만 세면 갈린다.
     const boldOnly = line.match(/^\*\*(.+?)\*\*$/);
-    if (boldOnly) { flushList(); buf.push(NF.subheading(boldOnly[1])); buf.push(NF.SPACER); continue; }
+    if (boldOnly && !boldOnly[1].includes('**')) {
+      flushList(); buf.push(NF.subheading(boldOnly[1])); buf.push(NF.SPACER); continue;
+    }
 
     const li = line.match(/^\s*[-*]\s+(.+)$/);
     if (li) {
@@ -311,17 +370,19 @@ function parseCard(md) {
   //   파싱 루프 «안»에서는 다음 조각이 무엇인지 모른다 — 그래서 여기서, 앞뒤를 보고 정한다.
   // @AI:CONSTRAINT 규칙 자체는 naver-format 이 안다. 여기서 칸 수를 세지 말 것 —
   //   카드를 «만드는» 스킬도 같은 함수를 보므로, 숫자가 두 곳에 있으면 갈라진다.
-  for (let i = 0; i < blocks.length; i += 1) {
-    if (blocks[i].kind !== 'html') continue;
-    blocks[i].html = NF.normalizeGaps(blocks[i].html, {
-      before: blocks[i - 1] && blocks[i - 1].kind === 'image' ? 'image' : 'none',
-      after: blocks[i + 1] && blocks[i + 1].kind === 'image' ? 'image' : 'none',
-    });
-  }
-
+  // 🔴 여백은 «이웃 한 쌍»이 정한다 (naver-format 의 규칙표). 문장 나누기도 여기서 함께 일어난다.
+  // @AI:CONSTRAINT 칸 수를 여기서 세지 말 것 — 카드를 «만드는» 스킬도 같은 표를 본다.
+  const spaced = NF.applyGaps(blocks);
+  blocks.length = 0;
+  spaced.forEach((x) => blocks.push(x));
+  // 표 셀 — 가운데 정렬 · 16px · 1행 굵게 (참고자료 표의 2행은 왼쪽)
+  blocks.forEach((b) => {
+    if (b.kind === 'html') b.html = NF.styleTableCells(b.html).split('&lt;br&gt;').join('<br>');
+  });
   const images = blocks.filter((b) => b.kind === 'image').length;
   return {
     title,
+    tags: cardTags,
     blocks,
     dropped,
     images,

@@ -94,7 +94,11 @@ ok('여는 줄만 넣으면 아직 안 닫힘', c2.feed('<table>') === null && c
 
 console.log('\n[9-c] 🔴 글꼴 — 마루부리 (2026-08-20)');
 {
-  ok('글꼴 코드가 마루부리다', F.FONT_FAMILY === 'nanummaruburi', F.FONT_FAMILY);
+  // 🔴 2026-08-20 담당자 확정 — 서체를 «지정하지 않는다».
+  //   인용구·사진 설명은 네이버가 글꼴 변경을 막아 둔 자리라, 본문에 지정하면 그 둘만 남아
+  //   «영원히 섞인다». 비우면 글 전체가 블로그 기본 서체를 따른다.
+  ok('🔴 글꼴을 지정하지 않는다 (블로그 기본 서체)', F.FONT_FAMILY === '', JSON.stringify(F.FONT_FAMILY));
+  ok('비어 있으면 naver-fill 의 글꼴 단계가 통째로 꺼진다', !F.FONT_FAMILY);
   // @AI:CONSTRAINT 코드가 곧 클래스다 — 고르는 값과 확인하는 값이 같아야 «골랐다≠들어갔다»를 잰다
   ok('클래스는 코드에서 나온다', F.FONT_CLASS === `se-ff-${F.FONT_FAMILY}`, F.FONT_CLASS);
 }
@@ -193,6 +197,37 @@ console.log('\n[이스케이프] 노션이 붙인 백슬래시를 푼다');
 
   // @AI:CONSTRAINT «모든» 백슬래시를 지우면 본문이 망가진다 — 문장부호 앞만 푼다
   ok('🔴 경로의 백슬래시는 «안» 건드린다', t('C:\\Users 경로').includes('C:\\Users'), t('C:\\Users 경로'));
+}
+
+console.log('\n[여백 규칙표 · 문장 나누기 · 표 손질 — 2026-08-20 신설]');
+{
+  ok('규칙표가 쌍으로 되어 있다', Array.isArray(F.GAP_RULES) && F.GAP_RULES.length >= 20);
+  ok('본문 ↔ 표 2줄', F.gapBetween('text', 'table') === 2 && F.gapBetween('table', 'text') === 2);
+  ok('🔴 구분선 ↔ 이미지는 1줄 — 구분선↔본문(2줄)과 «다르다»',
+     F.gapBetween('hr', 'image') === 1 && F.gapBetween('hr', 'text') === 2);
+  ok('소제목 ↔ 본문 1줄', F.gapBetween('quoteLine', 'text') === 1);
+  ok('🔴 FAQ 질문 ↔ 답변은 «붙인다»(0줄)', F.gapBetween('quoteUnder', 'text') === 0);
+  ok('FAQ 답변 ↔ 다음 질문 2줄', F.gapBetween('text', 'quoteUnder') === 2);
+  ok('이미지 ↔ 소제목 3줄', F.gapBetween('image', 'quoteLine') === 3);
+  ok('🔴 표 «안»(tr·td)은 여백 자리가 아니다', F.gapBetween('table', 'table') === 0);
+  ok('없는 쌍은 문단↔문단과 같다', F.gapBetween('text', 'text') === F.GAP_PARAGRAPH);
+
+  // 문장 나누기 — 🔴 태그 안에서 자르면 <b> 가 깨진다
+  ok('문장마다 문단을 나눈다',
+     F.splitSentences('<p>가나 입니다. 다라 입니다.</p>').length === 2);
+  ok('🔴 굵게 «안»에서는 자르지 않는다',
+     F.splitSentences('<p><b>가나. 다라</b> 입니다.</p>').length === 1);
+  ok('숫자 소수점은 문장 끝이 아니다',
+     F.splitSentences('<p>값은 3.5 입니다.</p>').length === 1);
+  ok('한 문장이면 그대로', F.splitSentences('<p>하나뿐입니다.</p>').length === 1);
+
+  // 표 손질
+  const t1 = F.styleTableCells('<table header-row="true">\n<tr>\n<td>머리</td>\n</tr>\n<tr>\n<td>몸</td>\n</tr>\n</table>');
+  ok('표 셀은 가운데 정렬 · 16px', /text-align:center;font-size:16px/.test(t1));
+  ok('🔴 1행은 굵게', /<td[^>]*><b>머리<\/b><\/td>/.test(t1));
+  ok('2행은 굵지 않다', !/<td[^>]*><b>몸<\/b><\/td>/.test(t1));
+  const t2 = F.styleTableCells('<table header-row="false">\n<tr>\n<td>참고자료</td>\n</tr>\n<tr>\n<td>• 가</td>\n</tr>\n</table>');
+  ok('🔴 참고자료 표의 2행은 «왼쪽» 정렬 (목록이라 가운데면 읽기 나쁘다)', /text-align:left/.test(t2));
 }
 
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAIL'}  ${pass}/${pass + fail}\n`);
