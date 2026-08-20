@@ -31,7 +31,13 @@ const SPACER = '<p><br></p>';              // 여백 «한 칸»의 최소 단�
 // @AI:CONSTRAINT 화면 이름(마루부리)이 아니라 «네이버 코드»(nanummaruburi)가 판정축이다 —
 //   글꼴 버튼의 data-value 이고, 본문에는 `se-ff-<코드>` 클래스로 박힌다. 둘이 같은 문자열이라
 //   고르는 것과 확인하는 것을 한 값으로 할 수 있다.
-const FONT_FAMILY = 'nanummaruburi';       // 마루부리
+// 🔴 서체를 «지정하지 않는다» (담당자 확정 2026-08-20).
+// @AI:INTENT 인용구와 사진 설명은 네이버가 «글꼴 변경을 막아 둔» 자리다 — 커서를 넣으면
+//   글꼴 버튼이 DOM 에서 사라진다. 그래서 본문에 서체를 지정하면 그 둘만 남아 «영원히 섞인다».
+//   비워 두면 글 전체가 블로그 기본 서체를 따르고, 서체는 블로그 설정에서 사람이 정한다.
+// @AI:CONSTRAINT naver-fill 은 `if (fontCode)` 로 감싸 두었으므로, 비면 글꼴 단계가 통째로 꺼진다.
+//   채널이 굳이 지정해야 하면 preset_slots 의 `글꼴` 값을 opts.font 로 넘긴다.
+const FONT_FAMILY = '';                    // «지정 안 함» — 블로그 기본 서체
 const FONT_CLASS = `se-ff-${FONT_FAMILY}`; // 본문에 박히는 클래스
 
 const GAP_PARAGRAPH = 3;   // 문단 ↔ 문단 (소제목·표·구분선 사이도 같다)
@@ -228,10 +234,156 @@ function createTableCollector() {
   };
 }
 
+// ─────────────────────────────────────────────────────────────
+// 여백 — «이웃 한 쌍»이 정한다 (담당자 확정 2026-08-20)
+// ─────────────────────────────────────────────────────────────
+// @AI:INTENT 여백을 «조각 안»에서만 세면 이미지 앞뒤가 비어 버린다 — 조각의 양 끝 여백이
+//   후처리에서 지워져 이미지↔본문이 0줄이 된 적이 있다(2026-08-20 실측).
+//   그래서 이미지까지 포함해 «줄 단위»로 한 줄로 편 다음, 쌍마다 칸 수를 정한다.
+// @AI:CONSTRAINT 🔴 여기 있는 숫자가 유일한 정본이다. 카드를 «만드는» 스킬도 이 표를 본다 —
+//   숫자를 다른 곳에 다시 적으면 채널이 늘 때마다 갈라진다.
+//
+// 종류: text · table · hr · quoteLine(소제목) · quoteUnder(FAQ 질문) · quoteDefault(본문 인용구) · image
+const GAP_RULES = [
+  ['image', 'image', 2],
+  ['text', 'image', 2],     ['image', 'text', 2],
+  ['table', 'image', 2],    ['image', 'table', 2],
+  ['text', 'table', 2],     ['table', 'text', 2],
+  ['hr', 'text', 2],        ['text', 'hr', 2],
+  ['hr', 'image', 1],       ['image', 'hr', 1],
+  ['hr', 'quoteLine', 1],   ['quoteLine', 'hr', 1],
+  ['quoteLine', 'quoteUnder', 1],
+  ['image', 'quoteLine', 3], ['quoteLine', 'image', 3],
+  ['quoteLine', 'text', 1],
+  ['quoteUnder', 'text', 0],      // FAQ 질문 ↔ 답변 — 붙인다
+  ['text', 'quoteUnder', 2],      // FAQ 답변 ↔ 다음 질문
+  ['quoteDefault', 'text', 2],    // 본문 인용구 ↔ 본문
+  ['text', 'quoteDefault', 2],
+  ['table', 'table', 0],          // 표 «안»(tr·td)은 여백 자리가 아니다
+];
+
+/** 지시에 없는 쌍은 문단↔문단과 같게 둔다. 바꾸려면 GAP_RULES 에 한 줄만 더한다. */
+function gapBetween(a, b) {
+  const hit = GAP_RULES.find((r) => r[0] === a && r[1] === b);
+  return hit ? hit[2] : GAP_PARAGRAPH;
+}
+
+/** 한 줄이 무엇인지. 인용구는 FAQ 구간 여부와 data-q 로 셋으로 갈린다. */
+function lineKind(line, inFaq) {
+  const t = String(line == null ? '' : line).trim();
+  if (!t || t === SPACER) return null;
+  const tag = t.toLowerCase().replace('</', '<');
+  if (['<table', '<tr', '<td', '<th', '<tbody', '<thead'].some((x) => tag.startsWith(x))) return 'table';
+  // data-q 가 달린 것은 «본문 인용구» — 소제목과 여백 규칙이 다르다
+  if (t.startsWith('<blockquote') && t.includes('data-q=')) return 'quoteDefault';
+  if (t.startsWith('<blockquote')) return inFaq ? 'quoteUnder' : 'quoteLine';
+  if (t === '<hr>') return 'hr';
+  return 'text';
+}
+
+/** 「자주 묻는 것」부터 FAQ 구간 — 그 인용구 자신은 소제목이다. */
+const startsFaqSection = (line) => /자주\s*묻는/.test(String(line).replace(/<[^>]+>/g, ''));
+
+// ─────────────────────────────────────────────────────────────
+// 문장 단위 줄바꿈
+// ─────────────────────────────────────────────────────────────
+// @AI:INTENT 모바일 한 줄이 20~25자다. 한 문단이 125자면 «여섯 줄 벽»이 되어 문장이 끝난 자리가
+//   화면 중간에 묻힌다(2026-08-20 실측: 우리 글의 24%가 한 문단에 문장 둘 이상, 최장 125자).
+//   대상 블로그의 발행글은 110문단 «전부» 한 문장이었다.
+// @AI:CONSTRAINT 🔴 태그 «안»에서 자르면 <b> 가 깨진다 — 열린 태그가 없을 때만 자른다.
+const SENT_END = ['.', '?', '!'];
+
+function splitSentences(pLine) {
+  const m = String(pLine == null ? '' : pLine).match(/^(\s*<p[^>]*>)([\s\S]*)(<\/p>\s*)$/i);
+  if (!m) return [pLine];
+  const open = m[1], inner = m[2], close = m[3];
+  const out = [];
+  let depth = 0, inTag = false, buf = '';
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i];
+    buf += ch;
+    if (ch === '<') { inTag = true; depth += inner[i + 1] === '/' ? -1 : 1; continue; }
+    if (ch === '>') { inTag = false; continue; }
+    if (inTag || depth !== 0) continue;
+    if (SENT_END.indexOf(ch) < 0) continue;
+    const prev = inner[i - 1] || '', next = inner[i + 1] || '';
+    if (/[0-9]/.test(prev) && /[0-9]/.test(next)) continue;   // 3.5 같은 숫자는 문장 끝이 아니다
+    if (!/\s/.test(next)) continue;                          // 뒤에 공백이 있어야 문장 끝이다
+    if (!inner.slice(i + 1).trim()) continue;                 // 마지막 문장이면 자를 것이 없다
+    out.push(open + buf.trim() + close.trim());
+    buf = '';
+    while (i + 1 < inner.length && /\s/.test(inner[i + 1])) i += 1;
+  }
+  if (buf.trim()) out.push(open + buf.trim() + close.trim());
+  return out.length ? out : [pLine];
+}
+
+/**
+ * 조각 배열의 여백을 규격대로 다시 넣는다 (문장 단위 줄바꿈 포함).
+ *
+ * @AI:CONSTRAINT 이미지 순서는 그대로 둔다 — thumbnailIndex 가 그 순서를 가리킨다.
+ * @param {Array<{kind:string, html?:string}>} blocks
+ */
+function applyGaps(blocks) {
+  const units = [];
+  let inFaq = false;
+  (blocks || []).forEach((b) => {
+    if (!b || b.kind !== 'html') { units.push({ kind: b && b.kind === 'image' ? 'image' : 'other', block: b }); return; }
+    String(b.html).split('\n').forEach((line) => {
+      const k = lineKind(line, inFaq);
+      if (!k) return;
+      if (k === 'quoteLine' && startsFaqSection(line)) { units.push({ kind: k, line }); inFaq = true; return; }
+      if (k === 'text') { splitSentences(line).forEach((sline) => units.push({ kind: 'text', line: sline })); return; }
+      units.push({ kind: k, line });
+    });
+  });
+
+  const out = [];
+  let buf = [];
+  const flush = () => { if (buf.length) { out.push({ kind: 'html', html: buf.join('\n') }); buf = []; } };
+  units.forEach((u, i) => {
+    if (i > 0) {
+      const n = gapBetween(units[i - 1].kind, u.kind);
+      for (let k = 0; k < n; k += 1) buf.push(SPACER);
+    }
+    if (u.kind === 'image' || u.kind === 'other') { flush(); out.push(u.block); }
+    else buf.push(u.line);
+  });
+  flush();
+  return out;
+}
+
+/**
+ * 표 셀 손질 — 가운데 정렬 · 16px · «1행 굵게» (담당자 확정 2026-08-20).
+ * 참고자료 표(header-row="false")의 2행부터는 «왼쪽 정렬»이다 — 목록이라 가운데면 읽기 나쁘다.
+ */
+function styleTableCells(html) {
+  let row = 0, isRef = false;
+  return String(html == null ? '' : html).split('\n').map((line) => {
+    const t = line.trim().toLowerCase();
+    if (t.startsWith('<table')) { row = 0; isRef = /header-row="false"/.test(t); return line; }
+    if (t.startsWith('<tr')) { row += 1; return line; }
+    if (!t.startsWith('<td')) return line;
+    const align = (isRef && row >= 2) ? 'left' : 'center';
+    let s = line.replace(/<td([^>]*)>/, (mm, attrs) => {
+      let a = attrs;
+      if (/style="/.test(a)) a = a.replace(/style="/, 'style="text-align:' + align + ';font-size:16px;');
+      else a += ' style="text-align:' + align + ';font-size:16px;"';
+      return '<td' + a + '>';
+    });
+    if (row === 1 && !/<b>/.test(s)) {
+      const o = s.indexOf('>') + 1, c = s.lastIndexOf('</td>');
+      if (o > 0 && c > o) s = s.slice(0, o) + '<b>' + s.slice(o, c) + '</b>' + s.slice(c);
+    }
+    return s;
+  }).join('\n');
+}
+
 module.exports = {
   inline, bold, subheading, quote, paragraph, divider, list, emphasis,
   table, tableCell, tableWantsHeader, createTableCollector,
   spacers, normalizeGaps,
+  applyGaps, gapBetween, lineKind, splitSentences, styleTableCells, GAP_RULES,
   TABLE_HEADER_BG, TABLE_HEADER_FG, TABLE_BORDER, SPACER, GAP_PARAGRAPH, GAP_IMAGE,
   FONT_FAMILY, FONT_CLASS,
 };

@@ -103,11 +103,16 @@ ok('🔴 표 셀 안 마크다운이 풀린다 (별표가 글자로 안 나간�
    allHtml.includes('<b>지급한다</b>') && !allHtml.includes('**지급한다**'));
 ok('머리 행 셀은 색을 입는다', allHtml.includes('<span style="color:#ffffff;">상황</span>'));
 // 본문 셀은 «선은 있고 배경색은 없다» (선은 2026-08-16 사장님 결정으로 추가)
-ok('본문 행 셀에 선이 있다', /<td style="border:[^";]*">물건에 문제, 서류는 완벽<\/td>/.test(allHtml));
+// 🔴 2026-08-20 — 셀에 «가운데 정렬 · 16px» 이 앞에 붙는다. 선은 그대로 있어야 한다.
+ok('본문 행 셀에 선이 있다', /<td style="[^"]*border:[^";]*"[^>]*>물건에 문제, 서류는 완벽<\/td>/.test(allHtml));
+ok('본문 행 셀은 가운데 정렬 · 16px', /<td style="text-align:center;font-size:16px;/.test(allHtml));
 ok('본문 행 셀에는 배경색이 없다', !/<td[^>]*background-color[^>]*>물건에 문제/.test(allHtml));
 ok('리스트가 ul/li 로', allHtml.includes('<ul>') && allHtml.includes('<li>선적기일'));
 ok('링크가 a 태그로', /<a href="http:\/\/redpassportglobal\.com/.test(allHtml));
-ok('해시태그 줄 보존', allHtml.includes('#신용장서류하자'));
+// 🔴 2026-08-20 — 해시태그는 본문에서 «빠지고» 태그칸으로 간다. 사라지는 것이 아니라 옮겨간다.
+ok('🔴 해시태그는 본문에서 빠진다', !allHtml.includes('#신용장서류하자'));
+ok('🔴 대신 tags 로 돌아온다 (사라지면 검색 유입을 잃는다)',
+   (P.tags || []).includes('신용장서류하자'));
 ok('인용구 유지', allHtml.includes('<blockquote>'));
 
 console.log('\n[5-1] 🔴 네이버 포맷 — 여백과 구분선 (기존 글은 빈 문단이 56~61%)');
@@ -179,7 +184,8 @@ ok('검증 통과', MV.ok === true, JSON.stringify(MV.problems));
 const mPlain = M.blocks.filter(b => b.kind === 'html').map(b => b.html).join('\n').replace(/<[^>]+>/g, '');
 ok('「검수 결과」가 본문에 안 남는다', !mPlain.includes('검수 결과'));
 ok('「황금키워드」가 본문에 안 남는다', !mPlain.includes('황금키워드'));
-ok('해시태그 내용은 남는다', mPlain.includes('#구글애널리틱스'));
+ok('🔴 해시태그는 tags 로 옮겨간다 (본문에서는 빠진다)',
+   (M.tags || []).includes('구글애널리틱스') && !mPlain.includes('#구글애널리틱스'));
 
 console.log('\n[8] 엔노블형 — 내부 메모가 «이모지 인용문»으로 본문 뒤에');
 const ENNOBLE = `> 📌 발행 제목: 결혼정보회사 등급표, 그대로 믿어도 될까요 (수정 가능)
@@ -312,8 +318,10 @@ ${'고양이 혀 표면에는 뒤쪽으로 누운 딱딱한 돌기가 있습니�
   //   원 목록(PR #191)이 RPG 카드 한 장만 보고 지어진 탓이고, 잘린 뒤라 «유출 지문에도 안 걸려»
   //   검증은 초록이었다. 출처 표기는 저작권법상 필수라 조용한 손실 중 가장 나쁜 쪽이다.
   ok('🔴 「참고 자료」 절이 살아 있다 (출처 표기 — 저작권)', dPlain.includes('Cornell Feline Health Center'));
-  ok('🔴 그 뒤 해시태그 10개도 살아 있다', dPlain.includes('#고양이빗질주기') && dPlain.includes('#댕묘'));
-  ok('  「참고 자료」 소제목 자체도 보인다', dPlain.includes('참고 자료'));
+  ok('🔴 그 뒤 해시태그 10개도 «살아 있다» — 이제는 tags 로',
+     (D.tags || []).length >= 2 && !dPlain.includes('#고양이빗질주기'));
+  // 🔴 2026-08-20 — 「참고 자료」는 1열 2행 «표»가 된다. 소제목이 아니라 표 안의 1행이다.
+  ok('  「참고자료」가 표 안에 있다', dPlain.includes('참고자료'));
 
   console.log('\n[12-1] 썸네일이 «없는» 카드는 없다고 말한다');
   // @AI:CONSTRAINT 🔴 URL 로 판정하지 말 것 — 검단가온 본문 «첫» 사진이 amazonaws 다.
