@@ -79,17 +79,17 @@ def main():
         segs.append(seg)
         print("완료")
 
-    # 2단계: 개별 파일 (각 페이드 인/아웃)
+    # 2단계: 개별 파일 (페이드아웃만 — 페이드인은 첫 프레임을 검게 만들어 SNS 커버가 죽는다)
     print("\n개별 파일 내보내는 중...")
     for s, seg in zip(slides, segs):
         out = out_dir / f"{s['name']}.mp4"
         run(["-i", str(seg), "-vf",
-             f"fade=t=in:st=0:d=0.4,fade=t=out:st={dur-0.4}:d=0.4",
+             f"fade=t=out:st={dur-0.4}:d=0.4",
              "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
              "-pix_fmt", "yuv420p", str(out)], f"개별 {s['n']}")
         print(f"  {out.name}")
 
-    # 3단계: 합본 (전체 페이드)
+    # 3단계: 합본 (페이드아웃만 — 위와 같은 이유)
     print("\n합본 만드는 중...")
     lst = tmp / "concat.txt"
     # @AI:CONSTRAINT concat 목록의 경로는 반드시 절대경로여야 한다.
@@ -103,7 +103,7 @@ def main():
     total = dur * len(segs)
     final = out_dir / cfg.get("master_name", "카드뉴스_합본.mp4")
     run(["-i", str(joined), "-vf",
-         f"fade=t=in:st=0:d=0.6,fade=t=out:st={total-0.6}:d=0.6",
+         f"fade=t=out:st={total-0.6}:d=0.6",
          "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
          "-pix_fmt", "yuv420p", str(final)], "합본")
     print(f"  {final.name}  ({total:.0f}초)")

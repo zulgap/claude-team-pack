@@ -17,8 +17,10 @@ name: shared-impact-gate
 #    actions/checkout 기본값은 shallow(depth 1) 라 base...head 3점 diff 가 성립하지 않는다.
 #
 # 🔴 pull_request_review 트리거를 넣지 않는다.
-#    이 게이트의 통과 조건은 «PR 본문 수정»이지 승인이 아니다. 본문을 고치면
-#    `edited` 이벤트로 다시 돈다 — 승인으로는 풀 수 없는 것이 의도다.
+#    이 게이트의 통과 조건은 «PR 본문 수정»이지 승인이 아니다. 승인으로는 풀 수 없는 것이 의도다.
+#    ⚠️ 본문 수정 시 `edited` 이벤트로 다시 도는 것이 설계이지만, 실측(2026-08-19)은
+#    4건 중 1건(#203)만 발화했다(#236 은 단독 재수정에도 안 돌아 동시성 가설 반증 — 원인 미상).
+#    안 돌면 빈 커밋 push(`synchronize`)가 확실한 재실행 경로다.
 
 on:
   pull_request:
@@ -56,6 +58,7 @@ jobs:
           else
             echo ""
             echo "::error::여러 곳이 함께 쓰는 것을 고쳤습니다. 위 목록을 PR 본문 「영향 범위」에 적어 주세요."
-            echo "  막는 것이 아니라 '어디가 바뀌는지 적어 달라'는 뜻입니다 — 본문을 고치면 자동으로 다시 돕니다."
+            echo "  막는 것이 아니라 '어디가 바뀌는지 적어 달라'는 뜻입니다 — 본문을 고치면 대개 자동으로 다시 돕니다."
+            echo "  다시 안 돌면 빈 커밋을 하나 미세요: git commit --allow-empty -m retrigger && git push"
             exit 1
           fi
