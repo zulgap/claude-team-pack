@@ -393,6 +393,9 @@ async function readFonts(frame) {
         if (el.offsetParent === null) return;               // 숨은 것 = 자리표시자
         if (!(el.innerText || '').trim()) return;           // 빈 것 = 자리표시자
         if (el.closest('.se-quotation')) return;            // 인용구 = 서체를 못 바꾸는 자리
+        // 🔴 사진 설명(캡션)도 «서체를 못 바꾸는 자리»다 — 커서를 넣으면 글꼴 버튼이 DOM 에서 사라진다
+        //   (2026-08-20 실측). 세면 캡션이 있는 글마다 「섞였다」가 영원히 뜬다.
+        if (el.closest('.se-caption')) return;
         [...el.classList].filter((x) => x.startsWith('se-ff-'))
           .forEach((x) => { out[x] = (out[x] || 0) + 1; });
       });
@@ -849,6 +852,21 @@ async function fillCard(page, parsed, imageDir, opts = {}) {
     }
   }
 
+  // ⑤-c 사진 설명(캡션) — 채널이 켠 경우에만 (2026-08-20)
+  // @AI:CONSTRAINT 🔴 «대표 지정(⑥) 앞»에 둔다. 캡션은 그림을 선택해야 열려서 그림을 클릭하게 되는데,
+  //   대표 지정이 마지막이라는 성질을 깨지 않기 위해서다.
+  if (opts.captions) {
+    const cap = await setCaptions(page, frame, parsed.blocks);
+    if (cap.problems.length) problems.push(...cap.problems);
+    if (cap.put) notes.push(`사진 설명 ${cap.put}장`);
+  }
+
+  // ⑤-d AI 활용 설정 — «주소»로 가른다 (2026-08-20)
+  if (opts.aiMark !== false) {
+    const ai = await setAiMarks(page, frame, parsed.blocks);
+    if (ai.problems.length) problems.push(...ai.problems);
+    if (ai.changed) notes.push(`AI 활용 설정 ${ai.changed}장 조정`);
+  }
   // ⑥ 대표 이미지 = 썸네일 (2026-08-16)
   // @AI:INTENT 네이버는 대표를 «본문에 있는 그림 중에서만» 고르고, 지정이 없으면 «첫 장»을 쓴다.
   //   그래서 지정을 안 하면 정성껏 만든 얼굴 대신 «본문 첫 도식»이 검색결과에 나갔다.
@@ -993,7 +1011,201 @@ function verifyFilled({ start, end, expected, uploaded, expectedBoldChars }) {
   return problems;
 }
 
+// ─────────────────────────────────────────────────────────────
+// 사진 설명 · AI 활용 설정 · 태그 · 링크 카드 (2026-08-20 신설)
+// ─────────────────────────────────────────────────────────────
+const CAPTION = '.se-caption';
+const AI_TOGGLE = '.se-set-ai-mark-button-toggle';
+const TAG_INPUT = '#tag-input';
+const TAG_CHIP = '.tag_area__V1MvI [class*="tag__"]';
+const OGLINK_BTN = '[data-name="oglink"]';
+
+/**
+ * 사진 설명(캡션)을 넣는다 — 카드가 이미 들고 있는 caption 을 쓴다.
+ *
+ * @AI:INTENT 파서는 `caption` 을 진작 들고 있었는데 «쓰는 쪽»이 없어 화면에는 한 줄도 안 들어갔다.
+ * @AI:CONSTRAINT 🔴 캡션 칸은 «그림을 선택해야» 열린다 — 그 전에는 display:none 이라 클릭이 영영 안 된다
+ *   (2026-08-20 실측: 선택 전 0×0 / 선택 후 693×24).
+ * @AI:CONSTRAINT 🔴 「비었나」를 글자로 보지 말 것 — 자리표시자(「사진 설명을 입력하세요.」)가 같이 읽혀
+ *   빈 칸이 «이미 채워짐»으로 뒤집힌다. 네이버 자신의 표시인 se-is-empty 로 가른다.
+ * @AI:CONSTRAINT 🔴 캡션은 서체를 «바꿀 수 없다» — 커서를 넣으면 글꼴 버튼이 DOM 에서 사라진다.
+ *   나눔고딕 13px 고정이고, 그래서 readFonts 도 캡션을 세지 않는다.
+ * @AI:CONSTRAINT 발행 패널이 열려 있으면 그 레이어가 클릭을 가로채 «조용히 0장»이 된다. 닫고 부를 것.
+ */
+async function setCaptions(page, frame, blocks) {
+  const caps = blocks.filter((b) => b.kind === 'image').map((b) => b.caption || '');
+  const n = await frame.locator(IMG_COMPONENT).count();
+  const out = { put: 0, skipped: 0, problems: [] };
+  if (n !== caps.length) {
+    out.problems.push(`카드 ${caps.length}장 · 화면 ${n}장 — 장수가 안 맞아 사진 설명을 넣지 않았습니다`);
+    return out;
+  }
+  for (let i = 0; i < n; i += 1) {
+    const text = caps[i];
+    if (!text) { out.skipped += 1; continue; }
+    const cap = frame.locator(IMG_COMPONENT).nth(i).locator(CAPTION);
+    try {
+      const empty = await cap.evaluate((el) => el.classList.contains('se-is-empty')).catch(() => false);
+      if (!empty) { out.skipped += 1; continue; }
+      await selectImage(page, frame, i);
+      await page.waitForTimeout(300);
+      await cap.click();
+      await page.waitForTimeout(200);
+      await page.keyboard.insertText(text);   // 🔴 type() 이 아니라 insertText — 한글이 조각난다
+      await page.waitForTimeout(250);
+      const got = await cap.evaluate((el) => {
+        const p = el.querySelector('.se-text-paragraph');
+        if (!p) return '';
+        const c = p.cloneNode(true);
+        c.querySelectorAll('.se-placeholder, [class*="toolbar"]').forEach((x) => x.remove());
+        return (c.textContent || '').trim();
+      }).catch(() => '');
+      if (got.replace(/\s+/g, '') === text.replace(/\s+/g, '')) out.put += 1;
+      else out.problems.push(`${i + 1}번 사진 설명이 어긋났습니다`);
+    } catch (e) {
+      out.problems.push(`${i + 1}번 사진 설명 실패: ${String(e.message).split('\n')[0].slice(0, 40)}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * 이 그림에 «AI 활용 설정»을 켜야 하나 — 판정축은 카드 원본의 «주소»다.
+ *
+ * @AI:INTENT supabase 의 generated·render 는 우리가 만든 그림(AI 생성·코드 렌더)이고,
+ *   노션 prod-files-secure 는 «사람이 올린 자료»(썸네일·실사진)다.
+ * @AI:CONSTRAINT 🔴 «자리»로 정하지 말 것(「마지막 한 장 빼고」). 카드마다 그림 구성이 달라
+ *   곧 어긋나고, 실사진이 들어가는 채널에서 «AI 가 만들지 않은 사진에 AI 표시»가 붙는다.
+ */
+function wantsAiMark(url) {
+  return /supabase\.co\/.*\/(generated|render)\//.test(String(url == null ? '' : url));
+}
+
+/**
+ * 그림마다 AI 활용 설정을 규격대로 맞춘다.
+ *
+ * @AI:CONSTRAINT 🔴 토글은 «그림마다 하나»다(11장이면 11개). 화면의 첫 토글만 읽으면 모든 그림이
+ *   1번 그림 상태로 읽혀 「이미 켜짐」이 된다(2026-08-20 실측). 그림 컴포넌트 «안»에서 찾을 것.
+ */
+async function setAiMarks(page, frame, blocks) {
+  const want = blocks.filter((b) => b.kind === 'image').map((b) => wantsAiMark(b.url));
+  const n = await frame.locator(IMG_COMPONENT).count();
+  const out = { changed: 0, already: 0, problems: [] };
+  if (n !== want.length) {
+    out.problems.push(`카드 ${want.length}장 · 화면 ${n}장 — 장수가 안 맞아 AI 표시를 건드리지 않았습니다`);
+    return out;
+  }
+  const readOn = (i) => frame.evaluate(({ sel, idx, comp }) => {
+    const c = document.querySelectorAll(comp)[idx];
+    if (!c) return null;
+    const btn = c.querySelector(sel);
+    return btn ? btn.classList.contains('se-is-selected') : null;
+  }, { sel: AI_TOGGLE, idx: i, comp: IMG_COMPONENT });
+
+  for (let i = 0; i < n; i += 1) {
+    try {
+      await selectImage(page, frame, i);
+      await page.waitForTimeout(300);
+      const before = await readOn(i);
+      if (before === null) { out.problems.push(`${i + 1}번 — AI 표시 토글이 안 보입니다`); continue; }
+      if (before === want[i]) { out.already += 1; continue; }
+      await frame.locator(IMG_COMPONENT).nth(i).locator(AI_TOGGLE).first().click();
+      await page.waitForTimeout(350);
+      const after = await readOn(i);
+      if (after === want[i]) out.changed += 1;
+      else out.problems.push(`${i + 1}번 AI 표시가 ${want[i] ? '켜지지' : '꺼지지'} 않았습니다`);
+    } catch (e) {
+      out.problems.push(`${i + 1}번 AI 표시 실패: ${String(e.message).split('\n')[0].slice(0, 40)}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * 발행 패널의 «태그» 칸을 채운다.
+ *
+ * @AI:INTENT 스킬은 태그칸을 «한 번도» 채운 적이 없다. 해시태그가 본문에 남아 있어 그렇게 보였을 뿐이고,
+ *   본문에서 빼는 순간 빈 칸이 드러났다(2026-08-20). 태그는 검색 유입에 쓰이므로 비워 두면 안 된다.
+ * @AI:CONSTRAINT 발행 패널이 «열려 있어야» 한다 — 호출자가 열고 부른다.
+ * @AI:CONSTRAINT 🔴 칩을 셀 때 클래스 이름을 지어내지 말 것. 실제는 tag_area 안의 tag__* 다
+ *   (2026-08-20 실측: 엉뚱한 선택자로 세어 «0개»로 읽고 실패로 오판했다 — 실제로는 다 들어가 있었다).
+ */
+async function setTags(page, frame, tags) {
+  const want = (tags || []).map((t) => String(t).replace(/^#/, '').trim()).filter(Boolean);
+  const out = { added: 0, problems: [] };
+  if (!want.length) return out;
+  const input = frame.locator(TAG_INPUT);
+  if (!(await input.count())) { out.problems.push('태그 입력칸을 찾지 못했습니다 (발행 패널이 열려 있어야 합니다)'); return out; }
+  const before = await frame.locator(TAG_CHIP).count();
+  for (const t of want) {
+    await input.click();
+    await page.waitForTimeout(150);
+    await page.keyboard.insertText(t);       // 🔴 한글은 insertText
+    await page.waitForTimeout(180);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(280);
+  }
+  const got = await frame.locator(TAG_CHIP).evaluateAll((els) =>
+    els.map((e) => (e.textContent || '').replace(/^#/, '').replace(/\s+/g, '')));
+  out.added = (await frame.locator(TAG_CHIP).count()) - before;
+  const missing = want.filter((t) => !got.includes(t.replace(/\s+/g, '')));
+  if (missing.length) out.problems.push(`태그가 안 들어갔습니다: ${missing.join(', ')}`);
+  return out;
+}
+
+/**
+ * 링크 카드(oglink)를 넣는다. 자리를 주면 «그 줄»을 비우고 그 자리에 넣는다.
+ *
+ * @AI:INTENT 글자에 링크 거는 길(text-link)은 선택이 에디터에 전달되지 않아 네 번 시도 모두 실패했다.
+ *   반면 이 길은 도구막대 버튼 → 주소 → 검색 → 확인이라 «선택이 필요 없다».
+ * @AI:CONSTRAINT 🔴 붙여넣기에서 `<a>` 는 네이버가 버린다 — 글자 링크는 여전히 사람 몫이다.
+ * @param {{atMarker?:string}} opts atMarker 로 시작하는 줄을 비우고 그 자리에 넣는다. 없으면 맨 끝.
+ */
+async function addOglink(page, frame, url, opts = {}) {
+  const before = await frame.locator('.se-component.se-oglink').count();
+  if (opts.atMarker) {
+    const idx = await frame.evaluate((m) => {
+      const root = document.querySelector('.se-content') || document.body;
+      return [...root.querySelectorAll(PARA)].findIndex(
+        (p) => (p.textContent || '').replace(/\u200b/g, '').trim().startsWith(m));
+    }, opts.atMarker).catch(() => -1);
+    if (idx < 0) return { ok: false, code: 'MARKER_NOT_FOUND', reason: `"${opts.atMarker}" 로 시작하는 줄이 없습니다` };
+    const para = frame.locator(PARA).nth(idx);
+    await para.scrollIntoViewIfNeeded();
+    await para.click();
+    await page.waitForTimeout(250);
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+End');
+    await page.waitForTimeout(180);
+    await page.keyboard.press('Delete');
+    await page.waitForTimeout(350);
+  } else {
+    await withPopupGuard(page, frame, () => cursorToEnd(page, frame));
+    await page.waitForTimeout(250);
+  }
+
+  await frame.locator(OGLINK_BTN + ':visible').first().click();
+  await page.waitForTimeout(800);
+  const input = frame.locator('.se-popup-oglink-input, .se-popup-input, input[placeholder*="URL"]').first();
+  if (!(await input.count())) {
+    await page.keyboard.press('Escape');
+    return { ok: false, code: 'NO_INPUT', reason: '링크 입력칸이 열리지 않았습니다' };
+  }
+  await input.fill(url);
+  await page.waitForTimeout(250);
+  const search = frame.locator('.se-popup-oglink-button:visible').first();
+  if (await search.count()) { await search.click(); await page.waitForTimeout(2200); }
+  const ok = frame.locator('.se-popup-button:visible').filter({ hasText: '확인' }).first();
+  if (await ok.count()) await ok.click(); else await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+
+  const after = await frame.locator('.se-component.se-oglink').count();
+  if (after <= before) { await page.keyboard.press('Escape'); return { ok: false, code: 'NOT_ADDED', reason: '카드가 만들어지지 않았습니다' }; }
+  return { ok: true, count: after };
+}
+
 module.exports = { fillCard, handleStartupPopup, pasteHtml, uploadImage, uploadOnce, removePlaceholder,
+                   setCaptions, setAiMarks, wantsAiMark, setTags, addOglink,
                    downloadImages, describeImageFailure, readBody, cursorToEnd, getFrame, verifyFilled, withPopupGuard,
                    clearFormatting, FORMAT_TOGGLES, clearCaretFormatting, CARET_TOGGLES, countBoldChars,
                    selectImage, setImageExtend, extendAllImages, ARRANGE, IMAGE_EATS_LINES,

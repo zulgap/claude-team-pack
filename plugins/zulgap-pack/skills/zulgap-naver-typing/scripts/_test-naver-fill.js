@@ -269,6 +269,54 @@ console.log('\n[글꼴] 마루부리');
 
 
 
+
+// ─────────────────────────────────────────────────────────────
+// 사진 설명 · AI 활용 설정 · 태그 · 링크 카드 (2026-08-20 신설)
+// ─────────────────────────────────────────────────────────────
+{
+  const { wantsAiMark } = require('./naver-fill.js');
+
+  // 🔴 AI 표시는 «주소»로 가른다 — 자리(「마지막 한 장 빼고」)로 정하면 카드마다 어긋나고,
+  //   실사진이 들어가는 채널에서 «AI 가 만들지 않은 사진»에 표시가 붙는다.
+  ok('AI 생성 그림(generated)은 켠다',
+     wantsAiMark('https://x.supabase.co/storage/v1/object/public/media-assets/t/generated/1-a.png') === true);
+  ok('코드로 그린 도식(render)도 켠다',
+     wantsAiMark('https://x.supabase.co/storage/v1/object/public/media-assets/render/ch/49/1.png') === true);
+  ok('🔴 사람이 올린 자료(노션)는 «끈다» — 실사진에 AI 표시가 붙으면 사실과 다르다',
+     wantsAiMark('https://prod-files-secure.s3.us-west-2.amazonaws.com/a/b/c.png?X-Amz-Expires=300') === false);
+  ok('빈 값·없는 값도 끈다', wantsAiMark('') === false && wantsAiMark(null) === false && wantsAiMark(undefined) === false);
+  ok('supabase 라도 generated·render 가 아니면 끈다',
+     wantsAiMark('https://x.supabase.co/storage/v1/object/public/media-assets/uploads/1.png') === false);
+
+  const src2 = require('fs').readFileSync(require('path').join(__dirname, 'naver-fill.js'), 'utf8');
+
+  // 캡션 — 실측으로 잡은 함정 셋이 코드에 그대로 남아 있어야 한다
+  ok('🔴 캡션은 그림을 «선택한 뒤» 연다 (그 전에는 display:none)',
+     /setCaptions[\s\S]{0,1200}selectImage\(page, frame, i\)[\s\S]{0,200}CAPTION|selectImage\(page, frame, i\)[\s\S]{0,400}cap\.click/.test(src2));
+  ok('🔴 「비었나」는 se-is-empty 로 가른다 (글자로 보면 자리표시자가 잡혀 거꾸로 판정된다)',
+     /classList\.contains\('se-is-empty'\)/.test(src2));
+  ok('🔴 한글은 insertText 로 넣는다 (type 은 조각난다)',
+     /setCaptions[\s\S]{0,1500}keyboard\.insertText/.test(src2));
+
+  // AI 토글 — 그림마다 하나
+  ok('🔴 AI 토글은 그림 컴포넌트 «안»에서 찾는다 (첫 토글만 읽으면 전부 「이미 켜짐」이 된다)',
+     /querySelectorAll\(comp\)\[idx\]/.test(src2) && /c\.querySelector\(sel\)/.test(src2));
+
+  // 태그 — 칩 선택자는 실측값이어야 한다
+  ok('🔴 태그 칩은 tag_area 안의 tag__* 로 센다 (지어낸 선택자로 세어 「0개」로 오판한 적이 있다)',
+     /tag_area__V1MvI \[class\*="tag__"\]/.test(src2));
+  ok('태그도 insertText 로 넣는다', /setTags[\s\S]{0,900}keyboard\.insertText/.test(src2));
+
+  // 링크 카드
+  ok('링크 카드는 자리를 주면 그 줄을 비우고 넣는다', /atMarker[\s\S]{0,700}Shift\+End[\s\S]{0,120}Delete/.test(src2));
+  ok('🔴 카드가 안 늘면 실패로 돌려준다 (성공으로 뭉개지 않는다)', /NOT_ADDED/.test(src2));
+
+  // 순서 — 대표 지정이 마지막이라는 성질을 깨지 않는다
+  ok('🔴 캡션·AI 는 «대표 지정 앞»에 있다',
+     src2.indexOf('⑤-c 사진 설명') < src2.indexOf('⑥ 대표 이미지') && src2.indexOf('⑤-d AI 활용') < src2.indexOf('⑥ 대표 이미지'));
+  ok('캡션은 채널이 켠 경우에만 돈다 (기본은 안 넣는다)', /if \(opts\.captions\)/.test(src2));
+}
+
 console.log('\n──────────────────────────────────────────────');
 console.log(fail === 0 ? `✅ ALL PASS  ${pass}/${pass + fail}` : `❌ FAIL  ${pass}/${pass + fail}`);
 process.exit(fail === 0 ? 0 : 1);
