@@ -355,6 +355,9 @@ python scripts/build_video.py <slides.json> <out_dir> <overlays_dir>
 - **인물이 전문적·고급스러워 보이는가?** 생활감·피로감이 묻어나면 브랜드가 깎인다
 - **화면에 깨진 한글이 남아 있지 않은가?** 서류·간판이 나오면 확대해서 확인할 것
 - **실제 배우와 닮은 인물이 없는가?** 거부 없이 통과해도 닮게 나온다 — 닮았으면 재생성하지 말고 **사장님께 선택지를 드릴 것**
+- **첫 프레임이 검정이 아닌가?** 인스타·페북은 첫 프레임을 커버로 쓴다 — 검으면 피드에서 게시글이 까맣게 보인다.
+  `ffmpeg -i <mp4> -frames:v 1 -vf signalstats,metadata=print:key=lavfi.signalstats.YAVG -f null -` 로
+  6장 + 합본을 재고, YAVG 가 0 근처면 페이드인이 남아 있는 것이다 (`assets/brand_kit.md` 함정 9)
 
 ### 노션 기록 (Step 6)
 - **인스타그램/페이스북 두 행을 다 만들었는가?** (묻지 말고 기본으로 둘 다)
