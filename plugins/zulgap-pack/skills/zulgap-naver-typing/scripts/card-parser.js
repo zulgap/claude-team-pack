@@ -323,8 +323,18 @@ function parseCard(md) {
     //   마미사·검단가온 카드는 후자다 — 그대로 두면 굵은 문단이 되어 네이버에서 밋밋하다.
     // @AI:FRAGILE 판정축은 «줄 전체»다. 본문 중간 강조는 문장 «일부»라(`**A**입니다.`)
     //   안 걸린다. 길이로 자르지 말 것 — 긴 소제목이 있고 짧은 강조 문장도 있다.
+    //
+    // @AI:CONSTRAINT 🔴 «안쪽에 `**` 가 또 있으면 소제목이 아니다» (2026-08-20 실측).
+    //   `$` 앵커 탓에 lazy 여부와 무관하게 «첫 `**` ~ 마지막 `**`» 가 통째로 걸린다.
+    //   그래서 굵게로 «시작해서» 굵게로 «끝나는» 평범한 문단이 —
+    //     `**주사기로 밀어 넣지 마세요.** 강제 급여는 … **나쁜 기억과 한 덩어리가 됩니다.**`
+    //   — 문단 하나가 통째로 인용구가 되어 나갔다(댕묘 8/21 5편 중 3편에서 발생).
+    //   증상이 «본문이 사라진 것»이 아니라 «소제목이 길어진 것»이라 검증도 눈도 안 걸렀고,
+    //   사람이 발행 직전에 발견했다. 안쪽 `**` 하나만 세면 갈린다.
     const boldOnly = line.match(/^\*\*(.+?)\*\*$/);
-    if (boldOnly) { flushList(); buf.push(NF.subheading(boldOnly[1])); buf.push(NF.SPACER); continue; }
+    if (boldOnly && !boldOnly[1].includes('**')) {
+      flushList(); buf.push(NF.subheading(boldOnly[1])); buf.push(NF.SPACER); continue;
+    }
 
     const li = line.match(/^\s*[-*]\s+(.+)$/);
     if (li) {

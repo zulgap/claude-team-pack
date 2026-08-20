@@ -471,5 +471,28 @@ console.log('\n[여백] 조각 양 끝은 이웃이 정한다');
 }
 
 
+
+// ─────────────────────────────
+// 굵게로 «시작해서» 굵게로 «끝나는» 문단 — 소제목이 아니다 (2026-08-20 회귀)
+// ─────────────────────────────
+console.log('\n[굵은 문단] 소제목과 강조를 가른다');
+{
+  const render = (md) => parseCard('# 제목\n' + md).blocks
+    .filter((b) => b.kind === 'html').map((b) => b.html).join('\n');
+
+  const 가짜소제목 = '**주사기로 밀어 넣지 마세요.** 강제 급여는 수의사가 시킬 때만 하는 겁니다. '
+    + '억지로 들어간 음식은 **나쁜 기억과 한 덩어리가 됩니다.**';
+  const h1 = render(가짜소제목);
+  ok('🔴 굵게로 시작·끝나는 문단은 인용구가 아니다', !h1.includes('<blockquote>'), h1.slice(0, 80));
+  ok('굵게 두 덩어리를 그대로 가진다', (h1.match(/<b>/g) || []).length === 2,
+     `${(h1.match(/<b>/g) || []).length}개`);
+  ok('별표가 글자로 남지 않는다', !h1.includes('**'), h1.slice(0, 80));
+
+  const h2 = render('**진짜 소제목입니다**');
+  ok('안쪽에 `**` 가 없으면 여전히 소제목', h2.includes('<blockquote>'), h2.slice(0, 80));
+
+  const h3 = render('**A**입니다.');
+  ok('강조로 «시작만» 하면 예전대로 문단', !h3.includes('<blockquote>'), h3.slice(0, 80));
+}
 console.log(`\n${'─'.repeat(46)}\nPASS ${pass} / FAIL ${fail}`);
 process.exit(fail === 0 ? 0 : 1);
