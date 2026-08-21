@@ -48,18 +48,23 @@ const BASE_PLUGINS = ['jedi-core'];
 // @AI:FRAGILE marketplace.json 의 플러그인과 1:1 이어야 한다 — CI(check-plugin-consistency) 가 대조한다.
 //   deprecated 플러그인(`zulgap`)은 여기 넣지 않는다. 그 비활성은 hook-doctor 의 verify-then-flip 소관.
 const PLUGIN_RULES = {
-  'zulgap-pack': { pack: 'zulgap' },
+  // @AI:CONSTRAINT 🔴 tenantOnly = «남의 회사 자료가 든» 팩. 2026-08-21 실측: zulgap-pack 안에
+  //   동료사 운영 계정(플레이스·광고·GA4 ID)·법인 사업자번호·사내 공유폴더 경로가 들어 있다.
+  //   이 표시가 붙은 팩은 «새 PC 에 처음 켤 때» 판정이 확실해야만 켠다 (decide 의 enableOk).
+  'zulgap-pack': { pack: 'zulgap', tenantOnly: true },
   'dev-pack': { pack: 'dev', roles: ['dev', 'master'] },
 };
 
 function args(argv) {
   // roleConfident 기본 true — 설치기는 --role 을 확정값으로 준다.
   // hook-doctor 처럼 「몰라서 staff」인 경우만 `--role-confident 0` 을 붙인다.
-  const out = { role: '', format: 'json', roleConfident: true };
+  const out = { role: '', format: 'json', roleConfident: true, newPc: false };
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--role') out.role = String(argv[++i] || '').trim().toLowerCase();
     else if (argv[i] === '--format') out.format = String(argv[++i] || 'json').trim().toLowerCase();
     else if (argv[i] === '--role-confident') out.roleConfident = String(argv[++i] || '1').trim() !== '0';
+    // @AI:INTENT 설치기(새 PC)만 준다. hook-doctor 는 «기존» PC 를 건드리므로 주지 않는다.
+    else if (argv[i] === '--new-pc') out.newPc = true;
   }
   return out;
 }
@@ -141,7 +146,7 @@ function fetchPacks(token) {
  *   설치기는 새 PC라 둘 다 확실하지만, hook-doctor 는 **기존 PC를 건드리므로** 이 구분이 필요하다.
  *   구분을 없애면 「몰라서 staff」인 PC의 dev-pack 을 꺼버린다(2026-07-29 사고 클래스).
  */
-function decide(packs, role, confident, roleConfident) {
+function decide(packs, role, confident, roleConfident, newPc) {
   const plugins = {};
   const why = {};
   const canDisable = {};
@@ -150,8 +155,14 @@ function decide(packs, role, confident, roleConfident) {
     const roleOk = !rule.roles || rule.roles.indexOf(role) !== -1;
     // 판정 불가면 팩 축은 통과시킨다(현상 유지) — 끄는 판단은 confident 일 때만.
     const packOk = confident ? packs.indexOf(rule.pack) !== -1 : true;
-    plugins[name] = roleOk && packOk;
-    why[name] = !roleOk ? 'role' : (!packOk ? 'pack' : null);
+    // @AI:CONSTRAINT 🔴 «켜는 것도» 확실할 때만 — canDisable(끄기 권한)의 대칭이다 (2026-08-21).
+    //   판정 불가(토큰 없음·네트워크·파싱실패)인데 새 PC 면 tenantOnly 팩을 켜지 않는다.
+    //   그 전에는 fail-open 이라, 토큰 없이 깐 «남의 회사» PC 에 우리 테넌트 자료가 그대로 깔렸다
+    //   (README 가 "없으면 Enter" 를 권하므로 그것이 첫 설치의 정상 경로였다).
+    //   🔑 hook-doctor 는 --new-pc 를 주지 않는다 — 기존 PC 를 끄면 2026-07-29 사고가 재발한다.
+    const enableOk = !(newPc && rule.tenantOnly && !confident);
+    plugins[name] = roleOk && packOk && enableOk;
+    why[name] = !roleOk ? 'role' : (!packOk ? 'pack' : (!enableOk ? 'unverified' : null));
     canDisable[name] = !plugins[name] && (why[name] === 'role' ? !!roleConfident : confident);
   }
   return { plugins, why, canDisable };
@@ -184,7 +195,7 @@ if (require.main !== module) { module.exports = { PLUGIN_RULES, BASE_PLUGINS, de
   }
 
   const confident = packs !== null;
-  const d = decide(packs || [], role, confident, a.roleConfident);
+  const d = decide(packs || [], role, confident, a.roleConfident, a.newPc);
   const out = { ok: true, confident, reason, role, packs, ...d };
 
   if (a.format === 'sh') {

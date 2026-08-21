@@ -179,13 +179,16 @@ mkdir -p "$HOME/.claude/zulgap"
 fetch "$RAW/resolve-packs.js" "$RESOLVER" || warn "[warn] resolve-packs.js fetch failed"
 RP_CONFIDENT=0; RP_REASON="unavailable"; RP_PACKS=""; RP_ON=""; RP_OFF=""; RP_CAN_OFF=""
 if [ -f "$RESOLVER" ]; then
-  RP_EVAL="$(node "$RESOLVER" --role "$ROLE" --format sh 2>/dev/null || true)"
+  RP_EVAL="$(node "$RESOLVER" --role "$ROLE" --format sh --new-pc 2>/dev/null || true)"
   [ -n "$RP_EVAL" ] && eval "$RP_EVAL"
 fi
 if [ "$RP_CONFIDENT" = "1" ]; then
   ok "tenant packs: $RP_PACKS  (on: $RP_ON / off: $RP_OFF)"
 else
-  warn "[note] 팩 판정 불가($RP_REASON) — 현상 유지(줄갭 기본)"
+  # @AI:CONSTRAINT 🔴 문구를 「현상 유지」로 되돌리지 말 것 — 2026-08-21 부터 새 PC 는 회사 팩을 «안 켠다».
+  #   안내와 동작이 갈리면 사람이 「깔린 줄」 알고 넘어간다(코드 안의 거짓 주장 클래스).
+  warn "[note] 팩 판정 불가($RP_REASON) — 공용 팩만 설치합니다."
+  warn "        회사 전용 팩이 필요하면 제디 토큰을 넣고 다시 실행하세요."
 fi
 
 # ---- 3. role file + CLAUDE.md stub (fetched — no local files in curl mode) ----
