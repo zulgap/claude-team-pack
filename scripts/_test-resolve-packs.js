@@ -108,6 +108,52 @@ t('규칙표가 marketplace 플러그인을 빠짐없이 덮는다', () => {
     '안 넣으면 그 팩은 아무 장부도 몰라 키가 안 생기고 전원에게 켜진다');
 });
 
+// ── 켜기 권한 (newPc) — «새 PC 에 처음 켤 때» 축. 2026-08-21 뒷문 봉합 ──────────
+// @AI:INTENT 판정 불가(토큰 없음)인데 tenant 팩을 켜서, 남의 회사 PC 에 우리 동료사
+//   운영 계정·사업자번호가 깔리고 있었다. README 가 "없으면 Enter" 를 권해 그것이 정상 경로였다.
+t('새 PC + 판정 불가 — tenant 팩을 켜지 않는다 (뒷문)', () => {
+  const d = decide([], 'staff', false, true, true);
+  assert.strictEqual(d.plugins['zulgap-pack'], false,
+    '토큰 없이 깐 남의 회사 PC 에 우리 테넌트 자료가 깔리면 안 된다');
+  assert.strictEqual(d.plugins['jedi-core'], true, '공용 팩은 그대로 켠다');
+  assert.strictEqual(d.why['zulgap-pack'], 'unverified',
+    '사유가 pack/role 이 아니라 unverified 여야 «왜 안 켰는지» 사람이 안다');
+});
+
+t('새 PC + 판정 불가 — role 축 팩은 이 규칙에 안 걸린다', () => {
+  const d = decide([], 'master', false, true, true);
+  assert.strictEqual(d.plugins['dev-pack'], true,
+    'dev-pack 은 tenantOnly 가 아니라 role 축이다 — 여기서 함께 꺼지면 개발자 PC 가 반쪽이 된다');
+});
+
+t('🔴 기존 PC(hook-doctor) — 판정 불가여도 현상 유지 (2026-07-29 사고 방지)', () => {
+  const d = decide([], 'staff', false, true);          // newPc 없음 = hook-doctor 경로
+  assert.strictEqual(d.plugins['zulgap-pack'], true,
+    'hook-doctor 가 기존 PC 의 팩을 끄면 「몰라서」 스킬이 사라진다');
+  assert.strictEqual(d.canDisable['zulgap-pack'], false, '끌 권한도 없어야 한다');
+});
+
+t('새 PC + 판정 됨 — 무회귀 (카드에 있으면 켠다)', () => {
+  eq(decide(['core', 'zulgap', 'dev'], 'staff', true, true, true).plugins,
+    { 'jedi-core': true, 'zulgap-pack': true, 'dev-pack': false },
+    '토큰이 정상이면 종전과 똑같이 켜져야 한다');
+});
+
+t('새 PC + 남의 회사 카드 — 무회귀 (명시적 false 유지)', () => {
+  assert.strictEqual(decide(['core'], 'staff', true, true, true).plugins['zulgap-pack'], false,
+    '카드에 없으면 확실히 끈다 — 이 축은 newPc 와 무관하게 그대로다');
+});
+
+// @AI:CONSTRAINT 🔴 배선 검사 — 판정만 고치고 설치기가 플래그를 안 주면 «코드는 맞는데 안 도는» 상태가 된다.
+t('install.sh 가 --new-pc 를 실제로 넘긴다 (배선)', () => {
+  const sh = fs.readFileSync(path.join(__dirname, '..', 'install.sh'), 'utf8');
+  assert.ok(/--format sh --new-pc|--new-pc[sS]{0,40}--format sh/.test(sh),
+    '설치기가 --new-pc 를 안 주면 뒷문이 그대로 열려 있다');
+  const hd = fs.readFileSync(path.join(__dirname, '..', 'hooks', 'hook-doctor-v2.js'), 'utf8');
+  assert.ok(!hd.includes('--new-pc'),
+    'hook-doctor 는 «기존» PC 를 건드리므로 이 플래그를 주면 안 된다 (2026-07-29 사고)');
+});
+
 for (const [name, fn] of cases) {
   try { fn(); console.log('  PASS  ' + name); pass++; }
   catch (e) { console.log('  FAIL  ' + name + '\n        ' + e.message); }
