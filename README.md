@@ -74,10 +74,10 @@
 **방법 A (권장, 터미널 한 줄)** — Gatekeeper 차단 자체가 없어 가장 확실:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash
+curl -fsSL https://zulgap.kr/install | bash
 
 # 토큰 없이 특정 역할로 설치할 때만 (폴백): --role dev / --role master
-curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash -s -- --role dev
+curl -fsSL https://zulgap.kr/install | bash -s -- --role dev
 ```
 
 역할(직원/개발자/관리자)은 설치 중 붙여넣는 **제디 토큰이 자동 결정**합니다.

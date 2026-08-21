@@ -145,9 +145,9 @@ PR 링크 열기 → 우측 위 [Files changed] → [Review changes]
 
 > ⚠️ 팀팩 갱신 파일이 옛 버전이라 자동 업데이트가 멈춰 있습니다. 아래를 그대로 입력해 주세요(맨 앞 `!` 포함):
 > ```
-> ! curl -sL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/hooks/team-guide-fetch.js -o "%USERPROFILE%\.claude\zulgap\team-guide-fetch.js"
+> ! curl -sL https://zulgap.kr/pack/hooks/team-guide-fetch.js -o "%USERPROFILE%\.claude\zulgap\team-guide-fetch.js"
 > ```
-> 안 되면: `! powershell -Command "iwr 'https://raw.githubusercontent.com/zulgap/claude-team-pack/main/hooks/team-guide-fetch.js' -OutFile \"$env:USERPROFILE\.claude\zulgap\team-guide-fetch.js\""`
+> 안 되면: `! powershell -Command "iwr 'https://zulgap.kr/pack/hooks/team-guide-fetch.js' -OutFile \"$env:USERPROFILE\.claude\zulgap\team-guide-fetch.js\""`
 > 그 다음 클로드를 두 번 껐다 켜시면 이후로는 자동입니다.
 
 🔴 **이 안내는 `!` 를 붙여 사용자가 직접 실행하게 해야 한다.** Claude가 대신 실행하려 하면 권한 정책에 차단된다
