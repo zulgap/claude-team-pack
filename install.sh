@@ -9,9 +9,9 @@
 #   5) (optional) Jedi (company data) connection — only if you have a personal token
 #
 # Usage (remote, no local files needed — everything is fetched from GitHub):
-#   staff : curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash
-#   dev   : curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash -s -- --role dev
-#   master: curl -fsSL https://raw.githubusercontent.com/zulgap/claude-team-pack/main/install.sh | bash -s -- --role master  (어드민 기기 — CLAUDE.md 보존)
+#   staff : curl -fsSL https://zulgap.kr/install | bash
+#   dev   : curl -fsSL https://zulgap.kr/install | bash -s -- --role dev
+#   master: curl -fsSL https://zulgap.kr/install | bash -s -- --role master  (어드민 기기 — CLAUDE.md 보존)
 #
 # @AI:CONSTRAINT 원격 curl 실행 전제 — $PSScriptRoot 같은 로컬 동봉 파일 없음. 필요 파일 전부 raw fetch.
 # @AI:CONSTRAINT settings.json/.claude.json 병합 로직은 install.ps1과 동일 계약(맵 형태, 멱등, .bak 백업).
