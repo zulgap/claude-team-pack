@@ -1,0 +1,34 @@
+# @AI:INTENT 공용 팩(jedi-core·dev-pack)이 두 저장소에서 갈리는 것을 «재는» 자리.
+#   2026-08-21 실측: jedi-pack 이 8/19 커밋 1개에 멈춘 사이 claude-team-pack 이 #243·#246 으로
+#   두 번 고쳐 10파일이 갈렸다(누락 1 + 내용 9). 신규 설치는 jedi-pack 을, 기존 PC 는 이 저장소를
+#   보므로 **서로 다른 코드가 출하되고 있었고 경보는 0건**이었다. 낡은 짝끼리 내부 정합이라 침묵으로 갈린다.
+# @AI:CONSTRAINT 🔴 pull_request 에서는 돌리지 않는다 — PR 시점엔 «당연히» 갈려 있어서(아직 머지 전)
+#   전 PR 이 빨간불이 되고, 그러면 이 게이트가 곧 무시된다.
+# @AI:CONSTRAINT 🔴 자동 적용은 아직 없다 — 다른 저장소에 쓰려면 PAT/deploy key 가 필요한데
+#   지금 secret 이 없다. 갈리면 사람이 한 줄 실행한다: node scripts/jedi-pack-sync.js --apply
+name: jedi-pack-mirror
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/jedi-core/**'
+      - 'plugins/dev-pack/**'
+      - 'scripts/jedi-pack-sync.js'
+  schedule:
+    # 매일 KST 09:10 — 손으로 고친 갈림도 잡는다(push 경로 밖에서 벌어지는 것)
+    - cron: '10 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # @AI:CONSTRAINT origin/main 을 기준으로 읽는다 — 스크립트 기본값이 그렇다.
+      - name: 공용 팩 갈림 검사
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/jedi-pack-sync.js --check
